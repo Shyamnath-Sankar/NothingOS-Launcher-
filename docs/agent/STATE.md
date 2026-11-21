@@ -4,7 +4,7 @@ Updated by the agent-dev workflow at the end of every run. The next dispatch rea
 when no task input is given, and continues from "next".
 
 - current_phase: P0 (prove the base builds)
-- branch: (none)
+- branch: agent/smoke-test-of-the-agent-dev-lo
 - pr: (none)
 
 ## done
@@ -25,3 +25,6 @@ when no task input is given, and continues from "next".
 - applicationId for the Play rebrand: com.launchernos.dotwellabs (approved by the owner 2026-11-21).
 - Public Play listing name: OPEN, release blocker, do not guess.
 - Free models/services only. Cache heavy installs in workflows.
+
+## log
+- 2026-11-21: agent-dev loop verified
