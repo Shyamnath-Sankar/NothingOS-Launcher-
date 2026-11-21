@@ -3,19 +3,54 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10a — real grid settings and widget-picker smoke**. On top of merged PR13
-  (`55a25a2`), the emulator smoke now opens the existing Home screen grid preferences through the
-  existing deep link, captures the real preview/controls with a still-disabled Apply, then
-  long-presses the measured empty HOME workspace, taps Widgets by its bounds and requires the native
-  widget picker search/list (not HOME). Read-only: no feature, styling, preference write or direct
-  picker activity.
+- current_phase: **P10a — real grid settings and widget-picker smoke (harness correction)**. The P10a
+  smoke was corrected against the actual `grid-settings-attempt-6` hierarchy and pixels: the preview
+  is validated from its `/workspace` bounds instead of a nonexistent preview class, Apply is matched
+  as a non-clickable label inside a non-clickable Button, the last failed readiness PNG is captured,
+  and the HOME long-press no longer falls back to an occupied centre. Read-only: no feature, styling,
+  preference write, app source, SDK, workflow, Gradle, manifest, permission or signing change.
 - branch: `agent/p10-grid-widget-smoke`
-- head: `d9a8b71` (`docs(agent): record P10a grid and widget smoke`) on base `main` `55a25a2`;
-  harness commit `7b9f966`, docs commit `4b98e45`. The STATE record commit follows this head.
-- pr: **none yet** — main owns PR creation/CI approval for this branch. PR13 is merged and is the
-  fallback.
+- head: `f51fcb3` (`fix(smoke): validate the actual grid preview and non-clickable Apply`) on base
+  `main` `55a25a2`; prior harness commit `7b9f966`, docs commits `4b98e45`, `d9a8b71`, `b98cbb5`.
+- pr: **none yet** — main owns PR creation/CI approval for this branch. PR13 is merged at `55a25a2`
+  and the APK104/APK102 fallbacks remain `main` `55a25a2`.
 
-## done (this run — P10a real grid settings and widget-picker smoke)
+## done (this run — P10a grid/widget harness correction)
+
+- **Evidence read, not guessed:** CI106 (`10644959244281`) passed assembly/style/units and the real
+  grid editor opened, but the new readiness failed on class assumptions. The actual
+  `grid-settings-attempt-6.xml` and pixels show the title `Home screen grid`; three visible
+  `SeekBar`s with Columns 4, Rows 6, Dock icons 4; a preview `AndroidViewHolder[375,294][706,883]`
+  containing a `ViewGroup` `...:id/workspace` at `375,313..706,844` with
+  `hotseat`/`search_container_workspace`; there is no `LauncherPreviewView`/`LauncherPreviewLayout`
+  class. Apply is a separate `TextView` at `488,1663..592,1716`, `enabled="true"`,
+  `clickable="false"`, inside a non-clickable ancestor `View` and an empty non-clickable
+  `android.widget.Button` at `42,1637..1038,1742`; the pixels are grey.
+- **Preview readiness:** new `grid_preview_is_ready` requires a `/workspace` ViewGroup with valid
+  bounds strictly inside the window root, strictly smaller than the root in both dimensions, above
+  every `SeekBar`, and containing a `hotseat`/`search_container_workspace` node. No preview class
+  name is required. `grid_settings_is_ready` keeps the title, four labels and three-SeekBar checks.
+- **Apply readiness:** `grid_apply_is_unchanged` finds the `Apply` label bounds, rejects a clickable
+  Apply, and requires a non-clickable `android.widget.Button` whose bounds contain the label. It does
+  not depend on the label class or the accessibility `enabled` flag.
+- **Failure evidence:** `capture_grid_settings` now captures
+  `grid-settings-attempt-<last>.png` before failing when readiness never succeeds.
+- **Unsafe fallback removed:** `home_longpress_target` returns failure when every measured candidate
+  in the header/dock band is occupied instead of printing the band centre. The real measured HOME
+  long-press Widgets route and all existing checks are otherwise unchanged.
+- **Fixtures:** `emulator-smoke-test.sh` now models the actual hierarchy (preview
+  ViewGroup/workspace/hotseat/search container, Apply TextView inside a non-clickable Button) and
+  adds negatives for a missing workspace preview, a preview not above the controls, a preview
+  without its hotseat, a clickable Apply, a missing containing Button, and a fully occupied
+  long-press band.
+- **Docs:** `docs/agent/emulator-verification.md` describes the bounds-based preview, the
+  non-clickable Apply and the last-attempt PNG.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass (including
+  every new positive/negative); `emulator-smoke-drawer-test.sh` all pass; `verify-play-build-test.sh`
+  all pass; `sh -n` clean on all edited scripts; `git diff --check` clean. This is source/fixture
+  verification only, not a runtime claim.
+
+## done (previous run — P10a initial real grid settings and widget-picker smoke)
 
 - **Grid, read-only and real:** `capture_grid_settings` starts the existing
   `PreferenceActivity` with `lawnchair://settings/home-screen-grid` (the real
@@ -481,57 +516,55 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the new grid/popup/picker
-  positive fixtures and the loose-English, missing-preview, two-slider, enabled-Apply,
-  item-specific-popup and picker-without-list negatives.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the actual-shape workspace
+  preview positive, the missing-preview / preview-not-above-controls / preview-without-hotseat
+  negatives, the non-clickable Apply positive, the clickable-Apply and missing-containing-Button
+  negatives, and the fully-occupied long-press band failure.
 - This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass; the genuine 1500 ms / 4-attempt
   drawer assertions are unchanged.
 - This run: `sh scripts/verify-play-build-test.sh` -> all pass.
-- This run: `sh scripts/verify-play-build.sh` -> both smoke suites and the repo-level identity,
-  brand, theme, home, home-role, icon and drawer-trace guards pass, then it stops at the expected
-  missing `build/intermediates` because no Gradle/APK run was performed here.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
-- Prior run: `play-brand-guard.sh` and its suite passed the P9 announcement gate; the announcement
-  smoke markers and ordering passed.
-- Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
-  branch is statically verified only; the real preview/picker accessibility markers are scripted
-  but unverified on device.
+- Prior run: both smoke suites, `verify-play-build-test.sh` and the repo-level identity, brand,
+  theme, home, home-role, icon and drawer-trace guards passed; `verify-play-build.sh` stopped only at
+  the expected missing `build/intermediates` because no Gradle/APK run happens here.
+- Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. This is
+  source/fixture verification only; it is not a runtime or pixel claim.
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `d9a8b71`. PR13 is
-  merged into `main` (`55a25a2`) and remains the fallback.
+- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `f51fcb3`. PR13 is
+  merged into `main` (`55a25a2`) and the APK104/APK102 fallbacks remain `main` `55a25a2`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
-- Inspect the new runtime artifacts after the run:
+- Inspect the runtime artifacts after the run:
+  - `grid-settings-attempt-N.xml` / `.png`: the preview `/workspace` bounds above the controls and
+    inside the root, with `hotseat`/`search_container_workspace`, and Apply as a non-clickable label
+    inside a non-clickable Button. If the actual hierarchy differs, update the bounds check from the
+    captured XML; do not return to a class-name check.
   - `grid-settings.xml` / `.png`: the real Home screen grid screen with the preview,
-    `Columns`/`Rows`/`Dock icons`, three `SeekBar` controls and a disabled `Apply`. If Compose
-    exposes the sliders under a different class, update `grid_settings_is_ready` from the captured
-    XML; do not drop the control count.
+    `Columns`/`Rows`/`Dock icons`, three `SeekBar` controls and a grey non-clickable `Apply`.
   - `grid-settings.txt` and `grid-settings-launch.txt`: the deep link launched `Status: ok` and no
     grid change was applied.
   - `home-before-widgets-attempt-N.xml` / `.png`: the actual HOME before the long press.
   - `home-popup.xml` / `.png`: the real `OptionsPopupView` with `Widgets` and a home-level option.
   - `widgets-picker.xml` / `.png`: the native picker search/list and not the pre-long-press HOME.
   - `widgets-longpress-log.txt`: the measured long-press point, duration 1000 and any bounded retry.
-- If the API 37 system image exposes the preview or picker under different classes/resource ids,
-  update the markers from the captured XML. Do not replace them with loose English-only checks.
-- If the API 37 system image uses a different role-consent cancel label, change `ui_cancel_bounds`
-  from the captured XML. Do not guess a new coordinate or lower the assertion.
+- The real grid preview currently shows the inherited welcome surface instead of the Doto header.
+  That is a later app-source slice; do not fix it in this harness branch.
 - P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
   onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `d9a8b71`.
+  API 37 emulator run are unverified until CI runs on `f51fcb3`.
 - No PR exists yet for `agent/p10-grid-widget-smoke`; a maintainer must create/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
-- The grid readiness assumes Compose sliders expose `android.widget.SeekBar` and that the preview
-  class appears in the UIAutomator dump. The captured `grid-settings-attempt-N.xml` will show the
-  actual classes if either marker needs adjustment; the smoke fails closed rather than weakening
-  the control count.
+- The grid readiness now assumes the preview exposes a `/workspace` resource-id inside the
+  `AndroidViewHolder` and a `hotseat`/`search_container_workspace` node. The captured
+  `grid-settings-attempt-N.xml` drives any future adjustment; the smoke fails closed rather than
+  accepting a class-name or English-only approximation.
 - The picker readiness assumes one of the two known native picker markers. If the API 37 image
   exposes a different marker, the captured `widgets-picker-attempt-N-P.xml` must drive the update;
   do not accept a closed HOME with incidental English text.
@@ -545,6 +578,16 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P10a harness correction: the grid preview is accepted from a `/workspace` ViewGroup whose bounds
+  are above every slider, inside the root and smaller than it, with a `hotseat`/`search_container_workspace`
+  child. Cost if wrong: a future preview without that resource-id fails closed; the captured XML
+  must drive any update, and a class-name guess is never accepted.
+- P10a harness correction: Apply is proven read-only by a non-clickable label inside a non-clickable
+  `android.widget.Button`, not by the accessibility `enabled` flag. Cost if wrong: a future Apply that
+  stays visually grey but becomes clickable fails the smoke, which is the intended safety direction.
+- P10a harness correction: when every measured long-press candidate is occupied,
+  `home_longpress_target` fails instead of returning the band centre. Cost if wrong: a crowded HOME
+  aborts the widget phase rather than opening an item-specific menu, which is the safe outcome.
 - P3b actual-home fix: the bottom QSB is only accepted when its top is strictly below the measured
   dock icon bottom; the same `search_container_workspace` id on the header is rejected. Cost if
   wrong: a device whose QSB sits above the dock icons would fall back to the icon-band gutter
@@ -639,6 +682,19 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P10a grid/widget harness correction on `agent/p10-grid-widget-smoke` (`f51fcb3`),
+  from `main` `55a25a2`. CI106 (`10644959244281`) was assembly/style/unit green and the real grid
+  editor opened, but the new readiness assumed a `LauncherPreviewView` class and an `enabled=false`
+  Button that the actual hierarchy does not contain. The actual `grid-settings-attempt-6` dump has a
+  preview `AndroidViewHolder` with a `/workspace` ViewGroup plus `hotseat`/`search_container_workspace`,
+  and Apply is a non-clickable `TextView` inside a non-clickable empty `Button` with `enabled=true`
+  and grey pixels. The smoke now validates the preview from its bounds (above the sliders, inside and
+  smaller than the root, with the hotseat container), matches Apply by its non-clickable containing
+  Button, rejects a clickable Apply, captures the last failed readiness PNG, and makes
+  `home_longpress_target` fail instead of returning an occupied centre. Fixtures use the actual
+  hierarchy and add the matching negatives. No app source, SDK, workflow, Gradle, manifest,
+  permission, applicationId, signing, paid-service or asset change. Local smoke/drawer/verify test
+  suites pass; `sh -n` and `git diff --check` clean. CI and device evidence are still required.
 - 2026-11-21: P9 Play settings announcement cleanup on `agent/newtinybranchagent-p9-settings`
   (`ad05a12`), from `main` `5da711d` (PR12 merged after green CI102 `10244953269478`, 11m49).
   `PreferencesDashboard` now renders `AnnouncementPreference()` only inside
