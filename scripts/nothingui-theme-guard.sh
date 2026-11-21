@@ -132,8 +132,21 @@ grep -q 'fun NothingUiThemeSampleScreen' "$THEME_DIR/NothingUiThemeSample.kt" ||
 grep -q '@Preview' "$THEME_DIR/NothingUiThemeSample.kt" ||
     fail "missing theme sample previews"
 
-if find "$FONT_DIR" -maxdepth 1 -type f | grep -qiE '/(ndot|nothing|nfont)'; then
-    fail "a Nothing font asset is present in $FONT_DIR"
-fi
+# Inspect basenames only. The repository parent directory may legitimately contain
+# a brand token (for example .../NothingOS-Launcher-...), which must not be read as
+# a bundled Nothing font.
+forbidden_font=
+while IFS= read -r font; do
+    [ -n "$font" ] || continue
+    base=${font##*/}
+    lower=$(printf '%s\n' "$base" | tr '[:upper:]' '[:lower:]')
+    case "$lower" in
+        *ndot* | *nothing* | *nfont*) forbidden_font=$base ;;
+    esac
+done <<EOF
+$(find "$FONT_DIR" -maxdepth 1 -type f)
+EOF
+[ -z "$forbidden_font" ] ||
+    fail "a Nothing font asset is present in $FONT_DIR: $forbidden_font"
 
 printf 'nothingui-theme-guard: OK\n'
