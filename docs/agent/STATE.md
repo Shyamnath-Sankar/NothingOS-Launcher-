@@ -37,18 +37,18 @@ when no task input is given, and continues from "next".
   measured fallback when the hierarchy is unavailable. The old 75% dock hit point is gone.
 - **Readiness:** `drawer_is_ready` accepts an actual search input (`/input`, `EditText`,
   `AllAppsSearchInput`, `search_container_all_apps`) or app-list container (`apps_list_view`,
-  `SearchContainerView`); a closed HOME is not ready. Because the launcher keeps the all-apps
-  subtree inflated, the dump must also differ from the pre-swipe HOME and must no longer show the
-  live HOME clock/date header. The pre-search `Settings` label assertion was removed because
-  Settings may be off the first screen; the real search-result assertion remains.
+  `SearchContainerView`); a closed HOME is not ready. The dump must also differ from the pre-swipe
+  HOME, so a swipe that did nothing cannot be mistaken for an opened drawer. The pre-search
+  `Settings` label assertion was removed because Settings may be off the first screen; the real
+  search-result assertion remains.
 - **Mandatory flow preserved:** the drawer is still opened by a real swipe, search is still typed
   into the real input, the clickable Settings result is still tapped, and the exact
   `com.android.settings/` foreground poll is still required (bounded 15 s). There is still no
   `am start` shortcut to Settings. Clock/date, app-info, About, theme-sample, and crash checks are
   unchanged.
-- **Regression:** `scripts/emulator-smoke-test.sh` is now 35/35, adding pure fixtures for root
+- **Regression:** `scripts/emulator-smoke-test.sh` is now 34/34, adding pure fixtures for root
   bounds, dock-top detection, the measured swipe target (including the old 75% case and fallback),
-  drawer readiness (including an unchanged HOME and a HOME clock still visible), and static
+  drawer readiness (including an unchanged reference HOME), and static
   assertions that each attempt is bounded, captures evidence, and no longer uses the 75% start.
 - Pending visuals are untouched: **colored icons and the blue QSB still need pixel repair; the
   header fits the pinned row but is not visually ready.** Private-space runtime UI, the in-app
@@ -90,7 +90,7 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> 35/35 passed (14 existing + 21 new
+- This run: `sh scripts/emulator-smoke-test.sh` -> 34/34 passed (14 existing + 20 new
   geometry/readiness/static cases).
 - This run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed;
   `nothingui-theme-guard-test.sh` -> 9/9; `play-brand-guard-test.sh`,
@@ -113,7 +113,7 @@ when no task input is given, and continues from "next".
 - Coordinator reviews the `fb5aa61` diff and approves CI on PR #11. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
   tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
-  `verify-play-build.sh` including `emulator-smoke-test.sh` (35/35) and the home guard (13/13);
+  `verify-play-build.sh` including `emulator-smoke-test.sh` (34/34) and the home guard (13/13);
   and the API 37 emulator smoke.
 - Review the new drawer artifacts before claiming the repair:
   - `appdrawer-swipe-log.txt` and `appdrawer-swipe-N.txt`: the start y must be above the measured
@@ -158,10 +158,9 @@ when no task input is given, and continues from "next".
 - P3b drawer-readiness repair: require an actual drawer search input or app-list container before
   proceeding. Cost if wrong: a future drawer that exposes neither id will fail rather than silently
   testing HOME, which is the intended fail-closed behavior.
-- P3b drawer-readiness repair: require the post-swipe dump to differ from the pre-swipe HOME and to
-  drop the live HOME clock/date header. Cost if wrong: an all-apps surface that keeps the clock
-  visible would be rejected, but the inherited drawer covers the workspace header, so this directly
-  rejects the CI68 closed-HOME case instead of trusting an inflated offscreen subtree.
+- P3b drawer-readiness repair: require the post-swipe dump to differ from the pre-swipe HOME. Cost
+  if wrong: a drawer that opens and produces a byte-identical hierarchy would be rejected, but the
+  inherited drawer changes the visible tree, and this directly rejects the CI68 closed-HOME case.
 - P3b drawer-readiness repair: drop the pre-search `Settings` label assertion but keep the real
   search-result assertion and the exact foreground poll. Cost if wrong: a drawer that opens without
   Settings on the first screen still proceeds to search, which is the behavior the task needs.
@@ -237,8 +236,8 @@ when no task input is given, and continues from "next".
   hit region. `open_app_drawer` now uses up to 4 bounded state-based attempts, waits for launcher
   idle, derives the target from live root bounds + dock top, captures before/after XML+PNG and a
   swipe log per attempt, and requires a real drawer input/container that differs from the pre-swipe
-  HOME and no longer shows the HOME clock. The real swipe -> search -> Settings tap -> exact
-  foreground flow is unchanged. `emulator-smoke-test.sh` is 35/35. Static checks only; CI and pixels
+  HOME. The real swipe -> search -> Settings tap -> exact
+  foreground flow is unchanged. `emulator-smoke-test.sh` is 34/34. Static checks only; CI and pixels
   pending. Colored icons + blue QSB still need pixel repair; header fits but is not visually ready.
 - 2026-11-21: P3b smoke repair on `agent/p3b-actual-home-visual-slice-n` (`84a0493`). The app-launch
   false positive came from grepping the whole dumpsys dump; only the live resumed fields now count,

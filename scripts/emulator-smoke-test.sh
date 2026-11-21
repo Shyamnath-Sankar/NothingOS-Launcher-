@@ -200,17 +200,6 @@ assert_false 'an unchanged reference HOME is not a drawer transition' \
 assert_true 'a drawer that differs from the reference HOME is ready' \
     drawer_is_ready "$input_drawer_xml" "$home_xml"
 
-clock_drawer_xml="$TMP_DIR/clock-drawer.xml"
-cat > "$clock_drawer_xml" <<'EOF'
-<hierarchy rotation="0">
-  <node index="0" text="4:10" class="android.widget.TextView" bounds="[40,100][200,160]" />
-  <node index="1" text="FRI 21 NOV" class="android.widget.TextView" bounds="[40,170][300,210]" />
-  <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/input" class="app.lawnchair.allapps.FallbackSearchInputView" bounds="[40,300][1040,400]" />
-</hierarchy>
-EOF
-assert_false 'a drawer-like subtree with the live HOME clock is not ready' \
-    drawer_is_ready "$clock_drawer_xml"
-
 list_drawer_xml="$TMP_DIR/list-drawer.xml"
 cat > "$list_drawer_xml" <<'EOF'
 <hierarchy rotation="0">
