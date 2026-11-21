@@ -11,7 +11,7 @@ when no task input is given, and continues from "next".
   visual change was made. Colored icons and the blue QSB are still pending pixel repair, and the
   header fits the pinned row but is **not visually ready**. P3b is not visually done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `fb5aa61` (base `main` at `0df97ff`)
+- head: `83c3ad8` (code head; this closeout docs commit follows it; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
@@ -110,7 +110,7 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `fb5aa61` diff and approves CI on PR #11. Do not open a duplicate PR.
+- Coordinator reviews the `83c3ad8` diff and approves CI on PR #11. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
   tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
   `verify-play-build.sh` including `emulator-smoke-test.sh` (34/34) and the home guard (13/13);
@@ -231,7 +231,7 @@ when no task input is given, and continues from "next".
 ## log
 
 - 2026-11-21: P3b drawer-readiness repair on `agent/p3b-actual-home-visual-slice-n` (`522516b`,
-  `fb5aa61`). CI68 (`44921875638`) was compile/style/unit green but the API 37 smoke failed because
+  `fb5aa61`, `83c3ad8`). CI68 (`44921875638`) was compile/style/unit green but the API 37 smoke failed because
   `appdrawer.xml` was identical to `home.xml`; the 75%-height swipe started inside the dock/Phone
   hit region. `open_app_drawer` now uses up to 4 bounded state-based attempts, waits for launcher
   idle, derives the target from live root bounds + dock top, captures before/after XML+PNG and a
