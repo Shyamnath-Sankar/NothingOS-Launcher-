@@ -54,10 +54,13 @@ extract_gradle_block() {
     name=$1
     file=$2
     awk -v name="$name" '
-        $0 ~ "^[[:space:]]*" name "[[:space:]]*\\{" {
+        !inblock && $0 ~ "^[[:space:]]*" name "[[:space:]]*\\{" {
             inblock = 1
-            depth = 1
             print
+            opens = gsub(/\{/, "{")
+            closes = gsub(/\}/, "}")
+            depth = opens - closes
+            if (depth <= 0) exit
             next
         }
         inblock {
