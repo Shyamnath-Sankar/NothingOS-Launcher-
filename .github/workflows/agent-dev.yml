@@ -1,0 +1,236 @@
+name: agent-dev
+
+# Agent-driven development loop: OpenCode (free DeepSeek) + Superpowers skills build one
+# task per dispatch on a feat branch, commit incrementally, push, and open/update a PR.
+# Designed for OpenCode free-tier rate limits: each run is short and self-contained,
+# progress is committed as it goes, and the next dispatch resumes from docs/agent/STATE.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Task brief (one phase/sub-task). Empty = continue from docs/agent/STATE.md"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: agent-dev
+  cancel-in-progress: false
+
+env:
+  OPENCODE_VERSION: "1.19.6"
+  MODEL: "opencode/deepseek-v4.1-flash-free"
+  AGENT_BUDGET_SECONDS: "5400"   # 90 min of agent time per dispatch; rate limits reset between runs
+  STALL_SECONDS: "240"
+
+jobs:
+  develop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Cache OpenCode + Superpowers plugin
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.config/opencode
+            ~/.local/share/opencode
+            ~/.npm
+          key: opencode-1.19.6-superpowers-7.0.2-v1
+          restore-keys: opencode-1.19.6-superpowers-
+
+      - name: Install OpenCode
+        run: npm install -g opencode-ai@$OPENCODE_VERSION
+
+      - name: Verify Superpowers plugin loads
+        id: verify
+        env:
+          OPENCODE_CONFIG_CONTENT: '{"plugin":["superpowers@git+https://github.com/obra/superpowers.git#v7.0.2"],"permission":{"external_directory":"allow","bash":"allow","edit":"allow","webfetch":"deny"}}'
+        run: |
+          mkdir -p w/out
+          timeout 300 opencode run --print-logs "Use the skill tool to list your available skills, one per line, then stop." > w/out/verify.log 2>&1 || true
+          if grep -qi superpowers w/out/verify.log; then
+            echo "superpowers=loaded" >> "$GITHUB_OUTPUT"
+          else
+            echo "superpowers=not-loaded" >> "$GITHUB_OUTPUT"
+          fi
+          tail -20 w/out/verify.log || true
+
+      - name: Resolve task and branch
+        id: pick
+        run: |
+          mkdir -p w
+          T="${{ github.event.inputs.task }}"
+          if [ -z "$T" ]; then
+            if [ -f docs/agent/STATE.md ]; then
+              T="Continue the build from docs/agent/STATE.md: do the 'next' item recorded there."
+            else
+              T="Read AGENTS.md and docs/superpowers/plans/2026-11-21-nothingui-v1.md, then do the first unfinished phase."
+            fi
+          fi
+          SLUG=$(echo "$T" | tr 'A-Z' 'a-z' | sed 's/[^a-z0-9]\+/-/g' | cut -c1-30 | sed 's/^-\|-$//g')
+          if [ -z "$SLUG" ]; then SLUG="task-$(date +%s)"; fi
+          # Resume an existing agent branch when one is recorded in STATE.md and still exists.
+          REC=$(sed -n 's/^- branch: *//p' docs/agent/STATE.md 2>/dev/null | head -1)
+          if [ -z "${{ github.event.inputs.task }}" ] && [ -n "$REC" ] && git ls-remote --exit-code --heads origin "$REC" >/dev/null 2>&1; then
+            BR="$REC"
+          else
+            BR="agent/$SLUG"
+          fi
+          echo "branch=$BR" >> "$GITHUB_OUTPUT"
+          printf '%s' "$T" > w/task.txt
+          echo "Task: $T"
+          echo "Branch: $BR"
+
+      - name: Check out work branch
+        run: |
+          BR="${{ steps.pick.outputs.branch }}"
+          if git ls-remote --exit-code --heads origin "$BR" >/dev/null 2>&1; then
+            git fetch origin "$BR"
+            git checkout -B "$BR" "origin/$BR"
+          else
+            git checkout -B "$BR"
+          fi
+
+      - name: Write agent prompt
+        run: |
+          TASK=$(cat w/task.txt)
+          cat > w/PROMPT.md <<EOF
+          You are building NothingUI, a Nothing-OS-inspired Android launcher, in this repo (a Lawnchair 16 fork).
+          Follow the Superpowers methodology: load the relevant skills with the skill tool, work in small verified
+          steps, and never claim done what you did not run.
+
+          FIRST read, in this order: AGENTS.md (hard rules, obey section 7 and 10), then
+          docs/superpowers/plans/2026-11-21-nothingui-v1.md (the phase plan), then docs/agent/STATE.md (build state).
+
+          TASK FOR THIS RUN: $TASK
+
+          Execution rules:
+          - Do ONLY this task. One phase or sub-task per run. Stop when it is done or your time budget is nearly up.
+          - Commit after every completed micro-step (Conventional Commits: feat:/fix:/chore:/docs:) and run
+            'git push' after each commit, so no work is ever lost if this run is cut off.
+          - Before you stop (done or budget), update docs/agent/STATE.md with: current phase, branch name, PR URL,
+            what is done, what is next, any blockers. Commit and push that too.
+          - Never change applicationId, minSdk, targetSdk, or AndroidManifest permissions unless the task
+            explicitly says to. The approved applicationId for the rebrand phase is com.launchernos.dotwellabs.
+          - Do not edit files under .github/workflows/.
+          - Do not run gradle builds here; the PR triggers CI which builds the APK.
+          - If the model API reports a rate limit, stop editing, update STATE.md, commit, push, and end.
+          EOF
+          sed -i 's/^          //' w/PROMPT.md
+          wc -l w/PROMPT.md
+
+      - name: Run the agent (watchdog + budget)
+        id: agent
+        env:
+          OPENCODE_CONFIG_CONTENT: '{"plugin":["superpowers@git+https://github.com/obra/superpowers.git#v7.0.2"],"permission":{"external_directory":"allow","bash":"allow","edit":"allow","webfetch":"deny"}}'
+        run: |
+          mkdir -p w/out
+          START=$(date +%s)
+          run_oc() {
+            local LIMIT=$1; shift
+            "$@" 2>&1 | tee -a w/out/opencode.log &
+            local PID=$!
+            local AT=$(date +%s)
+            while kill -0 $PID 2>/dev/null; do
+              sleep 20
+              local NOW=$(date +%s)
+              local LASTCHG=$(stat -c %Y w/out/opencode.log 2>/dev/null || echo $NOW)
+              local RECENT=$(find . -type f -newermt "@$((NOW-STALL_SECONDS+20))" -not -path './.git/*' 2>/dev/null | head -1)
+              if [ $((NOW-LASTCHG)) -ge ${STALL_SECONDS} ] && [ -z "$RECENT" ]; then
+                echo "STALL: no activity for ${STALL_SECONDS}s, stopping agent"
+                kill -9 $PID 2>/dev/null || true
+                break
+              fi
+              if [ $((NOW-AT)) -ge $LIMIT ]; then
+                echo "attempt time limit reached"
+                kill -9 $PID 2>/dev/null || true
+                break
+              fi
+            done
+            wait $PID || true
+          }
+          LEFT=$((AGENT_BUDGET_SECONDS))
+          run_oc $LEFT opencode run -m "$MODEL" "$(cat w/PROMPT.md)"
+          # one resume pass if there is budget left and the task looks unfinished
+          NOW=$(date +%s); LEFT=$((AGENT_BUDGET_SECONDS - (NOW-START)))
+          if [ $LEFT -gt 600 ] && ! git diff --quiet HEAD 2>/dev/null; then
+            run_oc $LEFT opencode run -c -m "$MODEL" "You stopped before finishing. Re-read w/PROMPT.md and docs/agent/STATE.md, continue the task, commit and push every completed step, update STATE.md, then stop."
+          fi
+          if grep -qiE 'rate.?limit|429' w/out/opencode.log; then
+            echo "ratelimit=hit" >> "$GITHUB_OUTPUT"
+          else
+            echo "ratelimit=clear" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit and push remaining progress
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -r --cached w 2>/dev/null || true
+          echo 'w/' >> .git/info/exclude
+          git add -A ':!.github/workflows'
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(agent): checkpoint progress [${{ steps.pick.outputs.branch }}]"
+          fi
+          git push -u origin "${{ steps.pick.outputs.branch }}" || true
+          rm -f .git/info/exclude
+
+      - name: Open or update the PR
+        if: always()
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BR="${{ steps.pick.outputs.branch }}"
+          git fetch origin "$BR" || true
+          EXISTING=$(gh pr list --head "$BR" --state open --json number --jq '.[0].number' || true)
+          if [ -z "$EXISTING" ]; then
+            if [ "$(git rev-parse origin/$BR 2>/dev/null)" != "$(git rev-parse origin/main)" ]; then
+              URL=$(gh pr create --base main --head "$BR" \
+                --title "agent: $(head -c 60 w/task.txt)" \
+                --body "Task: $(cat w/task.txt)
+
+          Built by agent-dev (OpenCode + DeepSeek free + Superpowers). CI on this PR builds the debug APK.
+          Rate limit this run: ${{ steps.agent.outputs.ratelimit }}." | tail -1)
+              echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
+            else
+              echo "pr_url=" >> "$GITHUB_OUTPUT"
+              echo "No changes on branch; skipping PR."
+            fi
+          else
+            echo "pr_url=$(gh pr view "$EXISTING" --json url --jq .url)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload agent logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-dev-logs
+          path: w/out/
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### agent-dev run"
+            echo "- Task: $(cat w/task.txt)"
+            echo "- Branch: \`${{ steps.pick.outputs.branch }}\`"
+            echo "- Superpowers: ${{ steps.verify.outputs.superpowers }}"
+            echo "- Rate limit: ${{ steps.agent.outputs.ratelimit }}"
+            echo "- PR: ${{ steps.pr.outputs.pr_url }}"
+          } >> "$GITHUB_STEP_SUMMARY"
