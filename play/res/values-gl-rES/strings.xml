@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Play-only onboarding label. Derived from the upstream Apache-2.0
+  translation; the brand token is replaced with the approved DotWel
+  Launcher display label.
+-->
+<resources>
+    <string name="onboarding_welcome">Benvido a DotWel Launcher!</string>
+</resources>

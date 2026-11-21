@@ -3,140 +3,191 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P2b (Play label + verification) — PR8 CI27 repair pushed; waiting on CI re-run
-- branch: agent/verification-slice-after-pr7-n
-- pr: #8 (existing; do not open another)
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/8
+- current_phase: P2c (Play icon + brand cleanup) — CI42 `44901579949` on `293f96e` was fully green,
+  but inspected artifacts exposed two runtime brand defects. Root cause repaired this run (Play
+  resource precedence); CI re-run and visual review pending. P2 is not complete.
+- branch: agent/p2c-original-icon-and-play-bra
+- pr: #9 (existing PR for this branch; resume it, do not open a duplicate):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/9
+  PR8 is already merged to `main` at `4bd5c39`.
 
 ## done
-- This run (PR8 CI27 repair): moved `LockedProfilePredicateTest.kt` from `src/test/java` to
-  `tests/unit/java`. The production `main` source root includes `src` recursively, so the JUnit test
-  was compiled into the app and `assemble` failed on unresolved JUnit. Updated both `test`
-  source-set entries and the `verifyLockedProfileTestWiring` path in `build.gradle`; all four tests
-  and the predicate semantics are unchanged and JUnit stays `testImplementation` only.
-- This run: fixed the CI27 `check-style` failure. ktlint 1.8.0 rule `standard:function-signature`
-  required the predicate body expression on the signature line. The exact edit was verified with the
-  repo ktlint 1.8.0 CLI and `.editorconfig` (`ktlint_exit=0`); no Gradle run.
-- This run: `scripts/emulator-smoke.sh` now reads `ro.kernel.qemu` and fails closed unless it equals
-  `1`, before any install/uninstall, so a physical device cannot be installed to or uninstalled.
-- This run, no Gradle: `sh scripts/verify-play-build-test.sh` all pass;
-  `sh scripts/manifest-guard-test.sh` all pass; `sh scripts/play-identity-guard-test.sh` all pass;
-  `sh scripts/play-identity-guard.sh .` OK; `sh -n` clean on every script.
-- This run: CI27 (`44895301305`) failed all three jobs: `check-style` on the ktlint
-  `function-signature` violation, and `unit-tests`/`build-debug-apk` because the test under
-  `src/test/java` was also compiled as production source. The repair is pushed but CI has not been
-  re-run yet; emulator lane status is still pending/not run.
-- PR7 merged to `main`: Play-only `play_app_name` = **DotWel Launcher** (single l); Play
-  `<application>` and launcher `<activity>` labels reference it. `github`/`nightly` keep the
-  inherited "Lawnchair" branding. Icons/`mipmap-*` remain deferred to a visual-review slice.
-- PR7 merged: `scripts/verify-play-build.sh` runs the identity/manifest fixture suites, selects the
-  final AGP `merged_manifests` output (falling back to the older `merged_manifest` stage), fails
-  closed on zero/ambiguous candidates, runs `manifest-guard.sh`, checks the resolved Play debug
-  package and provider authorities, and accepts only the exact debug LeakCanary application-scoped
-  authority.
-- CI24 on PR7 and post-merge CI25 on `main` passed the real merged-manifest guard after the AGP-stage selection fix
-  (`e8f9503`) and exact debug LeakCanary handling (`ee3662f`). This clears the P1 merged-manifest
-  verification blocker; it is not runtime/device evidence.
-- This run: extracted `isLockedProfile(runtimeStatusFlags)` into
-  `lawnchair/src/app/lawnchair/search/algorithms/LockedProfilePredicate.kt`; `SearchUtils` and
-  `AppSearchProvider` keep the same `FLAG_DISABLED_QUIET_USER` behaviour through
-  `filterLockedProfiles()`. Added `tests/unit/java/.../LockedProfilePredicateTest.kt` (plain JUnit 4,
-  no Robolectric; originally under `src/test/java`, moved this run) and `testImplementation libs.junit`. A `verifyLockedProfileTestWiring` task runs
-  before `testLawnWithQuickstepPlayDebugUnitTest` and fails if the test file is missing or outside
-  the `test` source set, so CI cannot silently pass NO-SOURCE.
-- This run: added `scripts/emulator-smoke.sh`. It locates exactly one Play debug APK, requires API
-  37, clean-installs only `com.launchernos.dotwellabs.debug`, verifies the installed package and
-  installed app/launcher-activity label `DotWel Launcher`, resolves/launches HOME, grants and verifies
-  `android.app.role.HOME` via `cmd role`, presses HOME, and captures screenshot/logcat/dumpsys/aapt
-  evidence. It fails on install, launch, ANR or crash-stack problems.
-- This run: added `scripts/private-space-check.sh` plus `docs/agent/emulator-verification.md`. The
-  check detects an `android.os.usertype.profile.PRIVATE` user and its locked/quiet state, exits 77
-  when the prerequisite is absent, and explicitly does not claim drawer/search/recents validation.
-  It never creates profiles or accounts.
-- This run: `scripts/verify-play-build-test.sh` now covers both AGP stages coexisting: the final
-  `merged_manifests` output wins over the older `merged_manifest` stage, and a forbidden permission
-  in the final stage still fails (no fallback to the clean old stage).
-- This run, tests actually run (no Gradle): `sh scripts/verify-play-build-test.sh` → 11/11;
-  `sh scripts/manifest-guard-test.sh` → all 31 pass; `sh scripts/play-identity-guard-test.sh` → 8/8;
-  `sh -n` clean on all scripts; `sh scripts/play-identity-guard.sh .` → OK. The JUnit test was run
-  with `kotlinc` + JUnit 4.13.2 against a stub `ItemInfoWithIcon` constant → 4/4 pass. The emulator
-  scripts were exercised end-to-end with a local fake adb/aapt2 harness (success, wrong label,
-  crash log, non-debug APK, no/locked/unlocked private profile) but not against a real emulator.
-- Prior P2b: Play-only label and merged-manifest verification (see PR7/CI24 above).
-- Prior P2a: Play-only applicationId `com.launchernos.dotwellabs`; static identity/authority guard.
-- Prior P1a/P1b/P1c: Play manifest overlay, accessibility/bug-report/feed removal,
-  `ACCESS_HIDDEN_PROFILES`, locked-profile search filter, guard updates.
+
+- This run (P2c visual repair): the dispatch reported an inspection of CI42 artifacts for run
+  `44901579949` on `293f96e`; this environment has no artifact download access (no `gh` auth), so
+  these are recorded as reported findings, not a re-inspection. Observed defects, not hypotheses:
+  `app-info.png` shows the correct original dot-grid icon and `DotWel Launcher` label; the About
+  screen shows the correct `DotWel Launcher` title but the OLD colored Lawnchair icon; the HOME
+  screenshot still says `Welcome to Lawnchair`.
+- This run (root cause, verified from AGP docs and the source tree): `flavorDimensions` is
+  `["app", "recents", "channel"]`, so the `lawn` flavor (`lawnchair/res`) outranks the `play` flavor
+  (`play/res`) for same-name resources. `R.string.onboarding_welcome` (HOME smartspace card) and
+  `R.drawable.ic_launcher_home_comp` (About icon) were therefore resolved from `lawnchair/res`, not
+  `play/res`. `ic_launcher_home_monochrome` had the same collision. The app-info icon worked because
+  it resolves through the Play manifest `@mipmap/ic_launcher_home`, and the About title worked
+  because `derived_app_name` is a variant-level `resValue` that outranks flavors.
+- This run (fix): moved `play/res` from the single-flavor `play` source set to the
+  `lawnWithQuickstepPlay` multi-flavor source set in `build.gradle`. A multi-flavor source set
+  outranks every single flavor, so Play-only overrides now win while `lawnchair/res` and
+  `nightly/res` remain untouched for github/nightly.
+- This run (regression guards): `scripts/play-brand-guard.sh` now asserts that
+  `lawnWithQuickstepPlay` owns `play/res`, that the single `play` flavor does not own it, that the
+  `lawn`/`nightly` source sets still own their resource dirs, and that `About.kt` still consumes
+  `R.drawable.ic_launcher_home_comp` and `OnboardingProvider.kt` still consumes
+  `R.string.onboarding_welcome`. `play-brand-guard-test.sh` is now 14/14, including negative fixtures
+  for precedence, stripped lawn resources, and consumer drift.
+- This run (smoke): `scripts/emulator-smoke.sh` now dumps the HOME UIAutomator hierarchy after launch.
+  When the smartspace welcome card is visible it requires `DotWel Launcher` and rejects `Lawnchair`;
+  when no welcome text is visible it writes `home-welcome-pending.txt` instead of claiming a pass,
+  and it fails closed if the HOME hierarchy cannot be dumped at all.
+  The mandatory screenshot is unchanged, and the About UI XML plus `about.png` are preserved as icon
+  evidence with an explicit note that the icon is reviewed visually, not pixel-asserted.
+- This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 14/14;
+  `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. The new guard run against the real pre-fix tree (`git archive 293f96e`) exits 1 with
+  `lawnWithQuickstepPlay source set does not own play/res`, so it catches the exact CI42 state.
+  No local Gradle build or emulator run was performed; CI must prove the merged resource selection
+  and the runtime screens.
+- This run (P2c repair): CI37 run `44900708538` failed
+  `processLawnWithQuickstepPlayDebugMainManifest` because the Play overlay set
+  `android:icon="@mipmap/ic_launcher_home"` while the base manifest still set
+  `android:icon="@drawable/ic_launcher_home"` and the overlay only listed
+  `tools:replace="android:label"`. Added `android:icon` to that existing
+  `tools:replace` list. Label, permissions and every component removal are unchanged.
+- This run (P2c repair): added a narrow `play-brand-guard.sh` regression that fails when the Play
+  application `tools:replace` does not include `android:icon`. Added a fixture test for exactly that
+  missing directive. Guard fixture suite is now 10/10.
+- This run (P2c repair): extended `scripts/emulator-smoke.sh` after the existing HOME screenshot to
+  capture `app-info.png` + `app-info.xml` through
+  `android.settings.APPLICATION_DETAILS_SETTINGS` for
+  `package:com.launchernos.dotwellabs.debug`, return HOME and verify it, then open About through the
+  existing `lawnchair://settings/about` deep link and confirm `About` plus `DotWel Launcher` in the
+  UIAutomator hierarchy before capturing `about.png` + `about.xml`. No tap coordinates are guessed.
+  About is written to `about-pending.txt` and reported as pending when it cannot be verified. The
+  original `screenshot.png` and all existing checks are preserved.
+- This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK;
+  `play-brand-guard-test.sh` 10/10; `sh -n scripts/emulator-smoke.sh` clean; `git diff --check`
+  clean. No local Gradle build or emulator run was performed; CI must prove the manifest merge.
+- Prior P2c run: added an original Play-only geometric dot-grid launcher icon under `play/res`.
+  Near-black `#0B0B0B` adaptive background, 3×3 white `#FFFFFF` dots, one restrained red `#D7261E`
+  accent, a white-only monochrome layer, matching round adaptive icon, and rounded-square in-app
+  variants for `ic_launcher_home` / `ic_launcher_home_comp`. The Play manifest now points at
+  `@mipmap/ic_launcher_home` and `@mipmap/ic_launcher_home_round`. No Nothing marks or assets.
+- Prior P2c run: Play-only `onboarding_welcome` now reads `Welcome to DotWel Launcher!` in the
+  default resource and in all 57 inherited locale configurations (the localized greeting is kept
+  and only the brand token is replaced). Play `derived_app_name` is set to `DotWel Launcher` via a
+  Play-gated variant-level `resValue`, so About/dialog text no longer says Lawnchair. github/nightly
+  keep their inherited strings and labels.
+- Prior P2c run: added `scripts/play-brand-guard.sh` and `scripts/play-brand-guard-test.sh`
+  (9/9 pass). The guard checks icon files/layers/colours, XML well-formedness, Play manifest icon
+  wiring, every locale override, the variant app-name override, absence of Nothing marks, and
+  preserved `NOTICE.md` attribution. Wired into `scripts/verify-play-build.sh`, which CI already
+  runs; no workflow file was edited.
+- Prior P2c run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 9/9;
+  `play-identity-guard.sh .` OK; identity tests 8/8; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` 11/11; `sh -n` clean on every script; `git diff --check` clean; all 65
+  `play/res` XML files parse.
+- CI35 (`44898572590`) verified facts: real Gradle tests (4/4), merged-manifest guard, API 37
+  install, HOME label, HOME role and crash checks passed. Its screenshot was visually inspected and
+  still shows the inherited Lawnchair home surface. That is expected for P2c: this slice changes the
+  icon and brand text only, not the home layout.
+- PR8 merged to `main` at `4bd5c39`; PR7 merged the Play-only `play_app_name` label and the
+  identity/manifest guard suite. Prior P2a set the Play `applicationId` to
+  `com.launchernos.dotwellabs`; prior P1 work added the Play manifest overlay, private-space
+  permission, locked-profile search filter and component removals.
 
 ## next
-- PR8 CI re-run requested after repair review: confirm `check-style`, `unit-tests` (all four predicate tests)
-  and `build-debug-apk` pass. CI is not green yet.
-- Coordinator: run `scripts/emulator-smoke.sh` on the API 37 emulator lane after
-  `assembleLawnWithQuickstepPlayDebug`; upload its artifact directory. The new `ro.kernel.qemu=1`
-  guard means the lane must be a real emulator.
-- Private-space runtime gate: provision a private space manually, run
-  `scripts/private-space-check.sh` to confirm the locked prerequisite, then record the manual/UI
-  drawer/search/recents assertions. Keep the gate pending until that evidence exists.
-- P2 remaining: original icon / `mipmap-*` slice with visual review (no Nothing assets).
-- P9: keep the merged-manifest guard and fixture suites wired in CI (already present in `ci.yml`);
-  the coordinator wires the emulator lane separately.
+
+- A maintainer must approve the pending PR workflow runs. After approval, confirm the Play debug
+  manifest merge, the merged resource selection, and the API 37 emulator smoke pass; do not claim
+  them green before the run log exists.
+- Inspect the new smoke artifacts: `screenshot.png` (HOME evidence), `home.xml` plus
+  `home-welcome.txt` or `home-welcome-pending.txt`, `app-info.png` + `app-info.xml`, and `about.png`
+  + `about.xml` or `about-pending.txt`.
+- Confirm in the new HOME hierarchy that the welcome card reads `Welcome to DotWel Launcher!`, and in
+  `about.png` that the About icon is the dot grid, not the inherited colored Lawnchair icon.
+- Coordinator screenshot review using `docs/agent/p2c-icon-brand-visuals.md`: launcher/app-info
+  icon, About icon/title, onboarding welcome title, app label, round icon, and a github/nightly
+  control build. Static guards and the app-info screenshot alone cannot prove the About icon.
+- Private-space runtime UI gate: provision a private space manually, run
+  `scripts/private-space-check.sh`, then record the manual drawer/search/recents assertions. Keep
+  the gate pending until that evidence exists.
+- In-app `RoleManager.ROLE_HOME` onboarding prompt: still pending manual verification; the
+  emulator `cmd role` grant is a disposable stand-in, not the prompt.
+- P3 (theme/home surface) has not started. Do not begin it in this slice.
 
 ## blockers
-- PR8 CI27 is red and this repair has not been re-run through CI. No Gradle run in this coding
-  session; `check-style` was reproduced with the ktlint 1.8.0 CLI and `.editorconfig`, not
-  `spotlessCheck`. The JUnit test was not re-executed by `testLawnWithQuickstepPlayDebugUnitTest`
-  here. The emulator scripts were not run against a real API 37 emulator.
-- P1 runtime private-space validation: pending device/emulator check (drawer, search, recents).
-  A private space needs a secure lock screen and explicit provisioning; do not auto-create it.
-- P2 default-home gate: pending emulator install and `RoleManager.ROLE_HOME` request. The smoke
-  script's `cmd role` grant is a disposable-emulator stand-in, not the in-app onboarding flow.
-- `LockedProfileSearchFilterTest` remains Soong-only (Robolectric/AndroidJUnit4). The new Gradle
-  test deliberately covers only the extracted pure flag predicate with plain JUnit.
+
+- P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
+  recents). A private space needs a secure lock screen and explicit provisioning; do not
+  auto-create it.
+- P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
+  grant verifies the system role, not the prompt.
+- P2c manifest gate: CI42 `44901579949` on `293f96e` was fully green, so the manifest merge is no
+  longer the blocker. The remaining P2c blocker is the runtime brand repair in this run, which has
+  not yet been proven by a new CI run.
+- P2c visual gate: screenshot review pending; static guards do not prove what a device renders.
+  CI42 proved the app-info icon/label and the About title, but the About icon and HOME welcome were
+  still wrong at that point.
+- About-screen smoke evidence: may be documented as pending if the deep link or UIAutomator
+  hierarchy is unavailable; it is not treated as a brand pass without the captured UI.
 
 ## decisions locked
+
 - applicationId for the Play rebrand: com.launchernos.dotwellabs (approved by the owner 2026-11-21).
 - Play display label: DotWel Launcher (single l), approved 2026-11-21; display label only.
 - Public Play listing name: OPEN, release blocker, do not guess or claim clearance.
 - Free models/services only. Cache heavy installs in workflows.
 
 ## rulings this run
-- P2b: implemented the label as a Play-only `play_app_name` resource referenced by the Play manifest
-  instead of a play-flavor `derived_app_name` override, because build-type `resValue` outranks flavor
-  resources and would have leaked the label or been ignored. Cost if wrong: the in-app
-  `derived_app_name` strings (About/dialogs) still say "Lawnchair" for Play until a follow-up uses
-  variant-level resValues.
-- P2b: added `tools:replace="android:label"` on the Play `<application>` so the different label is
-  explicit and merge-safe. Cost if wrong: harmless duplicate of the inherited marker.
-- P2b: `verify-play-build.sh` fails closed on more than one merged-manifest candidate rather than
-  picking one. Cost if wrong: a future AGP emitting two identical paths needs the search narrowed.
-- This run: added only `testImplementation libs.junit`; no Robolectric. The extracted predicate has
-  no Android runtime dependency, so a plain JVM test is sufficient. Cost if wrong: the full
-  `AppInfo`-level filter still relies on the Soong multivalent test.
-- This run: added a fail-closed `verifyLockedProfileTestWiring` dependency instead of relying on the
-  test task's NO-SOURCE behaviour. Cost if wrong: a future test-source-set rename needs the guard
-  path updated, but it fails loudly rather than silently skipping.
-- PR8 repair: moved the test to `tests/unit/java` because the `main` source root includes `src`
-  recursively, so `src/test/java` was also compiled as production. Cost if wrong: a future upstream
-  source-root change needs the path moved again, but the wiring guard fails loudly.
-- PR8 repair: `emulator-smoke.sh` accepts only `ro.kernel.qemu=1` before install/uninstall. Cost if
-  wrong: a device farm that omits the property is refused until the guard is deliberately widened.
-- This run: emulator default-home uses `cmd role add-role-holder` because it is supported on the
-  disposable API 37 emulator and verifies the real system role. It does not exercise the in-app
-  `RoleManager` onboarding prompt; that remains manual.
-- This run: private space is a separate prerequisite probe, not auto-provisioned. Creating it needs
-  a secure lock screen and may add profile data/accounts; the script only detects and reports.
-- Prior P1/P2a/P2b rulings retained (see git history).
+
+- P2c: all icon artwork lives in `play/res` so github/nightly keep the inherited Lawnchair icon.
+  Cost if wrong: the Play overlay has its own icon maintenance burden and must keep all three
+  adaptive layers in sync.
+- P2c: the manifest uses `@mipmap` adaptive resources for the app icon and `@drawable` vectors for
+  in-app surfaces. This gives API 26+ adaptive/round resolution and a usable Compose/search image
+  without duplicating bitmaps. Cost if wrong: a future launcher surface that requires a bitmap
+  density variant needs legacy PNGs added.
+- P2c: locale overrides were generated by replacing the `Lawnchair` token in each upstream
+  `onboarding_welcome`, preserving the localized greeting. Cost if wrong: languages that inflect
+  the brand may read slightly unnaturally, but no locale falls back to the inherited name.
+- P2c: `derived_app_name` is overridden with a Play-gated variant-level `resValue`, because the
+  build-type `resValue` outranks flavor resources. Cost if wrong: a future AGP variant-API change
+  needs this block updated; the brand guard fails loudly if it disappears.
+- P2c: the brand guard is called from `verify-play-build.sh` rather than a workflow edit, because
+  `.github/workflows/` is off-limits this run. Cost if wrong: a future CI refactor that stops
+  calling `verify-play-build.sh` also drops the brand guard.
+- P2c repair: `tools:replace` lists both `android:label` and `android:icon` instead of removing
+  either attribute. The Play overlay still owns the label and icon; the base manifest values are
+  only discarded at merge time. Cost if wrong: a future base icon rename is invisible to the Play
+  overlay, but the brand guard still pins the Play resources.
+- P2c visual repair: `play/res` is owned by the `lawnWithQuickstepPlay` multi-flavor source set,
+  not the single `play` flavor. AGP gives the `app` (lawn) dimension higher priority than the
+  `channel` (play) dimension, so a single-flavor Play resource loses same-name lawn resources. A
+  multi-flavor source set outranks every single flavor. Cost if wrong: the source-set wiring is
+  unusual and the brand guard must keep asserting it; if AGP ever changes multi-flavor priority,
+  the smoke HOME/About evidence will fail loudly.
 
 ## log
-- 2026-11-21: PR8 CI27 repair: moved the predicate JUnit test to `tests/unit/java` (+ both test
-  source-set entries and the wiring guard path), fixed the ktlint `function-signature` failure, and
-  added a fail-closed `ro.kernel.qemu=1` guard before install/uninstall. Non-Gradle suites green;
-  CI re-run and emulator lane still pending.
-- 2026-11-21: verification slice (emulator smoke + private-space probe + pure locked-profile JUnit
-  test + AGP-stage coexistence tests; no Gradle/emulator run here). Follow-ups: parenthesized the
-  predicate bit test and added the `/usr/local/lib/android/sdk` aapt2 lookup fallback for CI.
-- 2026-11-21: PR7 merged; CI24 merged-manifest guard passed (AGP stage selection + exact debug
-  LeakCanary authority); P2b label complete; icons deferred
-- 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + static identity/
-  authority guard + docs; no Gradle run)
+
+- 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green, but inspected artifacts showed the
+  About icon still colored Lawnchair and the HOME welcome still `Welcome to Lawnchair`. Root cause:
+  single-flavor `play/res` loses same-name resources to the higher-priority `lawn` flavor. Moved
+  `play/res` to the `lawnWithQuickstepPlay` multi-flavor source set; extended the brand guard
+  (14/14) and the emulator smoke (HOME welcome XML assertion, About icon evidence preserved). New
+  CI run pending.
+- 2026-11-21: CI37 (`44900708538`) failed `processLawnWithQuickstepPlayDebugMainManifest`: base
+  `@drawable/ic_launcher_home` vs Play `@mipmap/ic_launcher_home` with only `android:label` in
+  `tools:replace`. Repaired the directive, added a guard regression (10/10) and extended the
+  emulator smoke with app-info and About evidence. Real CI re-run still pending.
+- 2026-11-21: P2c complete (static): original Play-only dot-grid icon, Play-only welcome/app-name
+  text, 57 locale overrides, variant-level `derived_app_name`, brand guard + tests, visual-review
+  doc. Non-Gradle suites green; screenshot review, private-space UI and RoleManager prompt pending.
+- 2026-11-21: CI35 (`44898572590`) green on the post-PR8 state: 4/4 Gradle tests, manifest, API 37
+  install/HOME label/role/crash checks; screenshot still inherited Lawnchair home.
+- 2026-11-21: PR8 merged at `4bd5c39`; PR7 merged the Play label and guard suites.
+- 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + identity/authority
+  guard + docs).
 - 2026-11-21: P1c complete (private-space permission + locked-profile search filter + bug-report
-  receiver/provider removal)
+  receiver/provider removal).

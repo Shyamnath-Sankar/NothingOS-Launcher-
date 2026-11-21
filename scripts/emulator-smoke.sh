@@ -12,6 +12,12 @@
 #     launcher is the resumed/default home
 #   - captures a screenshot, logcat, dumpsys and aapt evidence under an
 #     artifact directory, and fails on install/launch/crash problems
+#   - dumps the HOME UIAutomator hierarchy and, when the smartspace onboarding
+#     card is visible, requires the rendered welcome text to be "DotWel
+#     Launcher" with no "Lawnchair" text; otherwise records a pending note and
+#     fails if the hierarchy cannot be dumped at all
+#   - captures the app-info screen and the About screen (UI XML + screenshot);
+#     the About screenshot is the launcher-icon evidence, reviewed visually
 #
 # It does NOT validate locked private-space behaviour. That needs a provisioned
 # private space with a secure lock screen; see scripts/private-space-check.sh.
@@ -83,6 +89,140 @@ capture_logcat() {
 
 capture_screenshot() {
     adb_cmd exec-out screencap -p > "$ARTIFACTS/screenshot.png" 2>/dev/null || true
+}
+
+capture_screenshot_to() {
+    target=$1
+    adb_cmd exec-out screencap -p > "$ARTIFACTS/$target" 2>/dev/null || true
+}
+
+capture_ui_xml() {
+    name=$1
+    remote="/sdcard/$name"
+    attempt=1
+    while [ "$attempt" -le 3 ]; do
+        if adb_cmd shell uiautomator dump "$remote" > "$ARTIFACTS/uiautomator-$name.txt" 2>&1 &&
+            adb_cmd pull "$remote" "$ARTIFACTS/$name" > /dev/null 2>&1 &&
+            [ -s "$ARTIFACTS/$name" ]; then
+            adb_cmd shell rm -f "$remote" > /dev/null 2>&1 || true
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 1
+}
+
+return_home() {
+    label=$1
+    adb_cmd shell input keyevent KEYCODE_HOME > "$ARTIFACTS/home-key-$label.txt" 2>&1 ||
+        fail "could not send the HOME key ($label)"
+    sleep 2
+    adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities-$label.txt" 2>&1 || true
+    resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activities-$label.txt" |
+        grep -F "$PKG/" | sed -n '1p' || true)
+    [ -n "$resumed" ] || fail "launcher is not resumed after $label"
+}
+
+capture_app_info() {
+    if ! app_info_out=$(adb_cmd shell am start -W \
+        -a android.settings.APPLICATION_DETAILS_SETTINGS \
+        -d "package:$PKG" 2>&1); then
+        printf '%s\n' "$app_info_out" > "$ARTIFACTS/app-info-launch.txt"
+        fail "could not open app-info for $PKG"
+    fi
+    printf '%s\n' "$app_info_out" > "$ARTIFACTS/app-info-launch.txt"
+    case "$app_info_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "app-info launch reported an error"
+            ;;
+    esac
+    printf '%s\n' "$app_info_out" | grep -q 'Status: ok' ||
+        fail "app-info launch did not report Status: ok"
+    sleep 2
+    capture_screenshot_to app-info.png
+    [ -s "$ARTIFACTS/app-info.png" ] || fail "app-info screenshot capture failed"
+    capture_ui_xml app-info.xml || fail "app-info UI XML capture failed"
+    if ! grep -Fq "$PKG" "$ARTIFACTS/app-info.xml" &&
+        ! grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/app-info.xml"; then
+        fail "app-info UI XML does not mention $PKG or $EXPECTED_LABEL"
+    fi
+}
+
+# About is reached through the existing lawnchair://settings/about deep link, then
+# confirmed from the UIAutomator hierarchy. No guessed tap coordinates are used.
+capture_about() {
+    about_url='lawnchair://settings/about'
+    about_component="$PKG/app.lawnchair.ui.preferences.PreferenceActivity"
+    if ! about_out=$(adb_cmd shell am start -W \
+        -a android.intent.action.VIEW \
+        -d "$about_url" \
+        -n "$about_component" 2>&1); then
+        printf 'About screen unavailable: deep link launch failed.\n%s\n' \
+            "$about_out" > "$ARTIFACTS/about-pending.txt"
+        return 0
+    fi
+    printf '%s\n' "$about_out" > "$ARTIFACTS/about-launch.txt"
+    case "$about_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            printf 'About screen unavailable: deep link launch reported an error.\n%s\n' \
+                "$about_out" > "$ARTIFACTS/about-pending.txt"
+            return 0
+            ;;
+    esac
+    sleep 2
+    if ! capture_ui_xml about.xml; then
+        printf 'About screen unavailable: UIAutomator could not dump the hierarchy.\n' \
+            > "$ARTIFACTS/about-pending.txt"
+        return 0
+    fi
+    if ! grep -Fq 'About' "$ARTIFACTS/about.xml" ||
+        ! grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/about.xml"; then
+        printf 'About screen pending: UIAutomator hierarchy did not expose both "About" and "%s".\n' \
+            "$EXPECTED_LABEL" > "$ARTIFACTS/about-pending.txt"
+        return 0
+    fi
+    capture_screenshot_to about.png
+    if [ -s "$ARTIFACTS/about.png" ]; then
+        printf 'About screen captured: "About" title and "%s" text are visible.\n' \
+            "$EXPECTED_LABEL" > "$ARTIFACTS/about.txt"
+        printf 'Icon evidence: about.png. The launcher icon is reviewed visually; this script does not pixel-assert it.\n' \
+            >> "$ARTIFACTS/about.txt"
+    else
+        printf 'About screen pending: UI hierarchy matched but screenshot capture failed.\n' \
+            > "$ARTIFACTS/about-pending.txt"
+    fi
+}
+
+# The smartspace onboarding card reads onboarding_welcome. A clean install has
+# HOME_BOUNCE_SEEN unset, so the card is expected. Assert the rendered text when
+# the card is present; if it has not rendered, record pending rather than claim
+# a brand pass that the evidence does not support.
+verify_home_welcome() {
+    attempt=1
+    captured=0
+    while [ "$attempt" -le 3 ]; do
+        if capture_ui_xml home.xml; then
+            captured=1
+            if grep -Fqi 'welcome' "$ARTIFACTS/home.xml"; then
+                if grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/home.xml" &&
+                    ! grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
+                    printf 'HOME welcome: "%s" is visible and no Lawnchair text is present.\n' \
+                        "$EXPECTED_LABEL" > "$ARTIFACTS/home-welcome.txt"
+                    return 0
+                fi
+                printf 'HOME welcome: card is visible but the brand is wrong.\n' \
+                    > "$ARTIFACTS/home-welcome.txt"
+                fail "HOME welcome UI does not say $EXPECTED_LABEL"
+            fi
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    [ "$captured" -eq 1 ] ||
+        fail "could not dump the HOME UIAutomator hierarchy; the welcome brand is unverified"
+    printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
+        > "$ARTIFACTS/home-welcome-pending.txt"
 }
 
 fail() {
@@ -283,6 +423,14 @@ home_resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activit
 
 capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
+
+verify_home_welcome
+
+capture_app_info
+return_home app-info
+capture_about
+return_home about
+
 capture_logcat
 [ -s "$ARTIFACTS/logcat.txt" ] || fail "logcat capture failed"
 

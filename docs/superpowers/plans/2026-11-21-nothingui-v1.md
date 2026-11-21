@@ -37,9 +37,14 @@ Android 17 problem.
 - [x] `applicationId com.launchernos.dotwellabs` for the Play channel only.
 - [x] Play-only app and launcher-activity label: **DotWel Launcher** (single l). github/nightly keep
       their inherited "Lawnchair" branding; this is not a name-clearance claim.
-- [ ] icon, `mipmap-*` — deferred to a separate visually-reviewed original icon slice.
+- [x] icon, `mipmap-*` — original geometric dot-grid adaptive icon, Play-only overlay
+      (`play/res`), with round and monochrome layers and API 26+ resolution. Visual review pending.
+- [x] Play-only `onboarding_welcome` and in-app `derived_app_name` say **DotWel Launcher**;
+      github/nightly keep the inherited strings.
 - [x] keep `NOTICE` and Apache headers; add our `NOTICE` entry.
-- [ ] **Gate:** `assembleLawnPlayDebug` installs and becomes default home on emulator.
+- [ ] **Gate:** `assembleLawnPlayDebug` installs and becomes default home on emulator. The CI35
+      emulator run verified install, HOME label and role; the in-app `RoleManager` prompt is still
+      pending.
 
 ## P3 — Theme and home surface
 

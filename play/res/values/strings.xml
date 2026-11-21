@@ -9,4 +9,5 @@
 -->
 <resources>
     <string name="play_app_name" translatable="false">DotWel Launcher</string>
+    <string name="onboarding_welcome">Welcome to DotWel Launcher!</string>
 </resources>

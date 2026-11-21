@@ -331,7 +331,6 @@ android {
 
         play {
             manifest.srcFile "play/AndroidManifest.xml"
-            res.srcDirs = ["play/res"]
         }
 
         lawnWithQuickstepGithub {
@@ -344,8 +343,17 @@ android {
 
         // Also used as the variant manifest so its tools:node="remove" markers
         // outrank the lawn/withQuickstep flavor manifests during merging.
+        //
+        // The Play resources must also live here, not in the "play" flavor.
+        // flavorDimensions declares "app" (lawn) before "channel" (play), so a
+        // single-flavor "play" resource loses to a same-name lawn resource at
+        // merge time (for example onboarding_welcome and
+        // ic_launcher_home_comp). A multi-flavor source set outranks every
+        // single flavor, so Play-only overrides win without touching the
+        // github/nightly builds.
         lawnWithQuickstepPlay {
             manifest.srcFile "play/AndroidManifest.xml"
+            res.srcDirs = ["play/res"]
         }
 
         withQuickstep {
@@ -362,6 +370,16 @@ androidComponents {
         def channel = variant.productFlavors.last().second
         variant.outputs.forEach { output ->
             output.outputFileName.set("Lawnchair.${output.versionName.get()}.$channel.${variant.buildType}.apk")
+        }
+
+        // Play-only display label for in-app About/dialog strings. The build-type
+        // resValue for derived_app_name outranks flavor resources, so the override
+        // has to be variant-level to stay scoped to the Play channel.
+        if (channel == "play") {
+            variant.resValues.put(
+                variant.makeResValueKey("string", "derived_app_name"),
+                new com.android.build.api.variant.ResValue("DotWel Launcher", "Play display label")
+            )
         }
 
         // Lawnchair-TODO: A better way to sync proto file to the IDE preventing missing or outdated result. Please remove if this is the best solution we have right now

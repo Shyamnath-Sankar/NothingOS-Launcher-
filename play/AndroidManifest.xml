@@ -77,13 +77,14 @@
         android:fullBackupOnly="true"
         android:fullBackupContent="@xml/backupscheme"
         android:hardwareAccelerated="true"
-        android:icon="@drawable/ic_launcher_home"
+        android:icon="@mipmap/ic_launcher_home"
         android:label="@string/play_app_name"
+        android:roundIcon="@mipmap/ic_launcher_home_round"
         android:theme="@style/AppTheme"
         android:largeHeap="@bool/config_largeHeap"
         android:restoreAnyVersion="true"
         android:supportsRtl="true"
-        tools:replace="android:label">
+        tools:replace="android:label,android:icon">
 
         <!-- Launcher activity, inherited from quickstep/AndroidManifest-launcher.xml. -->
         <activity
