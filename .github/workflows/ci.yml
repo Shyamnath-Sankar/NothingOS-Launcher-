@@ -50,6 +50,21 @@ jobs:
       - name: Assemble Play debug
         run: ./gradlew assembleLawnWithQuickstepPlayDebug --stacktrace
 
+      - name: Verify Play manifest and identity
+        run: |
+          sh scripts/verify-play-build-test.sh
+          sh scripts/verify-play-build.sh
+
+      - name: Upload merged manifest evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: play-merged-manifests
+          path: |
+            build/intermediates/merged_manifest/**/AndroidManifest.xml
+            build/intermediates/merged_manifests/**/AndroidManifest.xml
+          if-no-files-found: warn
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
