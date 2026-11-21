@@ -3,8 +3,9 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P2c (Play icon + brand cleanup) — CI37 manifest icon merge repaired; CI re-run
-  and visual review pending
+- current_phase: P2c (Play icon + brand cleanup) — CI42 `44901579949` on `293f96e` was fully green,
+  but inspected artifacts exposed two runtime brand defects. Root cause repaired this run (Play
+  resource precedence); CI re-run and visual review pending. P2 is not complete.
 - branch: agent/p2c-original-icon-and-play-bra
 - pr: #9 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/9
@@ -12,6 +13,37 @@ when no task input is given, and continues from "next".
 
 ## done
 
+- This run (P2c visual repair): inspected CI42 artifacts for run `44901579949` on `293f96e`.
+  Observed defects, not hypotheses: `app-info.png` shows the correct original dot-grid icon and
+  `DotWel Launcher` label; the About screen shows the correct `DotWel Launcher` title but the OLD
+  colored Lawnchair icon; the HOME screenshot still says `Welcome to Lawnchair`.
+- This run (root cause, verified from AGP docs and the source tree): `flavorDimensions` is
+  `["app", "recents", "channel"]`, so the `lawn` flavor (`lawnchair/res`) outranks the `play` flavor
+  (`play/res`) for same-name resources. `R.string.onboarding_welcome` (HOME smartspace card) and
+  `R.drawable.ic_launcher_home_comp` (About icon) were therefore resolved from `lawnchair/res`, not
+  `play/res`. `ic_launcher_home_monochrome` had the same collision. The app-info icon worked because
+  it resolves through the Play manifest `@mipmap/ic_launcher_home`, and the About title worked
+  because `derived_app_name` is a variant-level `resValue` that outranks flavors.
+- This run (fix): moved `play/res` from the single-flavor `play` source set to the
+  `lawnWithQuickstepPlay` multi-flavor source set in `build.gradle`. A multi-flavor source set
+  outranks every single flavor, so Play-only overrides now win while `lawnchair/res` and
+  `nightly/res` remain untouched for github/nightly.
+- This run (regression guards): `scripts/play-brand-guard.sh` now asserts that
+  `lawnWithQuickstepPlay` owns `play/res`, that the single `play` flavor does not own it, that the
+  `lawn`/`nightly` source sets still own their resource dirs, and that `About.kt` still consumes
+  `R.drawable.ic_launcher_home_comp` and `OnboardingProvider.kt` still consumes
+  `R.string.onboarding_welcome`. `play-brand-guard-test.sh` is now 14/14, including negative fixtures
+  for precedence, stripped lawn resources, and consumer drift.
+- This run (smoke): `scripts/emulator-smoke.sh` now dumps the HOME UIAutomator hierarchy after launch.
+  When the smartspace welcome card is visible it requires `DotWel Launcher` and rejects `Lawnchair`;
+  when no welcome text is visible it writes `home-welcome-pending.txt` instead of claiming a pass.
+  The mandatory screenshot is unchanged, and the About UI XML plus `about.png` are preserved as icon
+  evidence with an explicit note that the icon is reviewed visually, not pixel-asserted.
+- This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 14/14;
+  `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. No local Gradle build or emulator run was performed; CI must prove the merged resource
+  selection and the runtime screens.
 - This run (P2c repair): CI37 run `44900708538` failed
   `processLawnWithQuickstepPlayDebugMainManifest` because the Play overlay set
   `android:icon="@mipmap/ic_launcher_home"` while the base manifest still set
@@ -62,15 +94,17 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- A maintainer must approve the pending PR workflow runs. Every follow-up CI run since the repair
-  (CI38 onward, actor `github-actions[bot]`) is `action_required`, so none have executed. After
-  approval, confirm `processLawnWithQuickstepPlayDebugMainManifest` and the API 37 emulator smoke
-  pass; do not claim them green before the run log exists.
-- Inspect the new smoke artifacts: `screenshot.png` (unchanged HOME evidence), `app-info.png` +
-  `app-info.xml`, and `about.png` + `about.xml` or `about-pending.txt`.
+- A maintainer must approve the pending PR workflow runs. After approval, confirm the Play debug
+  manifest merge, the merged resource selection, and the API 37 emulator smoke pass; do not claim
+  them green before the run log exists.
+- Inspect the new smoke artifacts: `screenshot.png` (HOME evidence), `home.xml` plus
+  `home-welcome.txt` or `home-welcome-pending.txt`, `app-info.png` + `app-info.xml`, and `about.png`
+  + `about.xml` or `about-pending.txt`.
+- Confirm in the new HOME hierarchy that the welcome card reads `Welcome to DotWel Launcher!`, and in
+  `about.png` that the About icon is the dot grid, not the inherited colored Lawnchair icon.
 - Coordinator screenshot review using `docs/agent/p2c-icon-brand-visuals.md`: launcher/app-info
   icon, About icon/title, onboarding welcome title, app label, round icon, and a github/nightly
-  control build. The CI35 home screenshot alone cannot prove the icon/brand pass.
+  control build. Static guards and the app-info screenshot alone cannot prove the About icon.
 - Private-space runtime UI gate: provision a private space manually, run
   `scripts/private-space-check.sh`, then record the manual drawer/search/recents assertions. Keep
   the gate pending until that evidence exists.
@@ -85,10 +119,12 @@ when no task input is given, and continues from "next".
   auto-create it.
 - P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
   grant verifies the system role, not the prompt.
-- P2c manifest gate: CI37 run `44900708538` failed the Play debug manifest merge on `android:icon`;
-  repaired this run, but the follow-up CI runs (38-41) are `action_required` and have not executed.
-  A maintainer approval is required before this gate can be called green.
+- P2c manifest gate: CI42 `44901579949` on `293f96e` was fully green, so the manifest merge is no
+  longer the blocker. The remaining P2c blocker is the runtime brand repair in this run, which has
+  not yet been proven by a new CI run.
 - P2c visual gate: screenshot review pending; static guards do not prove what a device renders.
+  CI42 proved the app-info icon/label and the About title, but the About icon and HOME welcome were
+  still wrong at that point.
 - About-screen smoke evidence: may be documented as pending if the deep link or UIAutomator
   hierarchy is unavailable; it is not treated as a brand pass without the captured UI.
 
@@ -121,9 +157,21 @@ when no task input is given, and continues from "next".
   either attribute. The Play overlay still owns the label and icon; the base manifest values are
   only discarded at merge time. Cost if wrong: a future base icon rename is invisible to the Play
   overlay, but the brand guard still pins the Play resources.
+- P2c visual repair: `play/res` is owned by the `lawnWithQuickstepPlay` multi-flavor source set,
+  not the single `play` flavor. AGP gives the `app` (lawn) dimension higher priority than the
+  `channel` (play) dimension, so a single-flavor Play resource loses same-name lawn resources. A
+  multi-flavor source set outranks every single flavor. Cost if wrong: the source-set wiring is
+  unusual and the brand guard must keep asserting it; if AGP ever changes multi-flavor priority,
+  the smoke HOME/About evidence will fail loudly.
 
 ## log
 
+- 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green, but inspected artifacts showed the
+  About icon still colored Lawnchair and the HOME welcome still `Welcome to Lawnchair`. Root cause:
+  single-flavor `play/res` loses same-name resources to the higher-priority `lawn` flavor. Moved
+  `play/res` to the `lawnWithQuickstepPlay` multi-flavor source set; extended the brand guard
+  (14/14) and the emulator smoke (HOME welcome XML assertion, About icon evidence preserved). New
+  CI run pending.
 - 2026-11-21: CI37 (`44900708538`) failed `processLawnWithQuickstepPlayDebugMainManifest`: base
   `@drawable/ic_launcher_home` vs Play `@mipmap/ic_launcher_home` with only `android:label` in
   `tools:replace`. Repaired the directive, added a guard regression (10/10) and extended the
