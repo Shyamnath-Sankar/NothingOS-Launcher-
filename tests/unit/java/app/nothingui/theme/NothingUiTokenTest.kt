@@ -18,12 +18,12 @@ package app.nothingui.theme
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 class NothingUiTokenTest {
     @Test
