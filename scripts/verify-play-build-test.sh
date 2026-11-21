@@ -117,6 +117,22 @@ write_merged \
     'com.launchernos.dotwellabs.debug'
 run_expect_pass 'authority equal to applicationId passes' "$exact_authority_root"
 
+leak_root="$TMP_DIR/leak"
+new_root "$leak_root"
+write_merged \
+    "$leak_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.squareup.leakcanary.fileprovider.com.launchernos.dotwellabs.debug'
+run_expect_pass 'debug LeakCanary exact derived authority passes' "$leak_root"
+
+wrong_leak_root="$TMP_DIR/wrong-leak"
+new_root "$wrong_leak_root"
+write_merged \
+    "$wrong_leak_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.squareup.leakcanary.fileprovider.app.lawnchair.debug'
+run_expect_fail_contains 'wrong-app LeakCanary authority fails' "$wrong_leak_root" 'authority'
+
 missing_root="$TMP_DIR/missing"
 new_root "$missing_root"
 mkdir -p "$missing_root/build/intermediates"
