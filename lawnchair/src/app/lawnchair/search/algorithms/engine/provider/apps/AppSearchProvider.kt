@@ -5,6 +5,7 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.search.algorithms.engine.SearchResult
 import app.lawnchair.search.algorithms.filterHiddenApps
+import app.lawnchair.search.algorithms.filterLockedProfiles
 import com.android.launcher3.model.AllAppsList
 import com.android.launcher3.model.data.AppInfo
 import com.android.launcher3.search.StringMatcherUtility
@@ -38,6 +39,7 @@ object AppSearchProvider {
         // apps that don't match all of the words in the query.
         val matcher = StringMatcherUtility.StringMatcher.getInstance()
         return apps.asSequence()
+            .filterLockedProfiles()
             .filter { StringMatcherUtility.matches(query, stripDiacritics(it.title.toString()), matcher) }
             .filterHiddenApps(query, hiddenApps, hiddenAppsInSearch)
             .take(maxResultsCount)
@@ -46,6 +48,7 @@ object AppSearchProvider {
 
     private fun fuzzySearch(apps: List<AppInfo>, query: String, maxResultsCount: Int, hiddenApps: Set<String>, hiddenAppsInSearch: String): List<AppInfo> {
         val filteredApps = apps.asSequence()
+            .filterLockedProfiles()
             .filterHiddenApps(query, hiddenApps, hiddenAppsInSearch)
             .toList()
 
