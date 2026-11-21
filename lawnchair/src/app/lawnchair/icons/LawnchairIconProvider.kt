@@ -35,6 +35,8 @@ import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.util.MultiSafeCloseable
 import app.lawnchair.util.isPackageInstalled
 import app.lawnchair.util.requireSystemService
+import app.nothingui.icons.NothingUiIconPolicy
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.R
 import com.android.launcher3.dagger.ApplicationContext
 import com.android.launcher3.dagger.LauncherAppSingleton
@@ -90,7 +92,16 @@ class LawnchairIconProvider @Inject constructor(
             _themeMap!!
         }
 
-    private fun resolveIconEntry(componentName: ComponentName, user: UserHandle): IconEntry? {
+    private fun hasCustomIcon(componentName: ComponentName, user: UserHandle): Boolean {
+        val componentKey = ComponentKey(componentName, user)
+        return overrideRepo.overridesMap.containsKey(componentKey) || iconPack != null
+    }
+
+    private fun resolveIconEntry(
+        componentName: ComponentName,
+        user: UserHandle,
+        forceNativeFallback: Boolean,
+    ): IconEntry? {
         val componentKey = ComponentKey(componentName, user)
         // first look for user-overridden icon
         val overrideItem = overrideRepo.overridesMap[componentKey]
@@ -99,7 +110,7 @@ class LawnchairIconProvider @Inject constructor(
         }
 
         // if forced monochrome is enabled, fallback to launcher3 behavior
-        if (prefs.forceIconMonochrome.get()) {
+        if (forceNativeFallback) {
             return null
         }
 
@@ -148,9 +159,25 @@ class LawnchairIconProvider @Inject constructor(
         val user = UserHandle.getUserHandleForUid(appInfo.uid)
         val componentName = resolveComponentName(info, appInfo, user)
 
+        val customIconSelected = componentName != null && hasCustomIcon(componentName, user)
+        val policy = NothingUiIconPolicy.resolve(
+            playEnabled = NothingUiFeature.homeEnabled,
+            themedIconsEnabled = themedIconsEnabled,
+            forceFallbackEnabled = prefs.forceIconMonochrome.get(),
+            customIconSelected = customIconSelected,
+        )
+
         var iconEntry: IconEntry? = null
         if (componentName != null) {
-            iconEntry = resolveIconEntry(componentName, user)
+            iconEntry = resolveIconEntry(
+                componentName = componentName,
+                user = user,
+                forceNativeFallback = if (NothingUiFeature.homeEnabled) {
+                    policy.forceMonochromeFallback
+                } else {
+                    prefs.forceIconMonochrome.get()
+                },
+            )
         }
 
         var iconPackEntry = iconEntry
@@ -161,7 +188,12 @@ class LawnchairIconProvider @Inject constructor(
         val iconPackIcon = iconPackEntry?.let { iconPackProvider.getDrawable(it, iconDpi, user) }
         val baseIcon = iconPackIcon ?: super.getIcon(info, appInfo, iconDpi)
 
-        if (!themedIconsEnabled || iconEntry == null) {
+        // An explicit icon-pack or per-app choice wins over the Play monochrome fallback.
+        if (NothingUiFeature.homeEnabled && customIconSelected) {
+            return baseIcon
+        }
+
+        if (!policy.useThemedIcons || iconEntry == null) {
             return baseIcon
         }
 
@@ -231,13 +263,26 @@ class LawnchairIconProvider @Inject constructor(
         } else {
             ""
         }
+        val policyState = if (NothingUiFeature.homeEnabled) {
+            val customIconSelected =
+                iconPackPref.get().isNotEmpty() || overrideState.isNotEmpty()
+            val policy = NothingUiIconPolicy.resolve(
+                playEnabled = true,
+                themedIconsEnabled = prefs.themedIcons.get(),
+                forceFallbackEnabled = prefs.forceIconMonochrome.get(),
+                customIconSelected = customIconSelected,
+            )
+            ",ni=${policy.cacheKey}"
+        } else {
+            ""
+        }
         return "$base|lc:" +
             "ip=${iconPackPref.get()}," +
             "tip=${themedIconSourcePref.get()}," +
             "ti=${prefs.themedIcons.get()}," +
             "dti=${prefs.drawerThemedIcons.get()}," +
             "fm=${prefs.forceIconMonochrome.get()}," +
-            "ov=$overrideState"
+            "ov=$overrideState$policyState"
     }
 
     override fun getThemeDataForPackage(packageName: String?): ThemeData? {
