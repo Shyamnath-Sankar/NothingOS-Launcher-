@@ -3,19 +3,53 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (smoke gesture fixture fix only)**. CI87 run
-  `44935461427` artifact `14719887963` failed the same way: the actual HOME exposes
-  `search_container_workspace` as the y=91 workspace header, not the bottom QSB. `ui_qsb_top`
-  accepted that header, so the gutter branch never ran and `drawer_swipe_target` fell back to start
-  1183; the runtime trace still ended at progress `0.366` target Normal. This run fixes the fixture
-  to the real HOME shape and rejects any QSB candidate at or above the measured dock bottom. No app
-  gesture logic or success threshold changed.
+- current_phase: **P3b — Play icon renderer wiring**. The saved `NothingUiIconPolicy` is now used
+  by the real icon provider and theme manager. Play HOME/drawer icons get the neutral monochrome
+  fallback; explicit themed-icons-off, icon-pack and per-app choices stay respected; cache
+  freshness distinguishes native/fallback/off. Non-Play keeps the inherited controller path.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `039a41d` (actual-home fixture/header-rejection fix; base `main` at `0df97ff`)
+- head: `d1fbc12` (renderer wiring + guard; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — actual-home fixture and header rejection)
+## done (this run — Play icon renderer wiring)
+
+- **Root cause, not guessed:** the Play defaults lived only in `BoolPref` (`themed_icons` and
+  `pref_forceIconMonochrome` default true), while the inherited renderer read the raw preference
+  keys with false defaults. `LawnchairThemeManager` therefore built no theme controller on a fresh
+  Play install, and `MonoIconThemeController`'s forced branch also read
+  `shouldForceMonochrome()` with a false default. The provider's force branch returned early before
+  icon-pack/per-app overrides, so changing preferences alone could not make the actual pixels
+  monochrome and would have ignored explicit choices.
+- **Provider wiring:** `LawnchairIconProvider.getIcon` resolves `NothingUiIconPolicy` from the Play
+  gate, the themed-icons preference, the force preference and a per-component custom-selection
+  decision. The forced native fallback skips the icon pack only when the policy says so; an
+  explicit icon-pack or per-app override returns its own drawable and is not replaced.
+- **Renderer wiring:** added `NothingUiIconThemeController`, installed only when
+  `NothingUiFeature.homeEnabled`. It applies the policy per icon using `SourceHint.key`, delegates
+  monochrome-layer apps to the inherited `MonoIconThemeController`, and generates the missing-layer
+  fallback with the inherited `MonochromeIconFactory` + `MonoThemedBitmap`. File drawables are not
+  forced. Custom selections return no themed bitmap and cached custom entries return
+  `ThemedBitmap.NOT_SUPPORTED`.
+- **Cache isolation:** the Play `getStateForApp` freshness string now appends the policy cache key
+  (`ni=native|fallback|off`), in addition to the existing icon-pack, themed-source, themed, drawer,
+  force and override state.
+- **Non-Play:** `LawnchairThemeManager` still uses
+  `iconControllerFactory.createThemeController()` and the original force-preference branch, and
+  the provider keeps the original force/native decision. No non-Play cache string change.
+- **Regression actually run (no Gradle, no emulator):** new
+  `nothingui-icon-render-guard.sh` OK and its fixture suite 8/8; `nothingui-home-guard.sh` OK and
+  13/13; `nothingui-theme-guard.sh` OK and 9/9; drawer-trace guard OK and 6/6;
+  `emulator-smoke-test.sh` and `emulator-smoke-drawer-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean.
+- **Next:** let CI89+/PR #11 build and confirm the real HOME/drawer pixels are neutral monochrome.
+  Then move to the search/QSB slice; do not treat this as visual sign-off until CI pixels are read.
+- **Scope reminder:** no Gradle, workflow, SDK, manifest, permission, applicationId, signing,
+  release or asset change. Drawer smoke is untouched. No Nothing assets were used. The untracked
+  local `w/` scratch directory was left uncommitted.
+
+## done (previous run — actual-home fixture and header rejection)
 
 - **Root cause from CI87, not guessed:** the old fixture invented a bottom QSB node with the
   `search_container_workspace` id at `[0,1640][1080,1775]`, so `ui_qsb_top` returned 1640 and the
