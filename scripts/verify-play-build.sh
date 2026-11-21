@@ -38,6 +38,7 @@ sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-drawer-test.sh"
@@ -58,6 +59,11 @@ fi
 # NothingUI actual-home slice and Play-only gate (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
     sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
+fi
+
+# Play-only icon renderer policy wiring (skipped for minimal fixtures).
+if [ -f "$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt" ]; then
+    sh "$SCRIPT_DIR/nothingui-icon-render-guard.sh" "$ROOT"
 fi
 
 # Debug-only app-drawer gesture trace and its per-swipe smoke capture (skipped
