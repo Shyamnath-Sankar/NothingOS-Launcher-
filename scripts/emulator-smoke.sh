@@ -16,8 +16,9 @@
 #     NothingUI clock and date text, with no inherited "Lawnchair" text; captures
 #     home.png as the actual-home visual evidence
 #   - opens the inherited app drawer, captures its UI XML + screenshot, searches
-#     for Settings, taps the result, verifies the installed Settings app is
-#     foreground, then returns HOME
+#     for Settings, taps the real clickable result, polls until the Settings
+#     activity is the exact resumed foreground, captures settings-launched.xml
+#     + .png, then returns HOME and captures home-after-app-launch.xml + .png
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
 #   - opens the debug-only Play theme sample through the existing
@@ -67,6 +68,9 @@ done
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# shellcheck source=emulator-smoke-lib.sh
+. "$SCRIPT_DIR/emulator-smoke-lib.sh"
 
 PKG=com.launchernos.dotwellabs.debug
 EXPECTED_LABEL='DotWel Launcher'
@@ -120,15 +124,31 @@ capture_ui_xml() {
     return 1
 }
 
+# Poll the live resumed activity, bounded, until it belongs to $1. Only the
+# topResumedActivity/mResumedActivity fields count: task history also names
+# packages and must never be mistaken for the foreground app.
+wait_for_foreground() {
+    expected_pkg=$1
+    dump=$2
+    attempts=${3:-10}
+    attempt=1
+    while [ "$attempt" -le "$attempts" ]; do
+        adb_cmd shell dumpsys activity activities > "$dump" 2>&1 || true
+        if foreground_is "$dump" "$expected_pkg"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 1
+}
+
 return_home() {
     label=$1
     adb_cmd shell input keyevent KEYCODE_HOME > "$ARTIFACTS/home-key-$label.txt" 2>&1 ||
         fail "could not send the HOME key ($label)"
-    sleep 2
-    adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities-$label.txt" 2>&1 || true
-    resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activities-$label.txt" |
-        grep -F "$PKG/" | sed -n '1p' || true)
-    [ -n "$resumed" ] || fail "launcher is not resumed after $label"
+    wait_for_foreground "$PKG" "$ARTIFACTS/activities-$label.txt" 10 ||
+        fail "launcher is not the resumed foreground after $label"
 }
 
 capture_app_info() {
@@ -339,17 +359,28 @@ exercise_app_drawer() {
     grep -Fq 'text="Settings"' "$ARTIFACTS/appdrawer-search.xml" ||
         fail "app drawer search did not return Settings"
 
-    result_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer-search.xml" 'text="Settings"')
-    [ -n "$result_bounds" ] || fail "could not find the Settings search result bounds"
+    result_bounds=$(ui_clickable_label_bounds "$ARTIFACTS/appdrawer-search.xml" 'Settings')
+    [ -n "$result_bounds" ] ||
+        fail "could not find the clickable Settings search result bounds"
     tap_center_of_bounds "$result_bounds" || fail "could not tap the Settings search result"
-    sleep 4
-    adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities-app-launch.txt" 2>&1 || true
-    grep -Fq 'com.android.settings/' "$ARTIFACTS/activities-app-launch.txt" ||
-        fail "tapping the Settings search result did not launch com.android.settings"
+    wait_for_foreground com.android.settings "$ARTIFACTS/activities-app-launch.txt" 10 ||
+        fail "tapping the Settings search result did not foreground com.android.settings"
+    capture_ui_xml settings-launched.xml || fail "launched Settings UI XML capture failed"
+    capture_screenshot_to settings-launched.png
+    [ -s "$ARTIFACTS/settings-launched.png" ] ||
+        fail "launched Settings screenshot capture failed"
     printf 'App drawer/search: Settings was found, tapped and launched.\n' \
         > "$ARTIFACTS/appdrawer.txt"
-    printf 'Screenshots: appdrawer.png, appdrawer-search.png.\n' >> "$ARTIFACTS/appdrawer.txt"
-    return_home app-launch
+    printf 'Screenshots: appdrawer.png, appdrawer-search.png, settings-launched.png.\n' \
+        >> "$ARTIFACTS/appdrawer.txt"
+    return_home app-launch-home
+    foreground_is "$ARTIFACTS/activities-app-launch-home.txt" "$PKG" ||
+        fail "launcher is not foreground after returning from Settings"
+    capture_ui_xml home-after-app-launch.xml ||
+        fail "HOME UI XML capture after the app launch failed"
+    capture_screenshot_to home-after-app-launch.png
+    [ -s "$ARTIFACTS/home-after-app-launch.png" ] ||
+        fail "HOME screenshot capture after the app launch failed"
 }
 
 fail() {
