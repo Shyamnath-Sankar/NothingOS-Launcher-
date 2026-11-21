@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify the assembled Play debug build.
 #
-# 1. Runs the existing identity/manifest guard fixture suites (no Gradle needed).
+# 1. Runs the existing identity/manifest/brand/theme guard fixture suites (no Gradle needed).
 # 2. Locates the Gradle-merged lawnWithQuickstepPlayDebug manifest produced by
 #    assembleLawnWithQuickstepPlayDebug, failing closed when it is missing or
 #    ambiguous.
@@ -36,6 +36,7 @@ fail() {
 sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
@@ -43,6 +44,11 @@ sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
 # Play-only icon and brand overlay (skipped for minimal test fixtures).
 if [ -d "$ROOT/play/res" ]; then
     sh "$SCRIPT_DIR/play-brand-guard.sh" "$ROOT"
+fi
+
+# NothingUI theme foundation and Play-only gate (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/theme" ]; then
+    sh "$SCRIPT_DIR/nothingui-theme-guard.sh" "$ROOT"
 fi
 
 # 2. Locate the merged manifest for the Play debug variant.

@@ -21,6 +21,12 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   `cmd role add-role-holder` and verifies the role holder and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
+- captures app-info and About evidence, then opens the debug-only Play theme sample through the
+  existing exported `PreferenceActivity` and the explicit
+  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra. It captures
+  `theme-sample-dark.xml`/`.png` and `theme-sample-light.xml`/`.png`, requires `DOTWEL` in both UI
+  hierarchies, and returns HOME. The extra is inert unless the build is both debug and Play, so
+  release and non-Play builds keep the normal settings surface.
 
 The `cmd role` grant is a disposable-emulator stand-in for the user-initiated
 `RoleManager.createRequestRoleIntent(ROLE_HOME)` onboarding. The in-app onboarding prompt itself is

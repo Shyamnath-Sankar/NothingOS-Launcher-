@@ -3,135 +3,159 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P2c (Play icon + brand cleanup) — CI42 `44901579949` on `293f96e` was fully green,
-  but inspected artifacts exposed two runtime brand defects. Root cause repaired this run (Play
-  resource precedence); CI re-run and visual review pending. P2 is not complete.
-- branch: agent/p2c-original-icon-and-play-bra
-- pr: #9 (existing PR for this branch; resume it, do not open a duplicate):
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/9
-  PR8 is already merged to `main` at `4bd5c39`.
+- current_phase: P3a (theme foundation only) — system-bar contrast repair for the DEBUG+Play theme
+  sample. CI62 run `44909523145` on `e359a9a` was green (actual JUnit XML: 7 token + 4 predicate
+  tests, 0 skipped), but coordinator inspection of the real `theme-sample-dark`/`theme-sample-light`
+  PNGs found the dark sample keeping dark status/nav icons on the dark surface. Root cause is fixed
+  this run; CI and pixel re-review on the new head are pending. P3a is not complete.
+- branch: agent/p3a-theme-foundation-only-star
+- pr: #10 (existing PR for this branch; resume it, do not open a duplicate):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/10
+  PR9 is merged to `main` at `02ac058`.
 
 ## done
 
-- This run (P2c visual repair): the dispatch reported an inspection of CI42 artifacts for run
-  `44901579949` on `293f96e`; this environment has no artifact download access (no `gh` auth), so
-  these are recorded as reported findings, not a re-inspection. Observed defects, not hypotheses:
-  `app-info.png` shows the correct original dot-grid icon and `DotWel Launcher` label; the About
-  screen shows the correct `DotWel Launcher` title but the OLD colored Lawnchair icon; the HOME
-  screenshot still says `Welcome to Lawnchair`.
-- This run (root cause, verified from AGP docs and the source tree): `flavorDimensions` is
-  `["app", "recents", "channel"]`, so the `lawn` flavor (`lawnchair/res`) outranks the `play` flavor
-  (`play/res`) for same-name resources. `R.string.onboarding_welcome` (HOME smartspace card) and
-  `R.drawable.ic_launcher_home_comp` (About icon) were therefore resolved from `lawnchair/res`, not
-  `play/res`. `ic_launcher_home_monochrome` had the same collision. The app-info icon worked because
-  it resolves through the Play manifest `@mipmap/ic_launcher_home`, and the About title worked
-  because `derived_app_name` is a variant-level `resValue` that outranks flavors.
-- This run (fix): moved `play/res` from the single-flavor `play` source set to the
-  `lawnWithQuickstepPlay` multi-flavor source set in `build.gradle`. A multi-flavor source set
-  outranks every single flavor, so Play-only overrides now win while `lawnchair/res` and
-  `nightly/res` remain untouched for github/nightly.
-- This run (regression guards): `scripts/play-brand-guard.sh` now asserts that
-  `lawnWithQuickstepPlay` owns `play/res`, that the single `play` flavor does not own it, that the
-  `lawn`/`nightly` source sets still own their resource dirs, and that `About.kt` still consumes
-  `R.drawable.ic_launcher_home_comp` and `OnboardingProvider.kt` still consumes
-  `R.string.onboarding_welcome`. `play-brand-guard-test.sh` is now 14/14, including negative fixtures
-  for precedence, stripped lawn resources, and consumer drift.
-- This run (smoke): `scripts/emulator-smoke.sh` now dumps the HOME UIAutomator hierarchy after launch.
-  When the smartspace welcome card is visible it requires `DotWel Launcher` and rejects `Lawnchair`;
-  when no welcome text is visible it writes `home-welcome-pending.txt` instead of claiming a pass,
-  and it fails closed if the HOME hierarchy cannot be dumped at all.
-  The mandatory screenshot is unchanged, and the About UI XML plus `about.png` are preserved as icon
-  evidence with an explicit note that the icon is reviewed visually, not pixel-asserted.
-- This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 14/14;
+- This run (P3a system-bar repair, root cause): `PreferenceActivity` called the inherited no-arg
+  `enableEdgeToEdge()` before `setContent`, then called the inherited `EdgeToEdge()` composable in
+  the sample branch. That composable derives system-bar appearance from `isSelectedThemeDark` (the
+  launcher theme preference), not from the requested sample mode. On a light-system emulator the
+  dark sample therefore kept dark status/nav icons, and its nav scrim was light while the sample
+  surface was dark.
+- This run (fix): `ComponentActivity.EdgeToEdge` now accepts
+  `darkTheme: Boolean = isSelectedThemeDark`. The normal settings path still calls the no-arg
+  default and keeps the early inherited `enableEdgeToEdge()`. The diagnostic branch passes
+  `themeSampleDark` and skips the early inherited call, so its window is configured only from the
+  requested sample mode: dark sample gets light bar icons and a dark nav scrim; light sample gets
+  dark icons and a light scrim. This is per-window only; no global setting, preference, manifest,
+  component, workflow, SDK or applicationId changed.
+- This run (regression): the theme guard now asserts the explicit `EdgeToEdge` override, the
+  `LaunchedEffect(darkTheme)` key, the sample branch passing `themeSampleDark`, and the normal path
+  still using `EdgeToEdge()`. The fixture suite adds missing-sample-mode and
+  missing-explicit-override negatives (now 9/9).
+- This run, verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh "$PWD"`
+  OK; `nothingui-theme-guard-test.sh` 9/9; `play-brand-guard.sh` OK and its tests pass;
+  `play-identity-guard.sh` OK and its tests pass; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. No local Gradle build or emulator run was performed; the existing smoke must produce the
+  dark/light PNGs for pixel review.
+- Scope reminder: this is the theme sample only. The actual HOME surface is not restyled. The
+  private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt and the non-Play runtime
+  control remain pending.
+- This run (P3a repair, root cause reproduced): `scripts/nothingui-theme-guard.sh` scanned the
+  full path from `find`, so CI's checkout parent `.../NothingOS-Launcher-/...` matched the
+  `nothing` token and the guard falsely reported a Nothing font asset. Running the guard with the
+  absolute repo path reproduced the CI53 failure; running it with `.` did not. The scan now
+  lowercases and checks font basenames only, so a legitimate parent path cannot trip it.
+- This run (regression): added `scripts/nothingui-theme-guard-test.sh` and wired it into
+  `scripts/verify-play-build.sh`. Its clean fixture lives under a parent named
+  `NothingOS-Launcher`; separate fixtures add real forbidden basenames (`ndot_regular.ttf`,
+  `NothingSans.ttf`, `nfont_display.ttf`) and prove a changed font without an updated attribution
+  hash and a missing OFL file still fail. The existing magic/provenance/licence checks are intact.
+- This run (diagnostic route): `PreferenceActivity` now accepts the explicit
+  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra only when `BuildConfig.DEBUG` and
+  `NothingUiFeature.themeEnabled` are both true. `dark`/`light` render
+  `NothingUiThemeSampleScreen`; every other case renders the normal settings surface. The
+  diagnostic branch also skips the settings-opened preference write, and no manifest component,
+  permission or workflow changed.
+- This run (screenshots): `scripts/emulator-smoke.sh` now launches the sample after the existing
+  About checks with `-f 0x18000000` so the new extra gets a fresh task instead of reusing the About
+  instance. It asserts `DOTWEL` in `theme-sample-dark.xml` / `theme-sample-light.xml`, captures
+  `theme-sample-dark.png` / `theme-sample-light.png`, then returns HOME. No emulator was available
+  here, so the PNGs are not produced yet; CI must produce and review them.
+- This run (guard): the theme guard now also fails if the diagnostic extra is present without both
+  `!BuildConfig.DEBUG` and `!NothingUiFeature.themeEnabled`; the regression suite covers a missing
+  debug gate.
+- This run, verification actually run (no Gradle, no emulator):
+  `nothingui-theme-guard.sh "$PWD"` OK; `nothingui-theme-guard-test.sh` 7/7;
+  `play-brand-guard.sh` OK; `play-brand-guard-test.sh` all pass; `play-identity-guard.sh` OK;
   `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
   `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. The new guard run against the real pre-fix tree (`git archive 293f96e`) exits 1 with
-  `lawnWithQuickstepPlay source set does not own play/res`, so it catches the exact CI42 state.
-  No local Gradle build or emulator run was performed; CI must prove the merged resource selection
-  and the runtime screens.
-- This run (P2c repair): CI37 run `44900708538` failed
-  `processLawnWithQuickstepPlayDebugMainManifest` because the Play overlay set
-  `android:icon="@mipmap/ic_launcher_home"` while the base manifest still set
-  `android:icon="@drawable/ic_launcher_home"` and the overlay only listed
-  `tools:replace="android:label"`. Added `android:icon` to that existing
-  `tools:replace` list. Label, permissions and every component removal are unchanged.
-- This run (P2c repair): added a narrow `play-brand-guard.sh` regression that fails when the Play
-  application `tools:replace` does not include `android:icon`. Added a fixture test for exactly that
-  missing directive. Guard fixture suite is now 10/10.
-- This run (P2c repair): extended `scripts/emulator-smoke.sh` after the existing HOME screenshot to
-  capture `app-info.png` + `app-info.xml` through
-  `android.settings.APPLICATION_DETAILS_SETTINGS` for
-  `package:com.launchernos.dotwellabs.debug`, return HOME and verify it, then open About through the
-  existing `lawnchair://settings/about` deep link and confirm `About` plus `DotWel Launcher` in the
-  UIAutomator hierarchy before capturing `about.png` + `about.xml`. No tap coordinates are guessed.
-  About is written to `about-pending.txt` and reported as pending when it cannot be verified. The
-  original `screenshot.png` and all existing checks are preserved.
-- This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK;
-  `play-brand-guard-test.sh` 10/10; `sh -n scripts/emulator-smoke.sh` clean; `git diff --check`
-  clean. No local Gradle build or emulator run was performed; CI must prove the manifest merge.
-- Prior P2c run: added an original Play-only geometric dot-grid launcher icon under `play/res`.
-  Near-black `#0B0B0B` adaptive background, 3×3 white `#FFFFFF` dots, one restrained red `#D7261E`
-  accent, a white-only monochrome layer, matching round adaptive icon, and rounded-square in-app
-  variants for `ic_launcher_home` / `ic_launcher_home_comp`. The Play manifest now points at
-  `@mipmap/ic_launcher_home` and `@mipmap/ic_launcher_home_round`. No Nothing marks or assets.
-- Prior P2c run: Play-only `onboarding_welcome` now reads `Welcome to DotWel Launcher!` in the
-  default resource and in all 57 inherited locale configurations (the localized greeting is kept
-  and only the brand token is replaced). Play `derived_app_name` is set to `DotWel Launcher` via a
-  Play-gated variant-level `resValue`, so About/dialog text no longer says Lawnchair. github/nightly
-  keep their inherited strings and labels.
-- Prior P2c run: added `scripts/play-brand-guard.sh` and `scripts/play-brand-guard-test.sh`
-  (9/9 pass). The guard checks icon files/layers/colours, XML well-formedness, Play manifest icon
-  wiring, every locale override, the variant app-name override, absence of Nothing marks, and
-  preserved `NOTICE.md` attribution. Wired into `scripts/verify-play-build.sh`, which CI already
-  runs; no workflow file was edited.
-- Prior P2c run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 9/9;
-  `play-identity-guard.sh .` OK; identity tests 8/8; `manifest-guard-test.sh` all pass;
-  `verify-play-build-test.sh` 11/11; `sh -n` clean on every script; `git diff --check` clean; all 65
-  `play/res` XML files parse.
-- CI35 (`44898572590`) verified facts: real Gradle tests (4/4), merged-manifest guard, API 37
-  install, HOME label, HOME role and crash checks passed. Its screenshot was visually inspected and
-  still shows the inherited Lawnchair home surface. That is expected for P2c: this slice changes the
-  icon and brand text only, not the home layout.
-- PR8 merged to `main` at `4bd5c39`; PR7 merged the Play-only `play_app_name` label and the
-  identity/manifest guard suite. Prior P2a set the Play `applicationId` to
-  `com.launchernos.dotwellabs`; prior P1 work added the Play manifest overlay, private-space
-  permission, locked-profile search filter and component removals.
+  clean. The absolute-path guard run is the direct regression for CI53.
+- P2c rebrand verified by the coordinator: CI51 run `44903885094` on head `e6ea08b` was green with
+  4 actual Gradle tests plus the API 37 install, HOME, role and crash checks. The coordinator
+  inspected the artifacts and confirmed HOME reads `Welcome to DotWel Launcher` and About/app-info
+  show the correct dot-grid icons and `DotWel Launcher` name. This is recorded as coordinator
+  evidence, not re-run in this environment.
+- P3a: added `lawnchair/src/app/nothingui/theme` with an original monochrome palette
+  (`#0B0B0B` ink, `#F2F2F2` paper, neutral grays, the existing restrained `#D7261E` red accent),
+  semantic light/dark color tokens, a 4 dp spacing scale, motion durations/easings, and a Compose
+  `Typography` where Doto is limited to display and numeric styles while body/title/label styles
+  use `FontFamily.SansSerif`.
+- P3a: bundled Doto Regular 400 and Bold 700 as static TrueType resources
+  (`lawnchair/res/font/doto_regular.ttf`, `doto_bold.ttf`). They were generated from the official
+  Google Fonts variable font `ofl/doto/Doto[ROND,wght].ttf` at repo commit
+  `7380f7cebbf2250460c23fd301b51bcbab162edf`; glyphs are unchanged and only the axes are pinned.
+  The verbatim OFL 1.1 text is in `licenses/fonts/OFL-Doto.txt`; source, upstream commit, version,
+  derivation and SHA-256 hashes are in `licenses/fonts/doto.md`. No Nothing font or asset is used.
+- P3a: the theme is gated by `BuildConfig.NOTHINGUI_THEME_ENABLED`: false in `defaultConfig`, true
+  only in the `play` flavor. `NothingUiFeature.themeEnabled` exposes it and
+  `NothingUiThemeIfEnabled(fallback = ...)` requires an explicit non-Play fallback. The
+  github/nightly themes and resources were not changed; the shared font resources add size but are
+  not used by those channels.
+- P3a: added `NothingUiThemeSampleScreen` (stateless) plus dark/light `@Preview`s using the tokens,
+  and `tests/unit/java/app/nothingui/theme/NothingUiTokenTest.kt` for contrast targets, ordered
+  spacing/motion, the accent constant, Doto-only display/numeric styles, and display-vs-body sizes.
+- P3a: added `scripts/nothingui-theme-guard.sh` and wired it into `scripts/verify-play-build.sh`.
+  It checks the font magic bytes (not HTML), OFL text, attribution hashes, the default/Play/github/
+  nightly flag wiring, the `NothingUiFeature` gate, sans body wiring, and the sample/preview.
+- Prior P3a run verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh .` OK;
+  `play-brand-guard.sh .` OK; `play-identity-guard.sh .` OK; `manifest-guard-test.sh` all pass;
+  `play-identity-guard-test.sh` all pass; `play-brand-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on edited scripts; `git diff --check` clean;
+  standalone ktlint 1.8.0 clean on the new Kotlin files, and the compose ruleset clean except
+  `compositionlocal-allowlist`, which `build.gradle` explicitly disables. `file` and fontTools
+  confirmed real TrueType fonts at weights 400/700, 320 glyphs, no `fvar` table, and no HTML.
 
 ## next
 
-- A maintainer must approve the pending PR workflow runs. After approval, confirm the Play debug
-  manifest merge, the merged resource selection, and the API 37 emulator smoke pass; do not claim
-  them green before the run log exists.
-- Inspect the new smoke artifacts: `screenshot.png` (HOME evidence), `home.xml` plus
-  `home-welcome.txt` or `home-welcome-pending.txt`, `app-info.png` + `app-info.xml`, and `about.png`
-  + `about.xml` or `about-pending.txt`.
-- Confirm in the new HOME hierarchy that the welcome card reads `Welcome to DotWel Launcher!`, and in
-  `about.png` that the About icon is the dot grid, not the inherited colored Lawnchair icon.
-- Coordinator screenshot review using `docs/agent/p2c-icon-brand-visuals.md`: launcher/app-info
-  icon, About icon/title, onboarding welcome title, app label, round icon, and a github/nightly
-  control build. Static guards and the app-info screenshot alone cannot prove the About icon.
-- Private-space runtime UI gate: provision a private space manually, run
-  `scripts/private-space-check.sh`, then record the manual drawer/search/recents assertions. Keep
-  the gate pending until that evidence exists.
-- In-app `RoleManager.ROLE_HOME` onboarding prompt: still pending manual verification; the
-  emulator `cmd role` grant is a disposable stand-in, not the prompt.
-- P3 (theme/home surface) has not started. Do not begin it in this slice.
+- PR10 CI must be approved and run on the new head. Confirm:
+  - `verify-play-build` passes with the theme guard at 9/9;
+  - the unit-test XML still contains all 7 `NothingUiTokenTest` tests and the workflow's existing
+    4-predicate `LockedProfilePredicateTest` assertion, with 0 skipped;
+  - `api37-emulator-evidence` contains `theme-sample-dark.xml` + `.png` and
+    `theme-sample-light.xml` + `.png`, each XML exposing `DOTWEL`.
+- Visually re-review the dark/light PNGs: the dark sample must now show light status/nav icons on
+  the dark surface, the light sample must show dark icons, and the smoke's existing
+  `return_home theme-sample` check must still resume the launcher (bar state is per-window, so HOME
+  keeps its own bars). Static guards cannot prove the rendered contrast.
+- P3b (home/grid), the next slice:
+  - derive a 4×6 `DeviceProfile` override from `WindowMetrics` (Android 17 large-screen rule), with
+    no `resources.displayMetrics` math;
+  - wire `NothingUiThemeIfEnabled` into the Play home surface only, passing the inherited
+    `LawnchairTheme` as the fallback so github/nightly behavior is unchanged;
+  - add the monochrome icon treatment hook and dot-matrix page indicator;
+  - add Compose UI tests and `@Preview`s for the grid, and keep the existing workspace scroll free
+    of jank.
+- P4 (drawer) follows P3b: restyle the inherited all-apps surface, keep A–Z and search, and verify
+  profile filtering.
+- Pending gates before P3a can be called shipped:
+  - CI on PR10 must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
+    (including `NothingUiTokenTest`), `verify-play-build.sh` (including the theme guard), and the
+    API 37 emulator smoke. None of those Gradle/emulator runs happened here.
+  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed for
+    system-bar contrast as well as palette/typography.
+  - A non-Play control build is still pending.
+  - P1 private-space runtime UI (drawer/search/recents) is still unverified.
+  - P2 in-app `RoleManager.ROLE_HOME` onboarding prompt is still unverified; the emulator `cmd
+    role` grant is only a stand-in.
 
 ## blockers
 
+- P3a CI/visual evidence: CI62 (`44909523145`) on `e359a9a` produced the dark/light sample PNGs and
+  was green, but the dark sample had insufficient system-bar contrast. The fix is pushed on
+  `9d1e56e`; a new CI run must produce the PNGs and a coordinator must re-review them. No Gradle
+  build or emulator run was allowed in this environment, so the branch is statically verified only.
+- Scope: theme sample only; the actual HOME surface is not restyled. Private-space runtime UI,
+  the in-app `RoleManager` prompt and the non-Play runtime control remain pending.
+- PR10 approval: `gh` is unauthenticated here, so the pushed commits need a maintainer to approve
+  and run the PR workflow.
 - P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
   recents). A private space needs a secure lock screen and explicit provisioning; do not
   auto-create it.
 - P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
   grant verifies the system role, not the prompt.
-- P2c manifest gate: CI42 `44901579949` on `293f96e` was fully green, so the manifest merge is no
-  longer the blocker. The remaining P2c blocker is the runtime brand repair in this run, which has
-  not yet been proven by a new CI run.
-- P2c visual gate: screenshot review pending; static guards do not prove what a device renders.
-  CI42 proved the app-info icon/label and the About title, but the About icon and HOME welcome were
-  still wrong at that point.
-- About-screen smoke evidence: may be documented as pending if the deep link or UIAutomator
-  hierarchy is unavailable; it is not treated as a brand pass without the captured UI.
+- P2c visual gate: the coordinator verified HOME and About/app-info artifacts for CI51; the
+  non-Play runtime control build remains unverified.
 
 ## decisions locked
 
@@ -140,52 +164,85 @@ when no task input is given, and continues from "next".
 - Public Play listing name: OPEN, release blocker, do not guess or claim clearance.
 - Free models/services only. Cache heavy installs in workflows.
 
-## rulings this run
+## rulings (this run and prior P3a)
 
-- P2c: all icon artwork lives in `play/res` so github/nightly keep the inherited Lawnchair icon.
-  Cost if wrong: the Play overlay has its own icon maintenance burden and must keep all three
-  adaptive layers in sync.
-- P2c: the manifest uses `@mipmap` adaptive resources for the app icon and `@drawable` vectors for
-  in-app surfaces. This gives API 26+ adaptive/round resolution and a usable Compose/search image
-  without duplicating bitmaps. Cost if wrong: a future launcher surface that requires a bitmap
-  density variant needs legacy PNGs added.
-- P2c: locale overrides were generated by replacing the `Lawnchair` token in each upstream
-  `onboarding_welcome`, preserving the localized greeting. Cost if wrong: languages that inflect
-  the brand may read slightly unnaturally, but no locale falls back to the inherited name.
-- P2c: `derived_app_name` is overridden with a Play-gated variant-level `resValue`, because the
-  build-type `resValue` outranks flavor resources. Cost if wrong: a future AGP variant-API change
-  needs this block updated; the brand guard fails loudly if it disappears.
-- P2c: the brand guard is called from `verify-play-build.sh` rather than a workflow edit, because
-  `.github/workflows/` is off-limits this run. Cost if wrong: a future CI refactor that stops
-  calling `verify-play-build.sh` also drops the brand guard.
-- P2c repair: `tools:replace` lists both `android:label` and `android:icon` instead of removing
-  either attribute. The Play overlay still owns the label and icon; the base manifest values are
-  only discarded at merge time. Cost if wrong: a future base icon rename is invisible to the Play
-  overlay, but the brand guard still pins the Play resources.
-- P2c visual repair: `play/res` is owned by the `lawnWithQuickstepPlay` multi-flavor source set,
-  not the single `play` flavor. AGP gives the `app` (lawn) dimension higher priority than the
-  `channel` (play) dimension, so a single-flavor Play resource loses same-name lawn resources. A
-  multi-flavor source set outranks every single flavor. Cost if wrong: the source-set wiring is
-  unusual and the brand guard must keep asserting it; if AGP ever changes multi-flavor priority,
-  the smoke HOME/About evidence will fail loudly.
+- P3a repair: the forbidden-font check inspects lowercased basenames only. Cost if wrong: a
+  forbidden font hidden inside a directory name would not be caught, but fonts live flat in
+  `lawnchair/res/font` and the guard still checks the whole file list there.
+- P3a repair: the diagnostic route reuses the existing exported `PreferenceActivity` and an
+  explicit extra instead of adding a component. Cost if wrong: the extra is discoverable in debug
+  Play builds, but it is inert outside `BuildConfig.DEBUG` + Play and has no release exposure.
+- P3a repair: the smoke starts the sample with
+  `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_MULTIPLE_TASK` (`0x18000000`) so the extra is delivered
+  to a fresh instance. Cost if wrong: the sample task is separate from the HOME task and is
+  auto-removed from recents; if `am` ignores the flag on a future API the smoke fails rather than
+  silently reusing About.
+- P3a: the Play-only gate is a `BuildConfig` boolean (default false, true in the `play` flavor)
+  rather than a resource or a source-set split. Cost if wrong: the shared theme code still compiles
+  for github/nightly and the guard must keep asserting the flag; the font bytes add ~281 KB to
+  those APKs even though they are unused.
+- P3a: Doto is bundled as static 400/700 instances generated from the official variable font, not
+  as the variable font itself. Cost if wrong: a future display weight outside 400/700 needs another
+  static instance and an attribution hash update.
+- P3a: body/title/label text uses `FontFamily.SansSerif`, not a bundled font. Cost if wrong: the
+  launcher follows the platform sans rather than a fixed brand sans, which is intentional for
+  legibility and avoids another font license.
+- P3a: the safe gate requires a `fallback` slot, so a caller cannot silently render a blank
+  non-Play surface. Cost if wrong: future callers must supply the inherited theme explicitly.
+- P3a: the new theme guard is called from `verify-play-build.sh` rather than a workflow edit,
+  because `.github/workflows/` is off-limits. Cost if wrong: a future CI refactor that stops
+  calling `verify-play-build.sh` also drops the theme guard.
+- P3a system-bar repair: the diagnostic sample passes its own dark flag into `EdgeToEdge` and skips
+  the inherited early `enableEdgeToEdge()` call, so bar contrast follows the requested sample mode
+  and never the inherited system/preference theme. Normal settings keep the inherited path. Cost if
+  wrong: the sample's window setup is not byte-for-byte the settings sequence, so a settings-only
+  regression must still be caught by the normal-path guard and the smoke's `return_home
+  theme-sample` resume check.
+
+## prior rulings still binding (P2c)
+
+- Play resources live in the `lawnWithQuickstepPlay` multi-flavor source set, not the single
+  `play` flavor. `flavorDimensions` puts `app` (lawn) before `channel` (play), so a single-flavor
+  Play resource loses same-name lawn resources at merge time. The brand guard asserts the source
+  set ownership.
+- The Play manifest lists both `android:label` and `android:icon` in `tools:replace`; the overlay
+  owns both values and the base values are discarded at merge.
+- All Play icon artwork lives in `play/res`; github/nightly keep the inherited Lawnchair icon.
+  The Play icon is an original near-black/white/red dot grid, not a Nothing asset.
+- Play locale overrides replace only the `Lawnchair` brand token in `onboarding_welcome`.
+  `derived_app_name` is a Play-gated variant-level `resValue` because the build-type value outranks
+  flavor resources.
+- The brand guard is called from `verify-play-build.sh`, not a workflow file, so CI keeps it
+  without editing `.github/workflows/`.
 
 ## log
 
-- 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green, but inspected artifacts showed the
-  About icon still colored Lawnchair and the HOME welcome still `Welcome to Lawnchair`. Root cause:
-  single-flavor `play/res` loses same-name resources to the higher-priority `lawn` flavor. Moved
-  `play/res` to the `lawnWithQuickstepPlay` multi-flavor source set; extended the brand guard
-  (14/14) and the emulator smoke (HOME welcome XML assertion, About icon evidence preserved). New
-  CI run pending.
-- 2026-11-21: CI37 (`44900708538`) failed `processLawnWithQuickstepPlayDebugMainManifest`: base
-  `@drawable/ic_launcher_home` vs Play `@mipmap/ic_launcher_home` with only `android:label` in
-  `tools:replace`. Repaired the directive, added a guard regression (10/10) and extended the
-  emulator smoke with app-info and About evidence. Real CI re-run still pending.
-- 2026-11-21: P2c complete (static): original Play-only dot-grid icon, Play-only welcome/app-name
-  text, 57 locale overrides, variant-level `derived_app_name`, brand guard + tests, visual-review
-  doc. Non-Gradle suites green; screenshot review, private-space UI and RoleManager prompt pending.
-- 2026-11-21: CI35 (`44898572590`) green on the post-PR8 state: 4/4 Gradle tests, manifest, API 37
-  install/HOME label/role/crash checks; screenshot still inherited Lawnchair home.
+- 2026-11-21: P3a system-bar repair: CI62 (`44909523145`) on `e359a9a` was green (7 token + 4
+  predicate JUnit tests, 0 skipped) but the real dark sample kept dark status/nav icons. Root
+  cause: the sample branch used the inherited `EdgeToEdge()`/`enableEdgeToEdge()` theme preference
+  instead of the requested sample mode. Added an explicit `darkTheme` parameter, passed
+  `themeSampleDark` from the diagnostic branch, skipped the inherited early call there, and added
+  guard fixtures (9/9). Scope is the theme sample only; HOME is not restyled. New CI/pixel review
+  pending.
+- 2026-11-21: P3a repair/visual-evidence slice: reproduced and fixed the CI53 guard false positive
+  (full-path vs basename scan), added the `NothingOS-Launcher`/ndot regression suite, added the
+  DEBUG+Play diagnostic sample route, and extended the API 37 smoke to capture dark/light sample
+  XML+PNG and return HOME. Static checks green; PR10 CI and screenshot review pending.
+- 2026-11-21: P3a foundation implemented and pushed on
+  `agent/p3a-theme-foundation-only-star`: palette/spacing/motion/typography, Doto OFL assets,
+  Play-only `BuildConfig` gate, sample screen and previews, pure token tests, and a static theme
+  guard wired into `verify-play-build.sh`. Static checks green; branch CI and visual/device review
+  pending. Home/grid work is P3b.
+- 2026-11-21: P2c verified by the coordinator: CI51 (`44903885094`) on `e6ea08b` green with 4
+  Gradle tests and API 37 install/HOME/role/crash checks; HOME says `Welcome to DotWel Launcher`
+  and About/app-info show the dot-grid icon and name. Private-space UI, the in-app RoleManager
+  prompt and the non-Play runtime control remain unverified.
+- 2026-11-21: PR9 merged to `main` at `02ac058`; the P3a branch was cut from that merge.
+- 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green; the earlier About icon and HOME
+  welcome defects were repaired by moving `play/res` to the `lawnWithQuickstepPlay` multi-flavor
+  source set.
+- 2026-11-21: CI37 (`44900708538`) failed the Play manifest merge; the `android:icon`
+  `tools:replace` repair and its guard regression landed before PR9.
 - 2026-11-21: PR8 merged at `4bd5c39`; PR7 merged the Play label and guard suites.
 - 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + identity/authority
   guard + docs).

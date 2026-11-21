@@ -18,6 +18,9 @@
 #     fails if the hierarchy cannot be dumped at all
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
+#   - opens the debug-only Play theme sample through the existing
+#     PreferenceActivity plus an explicit extra, and captures dark/light UI XML
+#     and screenshots; the sample text must be present or the run fails
 #
 # It does NOT validate locked private-space behaviour. That needs a provisioned
 # private space with a secure lock screen; see scripts/private-space-check.sh.
@@ -68,6 +71,8 @@ EXPECTED_LABEL='DotWel Launcher'
 EXPECTED_SDK=37
 HOME_ROLE=android.app.role.HOME
 LAUNCHER_ACTIVITY=app.lawnchair.LawnchairLauncher
+THEME_SAMPLE_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
+THEME_SAMPLE_EXTRA=app.lawnchair.ui.preferences.THEME_SAMPLE
 
 if [ -z "$ARTIFACTS" ]; then
     ARTIFACTS="$ROOT/build/emulator-smoke/$(date +%Y%m%d-%H%M%S)"
@@ -192,6 +197,44 @@ capture_about() {
         printf 'About screen pending: UI hierarchy matched but screenshot capture failed.\n' \
             > "$ARTIFACTS/about-pending.txt"
     fi
+}
+
+# The theme sample is reachable only through the existing exported
+# PreferenceActivity and an explicit diagnostic extra. The extra is ignored
+# outside debug Play builds, so this exercises the real device rendering path.
+capture_theme_sample() {
+    mode=$1
+    # The About capture already used this activity. Force a fresh task so the
+    # new diagnostic extra is delivered to a new instance instead of the system
+    # merely bringing the existing About task to the front.
+    if ! sample_out=$(adb_cmd shell am start -W \
+        -f 0x18000000 \
+        -n "$PKG/$THEME_SAMPLE_ACTIVITY" \
+        --es "$THEME_SAMPLE_EXTRA" "$mode" 2>&1); then
+        printf '%s\n' "$sample_out" > "$ARTIFACTS/theme-sample-$mode-launch.txt"
+        fail "could not open the $mode theme sample"
+    fi
+    printf '%s\n' "$sample_out" > "$ARTIFACTS/theme-sample-$mode-launch.txt"
+    case "$sample_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "theme sample $mode launch reported an error"
+            ;;
+    esac
+    printf '%s\n' "$sample_out" | grep -q 'Status: ok' ||
+        fail "theme sample $mode launch did not report Status: ok"
+    sleep 2
+    capture_ui_xml "theme-sample-$mode.xml" ||
+        fail "theme sample $mode UI XML capture failed"
+    if ! grep -Fq 'DOTWEL' "$ARTIFACTS/theme-sample-$mode.xml"; then
+        fail "theme sample $mode UI XML does not expose the DOTWEL sample text"
+    fi
+    capture_screenshot_to "theme-sample-$mode.png"
+    [ -s "$ARTIFACTS/theme-sample-$mode.png" ] ||
+        fail "theme sample $mode screenshot capture failed"
+    printf 'Theme sample (%s): DOTWEL text is visible in the UI hierarchy.\n' \
+        "$mode" > "$ARTIFACTS/theme-sample-$mode.txt"
+    printf 'Screenshot: theme-sample-%s.png.\n' "$mode" \
+        >> "$ARTIFACTS/theme-sample-$mode.txt"
 }
 
 # The smartspace onboarding card reads onboarding_welcome. A clean install has
@@ -430,6 +473,9 @@ capture_app_info
 return_home app-info
 capture_about
 return_home about
+capture_theme_sample dark
+capture_theme_sample light
+return_home theme-sample
 
 capture_logcat
 [ -s "$ARTIFACTS/logcat.txt" ] || fail "logcat capture failed"
