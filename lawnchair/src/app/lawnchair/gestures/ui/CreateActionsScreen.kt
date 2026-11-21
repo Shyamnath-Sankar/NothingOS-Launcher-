@@ -15,6 +15,7 @@ import app.lawnchair.preferences2.preferenceManager2
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayoutLazyColumn
 import app.lawnchair.ui.preferences.components.layout.preferenceGroupItems
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import com.android.launcher3.R
 import kotlinx.coroutines.launch
 
@@ -28,7 +29,10 @@ fun CreateActionsScreen(
 
     val prefs2 = preferenceManager2()
     val newOptions =
-        filterGestureHandlerOptions(deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value)
+        filterGestureHandlerOptions(
+            deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value,
+            accessibilityEnabled = !isPlayStoreFlavor(),
+        )
 
     fun onClick(option: GestureHandlerOption) {
         scope.launch {
