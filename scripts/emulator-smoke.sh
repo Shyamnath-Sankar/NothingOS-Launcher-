@@ -15,6 +15,13 @@
 #   - dumps the actual HOME UIAutomator hierarchy and requires the rendered
 #     NothingUI clock and date text, with no inherited "Lawnchair" text; captures
 #     home.png as the actual-home visual evidence
+#   - opens the real Home screen grid preferences through the existing
+#     lawnchair://settings/home-screen-grid deep link, captures grid-settings.xml
+#     + .png, and requires the preview, Columns/Rows/Dock icons controls and a
+#     still-disabled Apply; it never applies a grid change
+#   - long-presses the measured empty central HOME workspace, captures the real
+#     options popup, taps Widgets by its bounds, and requires the native widget
+#     picker search/list (not HOME) before returning HOME
 #   - opens the inherited app drawer, captures its UI XML + screenshot, searches
 #     for Settings, taps the real clickable result, polls until the Settings
 #     activity is the exact resumed foreground, captures settings-launched.xml
@@ -77,7 +84,8 @@ EXPECTED_LABEL='DotWel Launcher'
 EXPECTED_SDK=37
 HOME_ROLE=android.app.role.HOME
 LAUNCHER_ACTIVITY=app.lawnchair.LawnchairLauncher
-THEME_SAMPLE_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
+PREFERENCES_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
+THEME_SAMPLE_ACTIVITY=$PREFERENCES_ACTIVITY
 THEME_SAMPLE_EXTRA=app.lawnchair.ui.preferences.THEME_SAMPLE
 
 if [ -z "$ARTIFACTS" ]; then
@@ -619,6 +627,148 @@ exercise_app_drawer() {
         fail "HOME screenshot capture after the app launch failed"
 }
 
+# Open the real Home screen grid preferences through the existing
+# lawnchair://settings/home-screen-grid deep link and the existing
+# PreferenceActivity. This is read-only: no slider is moved, Apply must still be
+# disabled, and the smoke never taps Apply.
+capture_grid_settings() {
+    _cgs_url='lawnchair://settings/home-screen-grid'
+    _cgs_component="$PKG/$PREFERENCES_ACTIVITY"
+    if ! _cgs_out=$(adb_cmd shell am start -W \
+        -a android.intent.action.VIEW \
+        -d "$_cgs_url" \
+        -n "$_cgs_component" 2>&1); then
+        printf '%s\n' "$_cgs_out" > "$ARTIFACTS/grid-settings-launch.txt"
+        fail "could not open the Home screen grid settings deep link"
+    fi
+    printf '%s\n' "$_cgs_out" > "$ARTIFACTS/grid-settings-launch.txt"
+    case "$_cgs_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "Home screen grid deep link launch reported an error"
+            ;;
+    esac
+    printf '%s\n' "$_cgs_out" | grep -q 'Status: ok' ||
+        fail "Home screen grid deep link launch did not report Status: ok"
+    _cgs_attempt=1
+    _cgs_ready=0
+    while [ "$_cgs_attempt" -le 6 ]; do
+        sleep 1
+        if capture_ui_xml "grid-settings-attempt-$_cgs_attempt.xml" &&
+            grid_settings_is_ready "$ARTIFACTS/grid-settings-attempt-$_cgs_attempt.xml"; then
+            cp "$ARTIFACTS/grid-settings-attempt-$_cgs_attempt.xml" \
+                "$ARTIFACTS/grid-settings.xml"
+            _cgs_ready=1
+            break
+        fi
+        _cgs_attempt=$((_cgs_attempt + 1))
+    done
+    [ "$_cgs_ready" -eq 1 ] ||
+        fail "Home screen grid settings did not expose the preview, Columns/Rows/Dock icons and Apply"
+    capture_screenshot_to grid-settings.png
+    [ -s "$ARTIFACTS/grid-settings.png" ] ||
+        fail "Home screen grid settings screenshot capture failed"
+    grid_apply_is_unchanged "$ARTIFACTS/grid-settings.xml" ||
+        fail "Home screen grid Apply is enabled, so the read-only grid check cannot prove no change was applied"
+    printf 'Grid settings: preview, Columns, Rows, Dock icons and Apply are visible; Apply is disabled, so no grid change was applied.\n' \
+        > "$ARTIFACTS/grid-settings.txt"
+    printf 'Screenshots: grid-settings.png.\n' >> "$ARTIFACTS/grid-settings.txt"
+    return_home grid-settings
+    verify_nothing_home
+}
+
+# Long-press the empty central HOME workspace with a real gesture, open the real
+# options popup, tap Widgets by its measured bounds, and require the native widget
+# picker search/list. No activity is started directly and no preference is
+# written. Every wait is a bounded UIAutomator readiness poll.
+capture_widgets_picker() {
+    : > "$ARTIFACTS/widgets-longpress-log.txt"
+    _cwp_max_attempts=3
+    _cwp_attempt=1
+    while [ "$_cwp_attempt" -le "$_cwp_max_attempts" ]; do
+        wait_for_launcher_idle "$ARTIFACTS/widgets-launcher-idle-$_cwp_attempt.txt" 10 ||
+            fail "launcher was not idle before widgets long-press attempt $_cwp_attempt"
+        capture_ui_xml "home-before-widgets-attempt-$_cwp_attempt.xml" ||
+            fail "could not capture HOME before widgets attempt $_cwp_attempt"
+        capture_screenshot_to "home-before-widgets-attempt-$_cwp_attempt.png"
+        _cwp_target=$(home_longpress_target \
+            "$ARTIFACTS/home-before-widgets-attempt-$_cwp_attempt.xml") ||
+            fail "could not compute an empty HOME long-press target on attempt $_cwp_attempt"
+        set -- $_cwp_target
+        printf 'attempt=%s longpress=%s,%s duration=1000\n' \
+            "$_cwp_attempt" "$1" "$2" >> "$ARTIFACTS/widgets-longpress-log.txt"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$2" 1000 \
+            > "$ARTIFACTS/widgets-longpress-$_cwp_attempt.txt" 2>&1 ||
+            fail "could not long-press the HOME workspace on attempt $_cwp_attempt"
+
+        _cwp_popup=
+        _cwp_poll=1
+        while [ "$_cwp_poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml "home-popup-attempt-$_cwp_attempt-$_cwp_poll.xml" &&
+                home_popup_is_ready \
+                    "$ARTIFACTS/home-popup-attempt-$_cwp_attempt-$_cwp_poll.xml"; then
+                _cwp_popup="$ARTIFACTS/home-popup-attempt-$_cwp_attempt-$_cwp_poll.xml"
+                break
+            fi
+            _cwp_poll=$((_cwp_poll + 1))
+        done
+
+        if [ -n "$_cwp_popup" ]; then
+            cp "$_cwp_popup" "$ARTIFACTS/home-popup.xml"
+            capture_screenshot_to home-popup.png
+            [ -s "$ARTIFACTS/home-popup.png" ] ||
+                fail "HOME long-press popup screenshot capture failed"
+            _cwp_widgets_bounds=$(ui_clickable_label_bounds \
+                "$ARTIFACTS/home-popup.xml" 'Widgets')
+            [ -n "$_cwp_widgets_bounds" ] ||
+                fail "could not find the Widgets option bounds in the real HOME popup"
+            tap_center_of_bounds "$_cwp_widgets_bounds" ||
+                fail "could not tap the Widgets option in the real HOME popup"
+
+            _cwp_picker=
+            _cwp_picker_poll=1
+            while [ "$_cwp_picker_poll" -le 8 ]; do
+                sleep 1
+                if capture_ui_xml "widgets-picker-attempt-$_cwp_attempt-$_cwp_picker_poll.xml" &&
+                    widget_picker_is_ready \
+                        "$ARTIFACTS/widgets-picker-attempt-$_cwp_attempt-$_cwp_picker_poll.xml" \
+                        "$ARTIFACTS/home-before-widgets-attempt-$_cwp_attempt.xml"; then
+                    _cwp_picker="$ARTIFACTS/widgets-picker-attempt-$_cwp_attempt-$_cwp_picker_poll.xml"
+                    break
+                fi
+                _cwp_picker_poll=$((_cwp_picker_poll + 1))
+            done
+
+            if [ -n "$_cwp_picker" ]; then
+                cp "$_cwp_picker" "$ARTIFACTS/widgets-picker.xml"
+                capture_screenshot_to widgets-picker.png
+                [ -s "$ARTIFACTS/widgets-picker.png" ] ||
+                    fail "widget picker screenshot capture failed"
+                printf 'Widgets: the real HOME long-press popup was opened, Widgets was tapped by its bounds, and the native picker search/list is visible (not HOME).\n' \
+                    > "$ARTIFACTS/widgets-picker.txt"
+                printf 'Screenshots: home-popup.png, widgets-picker.png.\n' \
+                    >> "$ARTIFACTS/widgets-picker.txt"
+                return_home widgets-picker
+                verify_nothing_home
+                return 0
+            fi
+            printf 'attempt=%s widgets-picker-not-ready; returning HOME\n' \
+                "$_cwp_attempt" >> "$ARTIFACTS/widgets-longpress-log.txt"
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                >> "$ARTIFACTS/widgets-longpress-log.txt" 2>&1 || true
+            sleep 1
+        else
+            printf 'attempt=%s home-popup-not-ready; returning HOME\n' \
+                "$_cwp_attempt" >> "$ARTIFACTS/widgets-longpress-log.txt"
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                >> "$ARTIFACTS/widgets-longpress-log.txt" 2>&1 || true
+            sleep 1
+        fi
+        _cwp_attempt=$((_cwp_attempt + 1))
+    done
+    fail "the real HOME long-press did not open the Widgets picker after $_cwp_max_attempts bounded attempts"
+}
+
 fail() {
     printf 'emulator-smoke: FAIL: %s\n' "$*" >&2
     if command -v adb >/dev/null 2>&1; then
@@ -845,6 +995,8 @@ capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
 
 verify_nothing_home
+capture_grid_settings
+capture_widgets_picker
 exercise_app_drawer
 
 capture_app_info

@@ -439,3 +439,208 @@ ui_clickable_label_bounds() (
             }
         '
 )
+
+# Print the bottom y of the workspace header search container above the measured
+# dock. This is the smartspace/header band on the actual HOME; the empty central
+# workspace starts below it. Prints nothing when no such container is exposed.
+ui_header_bottom() (
+    xml=$1
+    dock_top=${2:-}
+    [ -s "$xml" ] || return 0
+    case "$dock_top" in '' | *[!0-9]*) return 0 ;; esac
+    tr '>' '\n' < "$xml" |
+        awk -v dock_top="$dock_top" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                if (rid !~ /(^|\/)search_container_workspace$/) next
+                bounds = attr($0, "bounds")
+                if (bounds == "") next
+                y1 = y_of(bounds, 2)
+                y2 = y_of(bounds, 4)
+                if (y1 < dock_top && y2 > best) best = y2
+            }
+            END {
+                if (best > 0) print best
+            }
+        '
+)
+
+# Succeed when the point ($2,$3) is not inside a labelled clickable node. This
+# keeps the HOME long-press on empty workspace instead of an app icon, folder or
+# widget that would open an item-specific menu.
+ui_point_is_free() (
+    xml=$1
+    px=$2
+    py=$3
+    [ -s "$xml" ] || return 1
+    case "$px" in '' | *[!0-9]*) return 1 ;; esac
+    case "$py" in '' | *[!0-9]*) return 1 ;; esac
+    occupied=$(tr '>' '\n' < "$xml" |
+        awk -v px="$px" -v py="$py" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "clickable") != "true") next
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text == "" && desc == "") next
+                bounds = attr($0, "bounds")
+                if (bounds == "") next
+                x1 = v_of(bounds, 1)
+                y1 = v_of(bounds, 2)
+                x2 = v_of(bounds, 3)
+                y2 = v_of(bounds, 4)
+                if (px >= x1 && px <= x2 && py >= y1 && py <= y2) {
+                    print "occupied"
+                    exit
+                }
+            }
+        ')
+    [ -z "$occupied" ]
+)
+
+# Compute a real long-press point in the empty central HOME workspace. The band
+# is bounded by the measured header bottom and dock top, so it never lands on the
+# header, dock icons or the bottom QSB. Candidate points walk away from the exact
+# centre when a labelled clickable item occupies it. Prints "x y".
+home_longpress_target() (
+    xml=$1
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 1
+    set -- $root
+    rx1=$1
+    ry1=$2
+    rx2=$3
+    ry2=$4
+    width=$((rx2 - rx1))
+    height=$((ry2 - ry1))
+    [ "$width" -gt 0 ] && [ "$height" -gt 0 ] || return 1
+    dock_top=$(ui_dock_top "$xml" "$root")
+    [ -n "$dock_top" ] || dock_top=$((ry1 + height * 85 / 100))
+    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
+    [ -n "$header_bottom" ] || header_bottom=$((ry1 + height * 15 / 100))
+    margin=$((height * 4 / 100))
+    band_top=$((header_bottom + margin))
+    band_bottom=$((dock_top - margin))
+    [ "$band_bottom" -gt "$band_top" ] || return 1
+    x=$((rx1 + width / 2))
+    band=$((band_bottom - band_top))
+    for pct in 50 60 70 40 30 80 20; do
+        y=$((band_top + band * pct / 100))
+        if ui_point_is_free "$xml" "$x" "$y"; then
+            printf '%s %s\n' "$x" "$y"
+            return 0
+        fi
+    done
+    printf '%s %s\n' "$x" "$((band_top + band / 2))"
+)
+
+# Succeed only when the captured Home screen grid preferences expose the real
+# preview, the Columns/Rows/Dock icons controls and Apply. The sliders must be
+# actual accessibility SeekBar nodes, not merely the English labels.
+grid_settings_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    grep -Fq 'text="Home screen grid"' "$xml" || return 1
+    for label in Columns Rows 'Dock icons' Apply; do
+        grep -Fq "text=\"$label\"" "$xml" || return 1
+    done
+    sliders=$(grep -o 'class="android.widget.SeekBar"' "$xml" | wc -l | tr -d ' ')
+    [ "$sliders" -ge 3 ] || return 1
+    grep -Eq 'class="[^"]*(LauncherPreviewView|LauncherPreviewLayout)[^"]*"' "$xml" ||
+        return 1
+    return 0
+)
+
+# Succeed only when Apply is still a real disabled Button. The grid smoke is
+# read-only: an enabled Apply would mean a grid change is staged and must fail.
+grid_apply_is_unchanged() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    node=$(tr '>' '\n' < "$xml" | grep -F 'text="Apply"' | sed -n '1p')
+    [ -n "$node" ] || return 1
+    printf '%s\n' "$node" | grep -Fq 'class="android.widget.Button"' || return 1
+    printf '%s\n' "$node" | grep -Fq 'enabled="false"' || return 1
+    printf '%s\n' "$node" | grep -Fq 'bounds="[' || return 1
+    return 0
+)
+
+# Succeed only when the real HOME long-press options popup is open. The
+# OptionsPopupView/DeepShortcutView class plus the Widgets item and a home-level
+# option reject an item-specific menu or a page that merely contains the word
+# "Widgets".
+home_popup_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    if ! grep -Fq 'class="com.android.launcher3.views.OptionsPopupView"' "$xml" &&
+        ! grep -Fq 'class="com.android.launcher3.shortcuts.DeepShortcutView"' "$xml"; then
+        return 1
+    fi
+    grep -Fq 'text="Widgets"' "$xml" || return 1
+    grep -Fq 'text="Home settings"' "$xml" ||
+        grep -Fq 'text="Edit home screen"' "$xml" ||
+        grep -Fq 'text="Wallpapers"' "$xml" ||
+        grep -Fq 'text="Wallpaper &amp; style"' "$xml" ||
+        return 1
+    return 0
+)
+
+# Succeed only when the native widget picker search/list is visible and differs
+# from the pre-long-press HOME. The refactored Compose picker exposes the
+# widgets_catalog test tag; the inherited picker exposes its search bar and
+# widget list resource ids. A HOME page that happens to contain "Search" is not
+# accepted.
+widget_picker_is_ready() (
+    xml=$1
+    reference=${2:-}
+    [ -s "$xml" ] || return 1
+    if [ -n "$reference" ] && cmp -s "$reference" "$xml"; then
+        return 1
+    fi
+    if grep -Fq 'com.android.launcher3.widgetpicker:id/widgets_catalog' "$xml"; then
+        if grep -Fq 'text="Search"' "$xml" ||
+            grep -Fq 'text="Featured"' "$xml" ||
+            grep -Fq 'text="Browse"' "$xml"; then
+            return 0
+        fi
+    fi
+    if grep -Eq 'resource-id="[^"]*/(widgets_search_bar|search_bar_container)"' "$xml" &&
+        grep -Eq 'resource-id="[^"]*/(primary_widgets_list_view|search_widgets_list_view)"' "$xml"; then
+        return 0
+    fi
+    return 1
+)

@@ -330,6 +330,186 @@ EOF
 assert_false 'an unrelated label does not make the drawer ready' \
     drawer_is_ready "$unrelated_xml"
 
+# --- grid settings fixtures -------------------------------------------------
+
+grid_xml="$TMP_DIR/grid-settings.xml"
+cat > "$grid_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="Home screen grid" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,80][500,140]" />
+    <node index="1" text="" class="app.lawnchair.views.LauncherPreviewView" content-desc="" clickable="false" bounds="[40,180][1040,900]" />
+    <node index="2" text="Columns" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,980][300,1040]" />
+    <node index="3" text="4" class="android.widget.TextView" content-desc="" clickable="false" bounds="[900,980][1040,1040]" />
+    <node index="4" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1050][1040,1100]" />
+    <node index="5" text="Rows" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,1120][300,1180]" />
+    <node index="6" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1190][1040,1240]" />
+    <node index="7" text="Dock icons" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,1260][300,1320]" />
+    <node index="8" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1330][1040,1380]" />
+    <node index="9" text="Apply" class="android.widget.Button" content-desc="" clickable="true" enabled="false" bounds="[40,1700][1040,1800]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'the real grid settings expose the preview, labels, three sliders and Apply' \
+    grid_settings_is_ready "$grid_xml"
+assert_true 'the grid settings Apply is still disabled, so no change is staged' \
+    grid_apply_is_unchanged "$grid_xml"
+
+grid_no_preview="$TMP_DIR/grid-no-preview.xml"
+sed 's/class="app.lawnchair.views.LauncherPreviewView"/class="android.view.View"/' \
+    "$grid_xml" > "$grid_no_preview"
+assert_false 'a grid settings page without the real preview is rejected' \
+    grid_settings_is_ready "$grid_no_preview"
+
+grid_no_columns="$TMP_DIR/grid-no-columns.xml"
+sed '/text="Columns"/d' "$grid_xml" > "$grid_no_columns"
+assert_false 'a grid settings page without Columns is rejected' \
+    grid_settings_is_ready "$grid_no_columns"
+
+grid_two_sliders="$TMP_DIR/grid-two-sliders.xml"
+sed '0,/class="android.widget.SeekBar"/s//class="android.view.View"/' \
+    "$grid_xml" > "$grid_two_sliders"
+assert_false 'a grid settings page with fewer than three sliders is rejected' \
+    grid_settings_is_ready "$grid_two_sliders"
+
+grid_apply_enabled="$TMP_DIR/grid-apply-enabled.xml"
+sed '/text="Apply"/s/enabled="false"/enabled="true"/' \
+    "$grid_xml" > "$grid_apply_enabled"
+assert_false 'an enabled Apply is rejected because it means a grid change is staged' \
+    grid_apply_is_unchanged "$grid_apply_enabled"
+
+grid_apply_missing="$TMP_DIR/grid-apply-missing.xml"
+sed '/text="Apply"/d' "$grid_xml" > "$grid_apply_missing"
+assert_false 'a grid settings page without Apply is rejected' \
+    grid_apply_is_unchanged "$grid_apply_missing"
+
+# --- HOME long-press and widget picker fixtures ----------------------------
+
+popup_xml="$TMP_DIR/home-popup.xml"
+cat > "$popup_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.views.OptionsPopupView" content-desc="" clickable="false" bounds="[100,800][980,1400]">
+    <node index="0" text="Edit home screen" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,800][980,950]" />
+    <node index="1" text="Wallpapers" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,950][980,1100]" />
+    <node index="2" text="Widgets" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,1100][980,1250]" />
+    <node index="3" text="Home settings" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,1250][980,1400]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'the real HOME options popup with Widgets and a home-level option is ready' \
+    home_popup_is_ready "$popup_xml"
+assert_eq 'the Widgets option bounds are measured from the popup' \
+    '100 1100 980 1250' \
+    "$(ui_clickable_label_bounds "$popup_xml" Widgets)"
+
+popup_no_class="$TMP_DIR/home-popup-no-class.xml"
+sed 's/class="com.android.launcher3.views.OptionsPopupView"/class="android.widget.FrameLayout"/' \
+    "$popup_xml" > "$popup_no_class"
+assert_false 'English Widgets text without the real options popup class is rejected' \
+    home_popup_is_ready "$popup_no_class"
+
+popup_no_widgets="$TMP_DIR/home-popup-no-widgets.xml"
+sed '/text="Widgets"/d' "$popup_xml" > "$popup_no_widgets"
+assert_false 'a HOME popup without Widgets is rejected' \
+    home_popup_is_ready "$popup_no_widgets"
+
+popup_app_specific="$TMP_DIR/home-popup-app-specific.xml"
+cat > "$popup_app_specific" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.views.OptionsPopupView" bounds="[100,800][980,1400]">
+    <node index="0" text="App info" class="android.widget.TextView" clickable="true" bounds="[100,800][980,950]" />
+    <node index="1" text="Widgets" class="android.widget.TextView" clickable="true" bounds="[100,950][980,1100]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'an item-specific popup with Widgets but no home-level option is rejected' \
+    home_popup_is_ready "$popup_app_specific"
+
+picker_new_xml="$TMP_DIR/widgets-picker-new.xml"
+cat > "$picker_new_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.android.launcher3.widgetpicker:id/widgets_catalog" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,200][1080,1920]">
+    <node index="0" text="Search" class="android.widget.TextView" content-desc="" clickable="true" bounds="[80,260][1000,360]" />
+    <node index="1" text="Featured" class="android.widget.TextView" content-desc="" clickable="true" bounds="[80,380][500,460]" />
+    <node index="2" text="Browse" class="android.widget.TextView" content-desc="" clickable="true" bounds="[520,380][1000,460]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'the refactored native picker with its catalog tag and search/list is ready' \
+    widget_picker_is_ready "$picker_new_xml" "$home_xml"
+assert_false 'an identical reference HOME is not a widget picker' \
+    widget_picker_is_ready "$picker_new_xml" "$picker_new_xml"
+
+picker_old_xml="$TMP_DIR/widgets-picker-old.xml"
+cat > "$picker_old_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.LinearLayout" bounds="[0,200][1080,360]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar" class="com.android.launcher3.widget.picker.search.LauncherWidgetsSearchBar" bounds="[40,220][1040,340]" />
+  </node>
+  <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,380][1080,1920]" />
+</hierarchy>
+EOF
+assert_true 'the inherited native picker with its search bar and widget list is ready' \
+    widget_picker_is_ready "$picker_old_xml" "$home_xml"
+
+picker_loose_xml="$TMP_DIR/widgets-picker-loose.xml"
+cat > "$picker_loose_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Search" class="android.widget.TextView" clickable="true" bounds="[0,0][1080,100]" />
+  <node index="1" text="Widgets" class="android.widget.TextView" clickable="true" bounds="[0,100][1080,200]" />
+</hierarchy>
+EOF
+assert_false 'English Search and Widgets text without a native picker marker is rejected' \
+    widget_picker_is_ready "$picker_loose_xml" "$home_xml"
+
+picker_no_search="$TMP_DIR/widgets-picker-no-search.xml"
+sed '/text="Search"/d; /text="Featured"/d; /text="Browse"/d' \
+    "$picker_new_xml" > "$picker_no_search"
+assert_false 'a catalog tag without a search or list control is rejected' \
+    widget_picker_is_ready "$picker_no_search" "$home_xml"
+
+picker_old_no_list="$TMP_DIR/widgets-picker-old-no-list.xml"
+sed '/primary_widgets_list_view/d' "$picker_old_xml" > "$picker_old_no_list"
+assert_false 'an inherited search bar without the widget list is rejected' \
+    widget_picker_is_ready "$picker_old_no_list" "$home_xml"
+
+# --- HOME long-press geometry fixtures -------------------------------------
+
+assert_eq 'the HOME long-press target is the empty centre between header and dock' \
+    '540 834' \
+    "$(home_longpress_target "$actual_home_xml")"
+longpress_target=$(home_longpress_target "$actual_home_xml")
+longpress_y=$(printf '%s\n' "$longpress_target" | awk '{ print $2 }')
+if [ "$longpress_y" -gt 294 ] && [ "$longpress_y" -lt 1375 ]; then
+    pass 'the HOME long-press target avoids the header and dock bands'
+else
+    fail "the HOME long-press target $longpress_y is not between the header and dock"
+fi
+assert_true 'the measured HOME centre is free of labelled clickable items' \
+    ui_point_is_free "$actual_home_xml" 540 834
+
+occupied_home_xml="$TMP_DIR/occupied-home.xml"
+awk '
+    /<node index="6"/ && !done {
+        print "    <node index=\"7\" text=\"Play Store\" class=\"android.widget.TextView\" content-desc=\"\" clickable=\"true\" bounds=\"[400,700][700,900]\" />"
+        done = 1
+    }
+    { print }
+' "$actual_home_xml" > "$occupied_home_xml"
+assert_false 'a labelled clickable item at the centre is not free' \
+    ui_point_is_free "$occupied_home_xml" 540 834
+assert_eq 'the HOME long-press walks away from an occupied centre' \
+    '540 927' \
+    "$(home_longpress_target "$occupied_home_xml")"
+
+empty_xml="$TMP_DIR/empty.xml"
+printf '<hierarchy rotation="0"></hierarchy>\n' > "$empty_xml"
+assert_false 'an empty hierarchy cannot produce a HOME long-press target' \
+    home_longpress_target "$empty_xml"
+
 # --- static regression on the smoke flow -----------------------------------
 
 drawer_body="$TMP_DIR/exercise_app_drawer.sh"
@@ -432,6 +612,92 @@ if [ -n "$consent_call_line" ] && [ -n "$grant_line" ] &&
 else
     fail 'the consent capture runs before the smoke grants the role'
 fi
+
+# --- static regression on the real grid and widget-picker capture ----------
+
+grid_body="$TMP_DIR/capture_grid_settings.sh"
+sed -n '/^capture_grid_settings() {/,/^}/p' "$SMOKE" > "$grid_body"
+
+widgets_body="$TMP_DIR/capture_widgets_picker.sh"
+sed -n '/^capture_widgets_picker() {/,/^}/p' "$SMOKE" > "$widgets_body"
+
+assert_true 'the grid capture uses the real Home screen grid deep link' \
+    grep -Fq 'lawnchair://settings/home-screen-grid' "$grid_body"
+assert_true 'the grid capture uses the existing PreferenceActivity' \
+    grep -Fq '_cgs_component="$PKG/$PREFERENCES_ACTIVITY"' "$grid_body"
+assert_true 'the grid capture starts the existing activity with the deep link data' \
+    grep -Fq 'am start -W' "$grid_body"
+assert_true 'the grid capture passes the deep link URI to am start' \
+    grep -Fq -- '-d "$_cgs_url"' "$grid_body"
+assert_true 'the grid capture stores grid-settings.xml evidence' \
+    grep -Fq 'grid-settings.xml' "$grid_body"
+assert_true 'the grid capture stores grid-settings.png evidence' \
+    grep -Fq 'grid-settings.png' "$grid_body"
+assert_true 'the grid capture asserts the real grid readiness helper' \
+    grep -Fq 'grid_settings_is_ready' "$grid_body"
+assert_true 'the grid capture proves Apply is still disabled' \
+    grep -Fq 'grid_apply_is_unchanged' "$grid_body"
+assert_false 'the grid capture never taps a control or Apply' \
+    grep -Fq 'tap_center_of_bounds' "$grid_body"
+assert_false 'the grid capture never writes a preference' \
+    grep -Eq 'settings put|shared_prefs|onChange|prefs\.' "$grid_body"
+assert_true 'the grid capture returns HOME after the read-only screen' \
+    grep -Fq 'return_home grid-settings' "$grid_body"
+assert_true 'the grid capture re-verifies the actual HOME' \
+    grep -Fq 'verify_nothing_home' "$grid_body"
+
+assert_true 'the widgets capture uses a real long-press gesture' \
+    grep -Fq 'input swipe "$1" "$2" "$1" "$2" 1000' "$widgets_body"
+assert_true 'the widgets capture measures the empty target from HOME' \
+    grep -Fq 'home_longpress_target' "$widgets_body"
+assert_true 'the widgets capture selects Widgets by measured bounds' \
+    grep -Fq 'ui_clickable_label_bounds' "$widgets_body"
+assert_true 'the widgets capture uses the real Widgets option label' \
+    grep -Fq "'Widgets'" "$widgets_body"
+assert_true 'the widgets capture requires the real HOME popup' \
+    grep -Fq 'home_popup_is_ready' "$widgets_body"
+assert_true 'the widgets capture requires the native picker and not HOME' \
+    grep -Fq 'widget_picker_is_ready' "$widgets_body"
+assert_true 'the widgets capture compares the picker against the pre-long-press HOME' \
+    grep -Fq 'home-before-widgets-attempt' "$widgets_body"
+assert_true 'the widgets capture stores home-popup.xml evidence' \
+    grep -Fq 'home-popup.xml' "$widgets_body"
+assert_true 'the widgets capture stores widgets-picker.xml evidence' \
+    grep -Fq 'widgets-picker.xml' "$widgets_body"
+assert_true 'the widgets capture stores home-popup.png evidence' \
+    grep -Fq 'home-popup.png' "$widgets_body"
+assert_true 'the widgets capture stores widgets-picker.png evidence' \
+    grep -Fq 'widgets-picker.png' "$widgets_body"
+assert_false 'the widgets capture never starts the picker activity directly' \
+    grep -Fq 'am start' "$widgets_body"
+assert_false 'the widgets capture never writes a preference' \
+    grep -Eq 'settings put|shared_prefs|onChange|prefs\.' "$widgets_body"
+assert_true 'the widgets capture returns HOME after the picker' \
+    grep -Fq 'return_home widgets-picker' "$widgets_body"
+assert_true 'the widgets capture re-verifies the actual HOME' \
+    grep -Fq 'verify_nothing_home' "$widgets_body"
+assert_true 'the widgets capture is bounded' \
+    grep -Fq '_cwp_max_attempts=3' "$widgets_body"
+
+grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')
+widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')
+drawer_call_line=$(grep -n '^exercise_app_drawer$' "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$grid_call_line" ] && [ -n "$widgets_call_line" ] && [ -n "$drawer_call_line" ] &&
+    [ "$grid_call_line" -lt "$widgets_call_line" ] &&
+    [ "$widgets_call_line" -lt "$drawer_call_line" ]; then
+    pass 'the grid and widget captures run before the existing drawer flow'
+else
+    fail 'the grid and widget captures run before the existing drawer flow'
+fi
+
+assert_true 'the role consent cancel flow is still present' \
+    grep -Fq 'verify_default_home_consent' "$SMOKE"
+assert_true 'the drawer still uses the bounded 1500 ms swipe' \
+    grep -Fq 'swipe_duration=1500' "$SMOKE"
+assert_true 'the drawer still has four bounded attempts' \
+    grep -Fq 'max_attempts=4' "$SMOKE"
+assert_true 'the exact Settings foreground check is still present' \
+    grep -Fq 'wait_for_foreground com.android.settings' "$SMOKE"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
