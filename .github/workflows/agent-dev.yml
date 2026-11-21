@@ -48,11 +48,19 @@ jobs:
             ~/.config/opencode
             ~/.local/share/opencode
             ~/.npm
-          key: opencode-1.19.6-superpowers-7.0.2-v1
+            ~/.npm-global
+          key: opencode-1.19.6-superpowers-7.0.2-v2
           restore-keys: opencode-1.19.6-superpowers-
 
       - name: Install OpenCode
-        run: npm install -g opencode-ai@$OPENCODE_VERSION
+        run: |
+          npm config set prefix "$HOME/.npm-global"
+          echo "$HOME/.npm-global/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.npm-global/bin:$PATH"
+          if [ ! -x "$HOME/.npm-global/bin/opencode" ]; then
+            npm install -g opencode-ai@$OPENCODE_VERSION
+          fi
+          opencode --version || true
 
       - name: Verify Superpowers plugin loads
         id: verify
@@ -197,7 +205,8 @@ jobs:
         run: |
           BR="${{ steps.pick.outputs.branch }}"
           git fetch origin "$BR" || true
-          EXISTING=$(gh pr list --head "$BR" --state open --json number --jq '.[0].number' || true)
+          gh auth status || true
+          EXISTING=$(gh pr list --head "$BR" --json number --jq '.[0].number' || true)
           if [ -z "$EXISTING" ]; then
             if [ "$(git rev-parse origin/$BR 2>/dev/null)" != "$(git rev-parse origin/main)" ]; then
               URL=$(gh pr create --base main --head "$BR" \
