@@ -95,7 +95,7 @@ public abstract class AbstractStateChangeTouchController
             mNoIntercept = !canInterceptTouch(ev);
             if (mNoIntercept) {
                 DotwelDrawerTrace.log("intercept action=DOWN decision=skip state="
-                        + mLauncher.getStateManager().getState().name);
+                        + stateName(mLauncher.getStateManager().getState()));
                 return false;
             }
 
@@ -121,19 +121,19 @@ public abstract class AbstractStateChangeTouchController
                         || ignoreWhenShownBehindDesktop) {
                     mNoIntercept = true;
                     DotwelDrawerTrace.log("intercept action=DOWN decision=skip reason=no-direction"
-                            + " state=" + mLauncher.getStateManager().getState().name);
+                            + " state=" + stateName(mLauncher.getStateManager().getState()));
                     return false;
                 }
             }
             mDetector.setDetectableScrollConditions(
                     directionsToDetectScroll, ignoreSlopWhenSettling);
             DotwelDrawerTrace.log("intercept action=DOWN decision=accept state="
-                    + mLauncher.getStateManager().getState().name
+                    + stateName(mLauncher.getStateManager().getState())
                     + " directions=" + directionsToDetectScroll);
         } else if (ev.getAction() == MotionEvent.ACTION_UP) {
             DotwelDrawerTrace.log("intercept action=UP noIntercept=" + mNoIntercept
                     + " draggingOrSettling=" + mDetector.isDraggingOrSettling()
-                    + " state=" + mLauncher.getStateManager().getState().name);
+                    + " state=" + stateName(mLauncher.getStateManager().getState()));
         }
 
         if (mNoIntercept) {
@@ -484,6 +484,6 @@ public abstract class AbstractStateChangeTouchController
     }
 
     private static String stateName(LauncherState state) {
-        return state == null ? "null" : state.name;
+        return state == null ? "null" : state.toString();
     }
 }

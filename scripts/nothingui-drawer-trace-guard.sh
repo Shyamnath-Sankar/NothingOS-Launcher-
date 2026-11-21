@@ -67,6 +67,12 @@ if grep -Fq 'ACTION_MOVE' "$CONTROLLER_FILE"; then
     fail "the state-change controller must not log per-MOVE events"
 fi
 
+for file in "$LAUNCHER_FILE" "$CONTROLLER_FILE"; do
+    if grep -En '\.name([^A-Za-z0-9_(]|$)' "$file" >/dev/null; then
+        fail "invalid .name field access in $file; call name()/toString() instead"
+    fi
+done
+
 grep -Fq 'logcat -d -s DotwelDrawerTrace' "$SMOKE_FILE" ||
     fail "the smoke script does not capture the DotwelDrawerTrace tag"
 grep -Fq 'capture_drawer_trace "$attempt"' "$SMOKE_FILE" ||

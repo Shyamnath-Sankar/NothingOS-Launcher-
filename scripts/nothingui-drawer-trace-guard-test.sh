@@ -129,6 +129,45 @@ clean="$TMP_DIR/clean"
 write_fixture "$clean"
 expect_pass 'clean debug Play-gated trace fixture passes' "$clean"
 
+bad_nav="$TMP_DIR/bad-nav"
+cp -R "$clean" "$bad_nav"
+write_file "$bad_nav/src/com/android/launcher3/Launcher.java" <<'EOF'
+package com.android.launcher3;
+
+class Launcher {
+    void createTouchControllers() {
+        DotwelDrawerTrace.log("factory controllers=" + "a"
+                + " navigationMode=" + DisplayController.getNavigationMode(this).name);
+    }
+}
+EOF
+expect_fail_contains 'invalid navigation-mode .name field access fails' \
+    "$bad_nav" 'invalid .name field access'
+
+bad_state="$TMP_DIR/bad-state"
+cp -R "$clean" "$bad_state"
+write_file "$bad_state/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
+package com.android.launcher3.touch;
+
+class AbstractStateChangeTouchController {
+    void intercept() {
+        DotwelDrawerTrace.log("intercept action=DOWN decision=accept state="
+                + mLauncher.getStateManager().getState().name);
+        DotwelDrawerTrace.log("intercept action=UP noIntercept=");
+    }
+
+    void dragStart(float startDisplacement) {
+        DotwelDrawerTrace.log("dragStart startDisplacement=" + startDisplacement);
+    }
+
+    void dragEnd(float velocity) {
+        DotwelDrawerTrace.log("dragEnd velocity=" + velocity);
+    }
+}
+EOF
+expect_fail_contains 'invalid LauncherState .name field access fails' \
+    "$bad_state" 'invalid .name field access'
+
 release_on="$TMP_DIR/release-on"
 cp -R "$clean" "$release_on"
 write_file "$release_on/src/com/android/launcher3/touch/DotwelDrawerTrace.java" <<'EOF'

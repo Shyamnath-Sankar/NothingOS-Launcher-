@@ -3,19 +3,35 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (runtime drawer diagnostic only)**. CI78 run
-  `44928058399` swiped all four times (`540,1183` -> `540,384`, 300 ms) and left the actual HOME
-  unchanged on API 37; the selected touch controller is still unknown. This run adds a
-  debug+Play-only `DotwelDrawerTrace` log and captures it after every swipe attempt. It does **not**
-  change gesture routing, animation behavior, or any app visual. The drawer-open bug is not fixed;
-  runtime evidence is pending the next CI smoke run. Colored icons and the blue QSB are still
-  pending pixel repair, and the header is **not visually ready**. P3b is not done.
+- current_phase: **P3b — actual HOME visual slice (micro compile fix only)**. CI81 run
+  `44932685973` on head `f2377c5` failed javac because the new drawer diagnostics used the invalid
+  enum field `.name` instead of the call `name()`/`toString()`. This run replaces only those
+  diagnostic formatters, adds a guard against the invalid access, and leaves the debug Play trace
+  and per-attempt artifact intact. No app behavior, gesture routing, animation, visual, manifest,
+  permission, SDK, applicationId, signing or workflow change. Runtime drawer evidence is still
+  pending; P3b is not done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `f2377c5` (diagnostic code + fixture-safe verify; base `main` at `0df97ff`)
+- head: `411ba6a` plus this compile-fix commit (base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — P3b runtime drawer diagnostic)
+## done (this run — micro compile fix only)
+
+- `Launcher.java` now logs `DisplayController.getNavigationMode(this).name()` (NavigationMode is a
+  Java enum), not the invalid `.name` field.
+- `AbstractStateChangeTouchController` now routes all four DOWN/UP diagnostics through the existing
+  `stateName(...)` helper, and that helper uses `LauncherState.toString()` (the verified
+  `TestProtocol.stateOrdinalToString` identifier), not the nonexistent `state.name` field.
+- `nothingui-drawer-trace-guard.sh` fails if either file contains a `.name` field access without a
+  call (`.name` not followed by `(`); its fixture suite adds navigation-mode and LauncherState
+  negatives (now 6/6). The existing debug Play gate, per-attempt `logcat -s DotwelDrawerTrace`
+  capture and swipe evidence checks are unchanged.
+- Verification actually run (no Gradle, no emulator): drawer-trace guard OK and 6/6;
+  `verify-play-build-test.sh`; home guard 13/13; theme guard 9/9; brand guard 14/14; identity
+  guard 8/8; manifest guard all pass; emulator-smoke and drawer suites all pass; the repo-level
+  identity/home/theme/brand guards OK; `sh -n` clean; `git diff --check` clean.
+
+## done (previous run — P3b runtime drawer diagnostic)
 
 - **Micro diagnostic only:** added `src/com/android/launcher3/touch/DotwelDrawerTrace.java`, a
   temporary log helper gated by `BuildConfig.DEBUG && "play".equals(BuildConfig.FLAVOR_channel)`.
@@ -174,11 +190,11 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `f2377c5` diagnostic diff and approves CI on PR #11. Do not open a
-  duplicate PR.
+- Coordinator approves CI on PR #11 for the compile-fix head. Do not open a duplicate PR. The
+  javac failure must be gone before any runtime claim.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
-  tests unchanged; `verify-play-build.sh` including the home guard (13/13), the new drawer-trace
-  guard (4/4), `emulator-smoke-test.sh` (34/34) and `emulator-smoke-drawer-test.sh`; and the API 37
+  tests unchanged; `verify-play-build.sh` including the home guard (13/13), the drawer-trace
+  guard (6/6), `emulator-smoke-test.sh` (34/34) and `emulator-smoke-drawer-test.sh`; and the API 37
   emulator smoke.
 - Read the new runtime evidence after each swipe:
   - `appdrawer-trace-N.txt`: the selected controller classes/navigation mode, ACTION_DOWN/UP
@@ -303,6 +319,12 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Micro compile fix only on `agent/p3b-actual-home-visual-slice-n`. CI81
+  (`44932685973`) on `f2377c5` failed javac on the new diagnostics: `NavigationMode` is a Java
+  enum, so `getNavigationMode(this).name` became `.name()`, and `LauncherState` has no `name`
+  field, so all four state logs use `stateName(...)` backed by the verified `toString()`. The
+  drawer-trace guard now rejects `.name` field access and its fixture suite is 6/6. Debug Play
+  gating and per-attempt trace artifacts unchanged; no app behavior change.
 - 2026-11-21: P3b smoke harness retry-state repair on `agent/p3b-actual-home-visual-slice-n`
   (`d5122ad`, `50176d8`). CI70 (`44924192206`) was canceled after 22m because plain POSIX helper
   functions shared globals: `capture_ui_xml` reset the outer `open_app_drawer` `attempt`, so the

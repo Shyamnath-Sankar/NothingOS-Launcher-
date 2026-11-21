@@ -2662,7 +2662,7 @@ public class Launcher extends StatefulActivity<LauncherState>
         if (DotwelDrawerTrace.ENABLED) {
             DotwelDrawerTrace.log("factory controllers="
                     + controllers[0].getClass().getName() + "," + controllers[1].getClass().getName()
-                    + " navigationMode=" + DisplayController.getNavigationMode(this).name);
+                    + " navigationMode=" + DisplayController.getNavigationMode(this).name());
         }
         return controllers;
     }
