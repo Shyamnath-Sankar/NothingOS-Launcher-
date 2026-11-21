@@ -107,6 +107,22 @@ package app.nothingui.theme
 @Preview
 fun NothingUiThemeSampleScreen() = Unit
 EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt" <<'EOF'
+package app.lawnchair.ui.preferences
+
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiThemeSampleScreen
+import com.android.launcher3.BuildConfig
+
+private const val EXTRA_THEME_SAMPLE = "app.lawnchair.ui.preferences.THEME_SAMPLE"
+
+private fun resolveThemeSampleMode(): String? {
+    if (!BuildConfig.DEBUG || !NothingUiFeature.themeEnabled) return null
+    NothingUiThemeSampleScreen()
+    return EXTRA_THEME_SAMPLE
+}
+EOF
 }
 
 run_guard() {
@@ -161,6 +177,25 @@ nfont="$TMP_DIR/NothingOS-Launcher/nfont"
 cp -R "$clean" "$nfont"
 write_font "$nfont/lawnchair/res/font/nfont_display.ttf"
 expect_fail_contains 'forbidden nfont basename fails' "$nfont" 'nfont_display.ttf'
+
+missing_debug_gate="$TMP_DIR/NothingOS-Launcher/missing-debug-gate"
+cp -R "$clean" "$missing_debug_gate"
+write_file "$missing_debug_gate/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt" <<'EOF'
+package app.lawnchair.ui.preferences
+
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiThemeSampleScreen
+
+private const val EXTRA_THEME_SAMPLE = "app.lawnchair.ui.preferences.THEME_SAMPLE"
+
+private fun resolveThemeSampleMode(): String? {
+    if (!NothingUiFeature.themeEnabled) return null
+    NothingUiThemeSampleScreen()
+    return EXTRA_THEME_SAMPLE
+}
+EOF
+expect_fail_contains 'theme sample without the debug gate fails' \
+    "$missing_debug_gate" 'debug-gated'
 
 provenance="$TMP_DIR/NothingOS-Launcher/provenance"
 cp -R "$clean" "$provenance"

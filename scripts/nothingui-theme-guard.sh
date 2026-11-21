@@ -36,12 +36,14 @@ THEME_DIR="$ROOT/lawnchair/src/app/nothingui/theme"
 LICENSE_FILE="$ROOT/licenses/fonts/OFL-Doto.txt"
 ATTRIBUTION_FILE="$ROOT/licenses/fonts/doto.md"
 BUILD_FILE="$ROOT/build.gradle"
+PREFS_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt"
 
 [ -d "$FONT_DIR" ] || fail "missing $FONT_DIR"
 [ -d "$THEME_DIR" ] || fail "missing $THEME_DIR"
 [ -f "$LICENSE_FILE" ] || fail "missing $LICENSE_FILE"
 [ -f "$ATTRIBUTION_FILE" ] || fail "missing $ATTRIBUTION_FILE"
 [ -f "$BUILD_FILE" ] || fail "missing $BUILD_FILE"
+[ -f "$PREFS_FILE" ] || fail "missing $PREFS_FILE"
 
 for font in doto_regular.ttf doto_bold.ttf; do
     path="$FONT_DIR/$font"
@@ -131,6 +133,17 @@ grep -q 'fun NothingUiThemeSampleScreen' "$THEME_DIR/NothingUiThemeSample.kt" ||
     fail "missing renderable theme sample screen"
 grep -q '@Preview' "$THEME_DIR/NothingUiThemeSample.kt" ||
     fail "missing theme sample previews"
+
+# The device-only sample route must stay behind both the debug build and the
+# Play theme gate, so release and non-Play builds keep the normal settings UI.
+grep -Fq 'EXTRA_THEME_SAMPLE' "$PREFS_FILE" ||
+    fail "PreferenceActivity does not expose the diagnostic theme sample extra"
+grep -Fq '!BuildConfig.DEBUG' "$PREFS_FILE" ||
+    fail "the theme sample route must be debug-gated"
+grep -Fq '!NothingUiFeature.themeEnabled' "$PREFS_FILE" ||
+    fail "the theme sample route must be Play-gated"
+grep -Fq 'NothingUiThemeSampleScreen' "$PREFS_FILE" ||
+    fail "the theme sample route is not wired to the sample screen"
 
 # Inspect basenames only. The repository parent directory may legitimately contain
 # a brand token (for example .../NothingOS-Launcher-...), which must not be read as
