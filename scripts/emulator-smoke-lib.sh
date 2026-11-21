@@ -718,24 +718,55 @@ grid_apply_is_unchanged() (
         '
 )
 
-# Succeed only when the real HOME long-press options popup is open. The
-# OptionsPopupView/DeepShortcutView class plus the Widgets item and a home-level
-# option reject an item-specific menu or a page that merely contains the word
-# "Widgets".
+# Succeed only when the real HOME long-press options popup is open. The actual
+# hierarchy exposes pkg:id/popup_container with several clickable
+# pkg:id/system_shortcut rows whose pkg:id/bubble_text labels include Widgets
+# plus a home-level option. Class names are not reliable, so readiness comes
+# from the real resource ids and the clickable shortcut rows; an item menu or a
+# page that merely contains the word "Widgets" is rejected.
 home_popup_is_ready() (
     xml=$1
     [ -s "$xml" ] || return 1
-    if ! grep -Fq 'class="com.android.launcher3.views.OptionsPopupView"' "$xml" &&
-        ! grep -Fq 'class="com.android.launcher3.shortcuts.DeepShortcutView"' "$xml"; then
-        return 1
-    fi
-    grep -Fq 'text="Widgets"' "$xml" || return 1
-    grep -Fq 'text="Home settings"' "$xml" ||
-        grep -Fq 'text="Edit home screen"' "$xml" ||
-        grep -Fq 'text="Wallpapers"' "$xml" ||
-        grep -Fq 'text="Wallpaper &amp; style"' "$xml" ||
-        return 1
-    return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                click = attr($0, "clickable")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                is_shortcut = (rid ~ /(^|\/)system_shortcut$/ && click == "true")
+                inside = is_shortcut
+                for (i = 1; i <= sp && !inside; i++) {
+                    if (stack[i] == 1) inside = 1
+                }
+                if (rid ~ /(^|\/)popup_container$/) has_container = 1
+                if (is_shortcut) shortcuts++
+                if (inside && text == "Widgets") has_widgets = 1
+                if (inside && (text == "Home settings" || text == "Wallpapers")) {
+                    has_home_option = 1
+                }
+                if (!selfclose) {
+                    sp++
+                    stack[sp] = is_shortcut ? 1 : 0
+                }
+            }
+            END {
+                exit !(has_container && shortcuts >= 2 && has_widgets && has_home_option)
+            }
+        '
 )
 
 # Succeed only when the native widget picker search/list is visible and differs

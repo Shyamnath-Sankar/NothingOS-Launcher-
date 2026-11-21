@@ -422,25 +422,48 @@ popup_xml="$TMP_DIR/home-popup.xml"
 cat > "$popup_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
-  <node index="0" text="" class="com.android.launcher3.views.OptionsPopupView" content-desc="" clickable="false" bounds="[100,800][980,1400]">
-    <node index="0" text="Edit home screen" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,800][980,950]" />
-    <node index="1" text="Wallpapers" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,950][980,1100]" />
-    <node index="2" text="Widgets" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,1100][980,1250]" />
-    <node index="3" text="Home settings" class="android.widget.TextView" content-desc="" clickable="true" bounds="[100,1250][980,1400]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/popup_container" class="android.widget.LinearLayout" content-desc="" clickable="false" bounds="[472,180][1039,743]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" content-desc="" clickable="true" bounds="[472,180][1039,317]">
+      <node index="0" text="Wallpapers" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" content-desc="" clickable="false" bounds="[472,180][1039,317]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" content-desc="" clickable="true" bounds="[472,322][1039,459]">
+      <node index="0" text="Widgets" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" content-desc="" clickable="false" bounds="[472,322][1039,459]" />
+    </node>
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" content-desc="" clickable="true" bounds="[472,464][1039,601]">
+      <node index="0" text="Apps list" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" content-desc="" clickable="false" bounds="[472,464][1039,601]" />
+    </node>
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" content-desc="" clickable="true" bounds="[472,606][1039,743]">
+      <node index="0" text="Home settings" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" content-desc="" clickable="false" bounds="[472,606][1039,743]" />
+    </node>
   </node>
 </hierarchy>
 EOF
-assert_true 'the real HOME options popup with Widgets and a home-level option is ready' \
+assert_true 'the actual HOME options popup with popup_container and clickable shortcuts is ready' \
     home_popup_is_ready "$popup_xml"
-assert_eq 'the Widgets option bounds are measured from the popup' \
-    '100 1100 980 1250' \
+assert_true 'the actual Widgets bubble_text label is not itself clickable' \
+    grep -Fq 'text="Widgets"' "$popup_xml"
+assert_false 'the Widgets label is not a clickable node' \
+    grep -Eq 'text="Widgets"[^>]*clickable="true"' "$popup_xml"
+assert_eq 'the Widgets bounds come from the clickable system_shortcut parent' \
+    '472 322 1039 459' \
     "$(ui_clickable_label_bounds "$popup_xml" Widgets)"
+assert_eq 'the Home settings bounds come from its clickable system_shortcut parent' \
+    '472 606 1039 743' \
+    "$(ui_clickable_label_bounds "$popup_xml" 'Home settings')"
 
-popup_no_class="$TMP_DIR/home-popup-no-class.xml"
-sed 's/class="com.android.launcher3.views.OptionsPopupView"/class="android.widget.FrameLayout"/' \
-    "$popup_xml" > "$popup_no_class"
-assert_false 'English Widgets text without the real options popup class is rejected' \
-    home_popup_is_ready "$popup_no_class"
+assert_false 'the actual HOME without a popup is rejected' \
+    home_popup_is_ready "$home_xml"
+
+popup_text_only="$TMP_DIR/home-popup-text-only.xml"
+cat > "$popup_text_only" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Wallpapers" class="android.widget.TextView" clickable="true" bounds="[472,180][1039,317]" />
+  <node index="1" text="Widgets" class="android.widget.TextView" clickable="true" bounds="[472,322][1039,459]" />
+  <node index="2" text="Home settings" class="android.widget.TextView" clickable="true" bounds="[472,606][1039,743]" />
+</hierarchy>
+EOF
+assert_false 'English-only popup text without popup_container and system_shortcut rows is rejected' \
+    home_popup_is_ready "$popup_text_only"
 
 popup_no_widgets="$TMP_DIR/home-popup-no-widgets.xml"
 sed '/text="Widgets"/d' "$popup_xml" > "$popup_no_widgets"
@@ -450,14 +473,32 @@ assert_false 'a HOME popup without Widgets is rejected' \
 popup_app_specific="$TMP_DIR/home-popup-app-specific.xml"
 cat > "$popup_app_specific" <<'EOF'
 <hierarchy rotation="0">
-  <node index="0" text="" class="com.android.launcher3.views.OptionsPopupView" bounds="[100,800][980,1400]">
-    <node index="0" text="App info" class="android.widget.TextView" clickable="true" bounds="[100,800][980,950]" />
-    <node index="1" text="Widgets" class="android.widget.TextView" clickable="true" bounds="[100,950][980,1100]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/popup_container" class="android.widget.LinearLayout" bounds="[472,180][1039,459]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" clickable="true" bounds="[472,180][1039,317]">
+      <node index="0" text="App info" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" clickable="false" bounds="[472,180][1039,317]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" clickable="true" bounds="[472,322][1039,459]">
+      <node index="0" text="Widgets" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" clickable="false" bounds="[472,322][1039,459]" />
+    </node>
   </node>
 </hierarchy>
 EOF
-assert_false 'an item-specific popup with Widgets but no home-level option is rejected' \
+assert_false 'an item menu with Widgets but no home-level option is rejected' \
     home_popup_is_ready "$popup_app_specific"
+
+popup_one_shortcut="$TMP_DIR/home-popup-one-shortcut.xml"
+cat > "$popup_one_shortcut" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/popup_container" class="android.widget.LinearLayout" bounds="[472,180][1039,459]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/system_shortcut" class="android.widget.FrameLayout" clickable="true" bounds="[472,180][1039,459]">
+      <node index="0" text="Widgets" resource-id="com.launchernos.dotwellabs.debug:id/bubble_text" class="android.widget.TextView" clickable="false" bounds="[472,180][1039,459]" />
+    </node>
+    <node index="1" text="Home settings" class="android.widget.TextView" clickable="false" bounds="[472,464][1039,601]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'a single clickable system_shortcut with an unparented home option is rejected' \
+    home_popup_is_ready "$popup_one_shortcut"
 
 picker_new_xml="$TMP_DIR/widgets-picker-new.xml"
 cat > "$picker_new_xml" <<'EOF'
@@ -702,6 +743,14 @@ assert_true 'the widgets capture uses the real Widgets option label' \
     grep -Fq "'Widgets'" "$widgets_body"
 assert_true 'the widgets capture requires the real HOME popup' \
     grep -Fq 'home_popup_is_ready' "$widgets_body"
+assert_true 'the popup readiness uses the real popup_container id' \
+    grep -Fq 'popup_container' "$LIB"
+assert_true 'the popup readiness uses clickable system_shortcut rows' \
+    grep -Fq 'system_shortcut' "$LIB"
+assert_false 'the popup readiness no longer guesses popup class names' \
+    grep -Eq 'OptionsPopupView|DeepShortcutView' "$LIB"
+assert_true 'the widgets capture stores the last failed popup PNG before BACK' \
+    grep -Fq 'home-popup-attempt-$_cwp_attempt-last.png' "$widgets_body"
 assert_true 'the widgets capture requires the native picker and not HOME' \
     grep -Fq 'widget_picker_is_ready' "$widgets_body"
 assert_true 'the widgets capture compares the picker against the pre-long-press HOME' \

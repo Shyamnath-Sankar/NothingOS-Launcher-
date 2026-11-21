@@ -58,9 +58,15 @@ a view.
   hierarchy: the header bottom comes from the workspace search container and the dock top from the
   lowest labelled row, so the long-press point stays below the header and above the dock icons and
   bottom QSB. If every measured candidate is occupied it fails rather than long-pressing an occupied
-  centre. A real `input swipe x y x y 1000` long-press opens the real
-  `OptionsPopupView`/`DeepShortcutView` popup. The smoke captures `home-popup.xml`/`.png`, taps the
-  `Widgets` item by its measured clickable bounds, and polls for the native picker. It accepts either
+  centre. A real `input swipe x y x y 1000` long-press opens the real popup, which the actual
+  hierarchy exposes as `popup_container` with several clickable `system_shortcut` rows whose
+  `bubble_text` labels include `Widgets` plus `Home settings`/`Wallpapers`. Readiness comes from
+  those resource ids and the clickable rows, not from `OptionsPopupView`/`DeepShortcutView` class
+  names; an item menu or a page with incidental English text is rejected. The smoke captures
+  `home-popup.xml`/`.png`, taps the `Widgets` item by the bounds of its clickable
+  `system_shortcut` parent (the label itself is not clickable), and polls for the native picker. If
+  the popup never becomes ready it captures the last failed attempt's PNG before pressing BACK. It
+  accepts either
   the refactored Compose picker (`com.android.launcher3.widgetpicker:id/widgets_catalog` plus a
   search/list label) or the inherited picker (`widgets_search_bar`/`search_bar_container` plus
   `primary_widgets_list_view`/`search_widgets_list_view`). The picker hierarchy must differ from the
@@ -81,6 +87,7 @@ widgets-launcher-idle-N.txt
 widgets-longpress-N.txt
 widgets-longpress-log.txt
 home-popup-attempt-N-P.xml
+home-popup-attempt-N-last.png
 home-popup.xml
 home-popup.png
 widgets-picker-attempt-N-P.xml

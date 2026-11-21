@@ -763,6 +763,7 @@ capture_widgets_picker() {
         else
             printf 'attempt=%s home-popup-not-ready; returning HOME\n' \
                 "$_cwp_attempt" >> "$ARTIFACTS/widgets-longpress-log.txt"
+            capture_screenshot_to "home-popup-attempt-$_cwp_attempt-last.png"
             adb_cmd shell input keyevent KEYCODE_BACK \
                 >> "$ARTIFACTS/widgets-longpress-log.txt" 2>&1 || true
             sleep 1
