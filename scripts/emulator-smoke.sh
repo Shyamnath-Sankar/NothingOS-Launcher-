@@ -302,6 +302,21 @@ ui_cancel_bounds() (
     return 0
 )
 
+# The Play settings dashboard must not render the inherited Lawnchair live
+# information announcement cards (the "Lawnchair 16 sneak peek" card and the
+# placeholder "important announcement" cards). Check the real captured
+# hierarchy before the smoke taps the default-launcher warning.
+ui_assert_no_inherited_announcements() (
+    xml=$1
+    for marker in 'Lawnchair' 'sneak peek' 'important announcement' 'announcement'; do
+        if grep -Fqi "$marker" "$xml"; then
+            printf '%s\n' "$marker"
+            return 1
+        fi
+    done
+    return 0
+)
+
 # Capture the real platform HOME-role consent screen after an explicit tap on
 # the existing settings warning, cancel it, and prove the role holder list did
 # not change. This runs only on the disposable API 37 emulator, before the smoke
@@ -331,6 +346,10 @@ verify_default_home_consent() {
     capture_ui_xml role-consent-settings.xml ||
         fail "could not capture the settings default-launcher warning"
     capture_screenshot_to role-consent-settings.png
+    if ! _vdhc_announcement=$(ui_assert_no_inherited_announcements \
+        "$ARTIFACTS/role-consent-settings.xml"); then
+        fail "Play settings still renders an inherited announcement card: $_vdhc_announcement"
+    fi
     if ! grep -Fq 'default launcher' "$ARTIFACTS/role-consent-settings.xml"; then
         fail "settings did not expose the default-launcher warning"
     fi

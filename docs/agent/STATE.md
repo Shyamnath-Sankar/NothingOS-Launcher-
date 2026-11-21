@@ -3,17 +3,50 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 — Play-only HOME role consent / drawer input pacing and trace**. CI100
-  (`44951103338`) was compile/style/unit green, the native role consent cancel passed, and the Play
-  hint showed `DotWel Launcher` in actual pixels. Drawer geometry is now correct on all four
-  attempts (`540 1616 540 96`, 500 ms), but the drawer still fails: the runtime traces show a
-  partial displacement at zero velocity. This run lengthens the bounded harness swipe to 1500 ms
-  and adds one debugPlay input summary per Normal->AllApps gesture; a CI rerun is pending.
-- branch: `agent/p8-home-role-consent`
-- head: `d341e51` (1500 ms pacing + gesture input summary) on base `430751e`; base `main` `a446b11`.
-- pr: #12: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/12
+- current_phase: **P9 — Play settings cleanup (inherited announcement cards)**. PR12 is merged into
+  `main` (`5da711d`) after fully green CI102 (`10244953269478`, 11m49); actual HOME/drawer/Settings
+  foreground, role-consent Cancel and the APK102 fallback were verified. This tiny slice gates the
+  inherited upstream announcement cards off in the Play settings dashboard, keeps them for non-Play,
+  adds brand-guard negatives, and makes the real settings smoke assert no inherited announcement
+  cards before tapping the default-launcher warning. No other UI/theme change.
+- branch: `agent/newtinybranchagent-p9-settings`
+- head: `ad05a12` (`fix(play): hide inherited announcement cards in settings`) on base `main`
+  `5da711d`.
+- pr: **none yet** — main owns PR creation/CI approval for this branch. PR12 (#12) is merged and is
+  the fallback.
 
-## done (this run — 1500 ms harness pacing and gesture input summary)
+## done (this run — P9 Play settings announcement cleanup)
+
+- **Root cause, read not guessed:** `PreferencesDashboard` called `AnnouncementPreference()`
+  unconditionally. That component renders whatever the inherited live-information endpoint
+  (`https://lawnchair.app/live-information.json`) returns, which on the actual Play settings screen
+  was the Lawnchair 16 sneak-peek card plus two placeholder "important announcement" cards.
+- **Play gate:** the dashboard now calls `AnnouncementPreference()` only inside
+  `if (!isPlayStoreFlavor())`. The inherited cards disappear on Play; github/nightly keep the exact
+  inherited behavior. Nothing was rebranded and no DotWel news card was added.
+- **Preserved:** `SyncLiveInformation()`, the debug-build warning, the default-home warning/dialog
+  (`PreferencesSetDefaultLauncherWarning` + `DefaultHomeRoleConsent`), the About screen and the
+  upstream `NOTICE.md` attribution. No other live-information function, permission, manifest,
+  Gradle, SDK, applicationId, signing, paid-service or workflow change.
+- **Guard:** `play-brand-guard.sh` now requires exactly one `AnnouncementPreference()` call in the
+  dashboard, requires a `!isPlayStoreFlavor()` gate immediately above it, requires the
+  `isPlayStoreFlavor` import, rejects a removed non-Play call, rejects `DotWel` in
+  `AnnouncementPreference.kt`, and rejects announcement/news/live-information strings in `play/res`.
+  Its fixture suite adds ungated-announcement, removed-announcement, fabricated-DotWel-news and
+  Play-announcement-resource negatives.
+- **Smoke:** `verify_default_home_consent` now captures `role-consent-settings.xml` + the clean
+  `role-consent-settings.png`, then asserts the captured hierarchy has no `Lawnchair`, `sneak peek`,
+  `important announcement` or `announcement` text **before** tapping the default-launcher warning.
+  The genuine 1500 ms / 4-attempt bounded drawer, search, exact Settings foreground, HOME-return and
+  role-Cancel checks are unchanged.
+- **Verification actually run (no Gradle, no emulator):** `play-brand-guard.sh "$PWD"` OK; its
+  fixture suite all pass (including the four new negatives); `emulator-smoke-test.sh` all pass
+  (including the new announcement checks and ordering); `emulator-smoke-drawer-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; the repo-level identity, theme, home, home-role, icon and
+  drawer-trace guards OK and their suites pass; `sh -n` clean on every edited script;
+  `git diff --check` clean. CI must still build, unit-test and run the API 37 smoke.
+
+## done (previous run — 1500 ms harness pacing and gesture input summary)
 
 - **Evidence read, not guessed:** CI100 (`44951103338`) compiled, styled and unit-tested green;
   the real role-consent cancel passed and the Play hint pixels say `DotWel Launcher`. Geometry was
@@ -411,73 +444,59 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/nothingui-drawer-trace-guard.sh "$PWD"` -> OK; its fixture suite all pass,
-  including the missing-summary, realistic per-MOVE and literal per-MOVE negatives.
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the bounded 1500 ms duration.
-- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass, every mock attempt logs 1500 ms,
-  starts in 1568..1626 and travels more than 1500 px.
-- This run: `verify-play-build-test.sh`, `nothingui-home-guard-test.sh`,
-  `nothingui-theme-guard-test.sh`, `nothingui-home-role-guard-test.sh`,
-  `nothingui-icon-render-guard-test.sh`, `play-brand-guard-test.sh`,
-  `play-identity-guard-test.sh` and `manifest-guard-test.sh` all pass; the repo-level identity,
-  brand, theme, home, home-role and icon guards all print OK.
+- This run: `sh scripts/play-brand-guard.sh "$PWD"` -> OK; `play-brand-guard-test.sh` all pass,
+  including the new ungated-announcement, removed-announcement, fabricated-DotWel-news and
+  Play-announcement-resource negatives.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the announcement helper,
+  markers, case-insensitivity and the clean-screenshot/assert-before-tap ordering.
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass; the genuine 1500 ms / 4-attempt
+  drawer assertions are unchanged.
+- This run: `verify-play-build-test.sh` -> all pass. The repo-level identity, theme, home, home-role,
+  icon and drawer-trace guards all print OK, and their fixture suites all pass.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
-- Prior run: `emulator-smoke-test.sh` and `emulator-smoke-drawer-test.sh` passed the dock-row fix,
-  the full actual HOME fixture and the Play hint; `play-brand-guard.sh "$PWD"` and its suite passed.
-- Prior run: `DefaultHomeRolePolicy` TDD harness failed first with unresolved references, then passed
-  after the pure policy was added (`DefaultHomeRolePolicy: OK`).
+- Prior run: the drawer-trace guard and both smoke suites passed the 1500 ms pacing and input
+  summary; `DefaultHomeRolePolicy` TDD harness passed after the pure policy was added.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
-  branch is statically verified only; the longer gesture and the input summary are scripted but
-  unverified on device.
+  branch is statically verified only; the Play announcement gate and clean settings pixels are
+  scripted but unverified on device.
 
 ## next
 
-- Run/approve **PR12** for `agent/p8-home-role-consent` at head `d341e51` (branch
-  `agent/p8-home-role-consent`). Do not resume merged PR11.
-- CI must be green on the new head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
-  unit tests including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the role guard,
-  the brand guard, the drawer-trace guard and both smoke suites, and the API 37 emulator smoke.
-- Inspect the new runtime artifacts after the rerun:
-  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-N.txt`: the start must be `540 1616` (inside the
-    measured 1568..1626 gutter) and the duration must read 1500.
-  - `appdrawer-trace-N.txt`: every Normal->AllApps gesture must leave one `gestureSummary` with
-    `downX/downY/downTime`, `moveCount`, `lastMoveY/lastMoveTime`, `upY/upTime` and `history`. A
-    nonzero `moveCount` with little Y change means the MOVE stream arrived but the drag was not
-    delivered; `moveCount` near zero or `lastMoveY=none` means adb lost the MOVE stream. Do not
-    change thresholds, gesture logic, UP semantics or success assertions from this evidence alone.
-  - `appdrawer-trace-N.txt`: `dragEnd` must still show the AllApps target and progress above 0.4 at
-    zero release velocity.
-  - `appdrawer-attempt-N.xml` / `.png`: the first ready drawer must differ from HOME and expose the
-    search input or app-list container.
-  - `role-consent-settings.xml` / `.png`: the settings warning is visible, is the node tapped, and
-    says `DotWel Launcher`, not `Lawnchair`.
+- Main owns PR creation/CI approval for `agent/newtinybranchagent-p9-settings` at head `ad05a12`.
+  PR12 (#12) is merged into `main` (`5da711d`) and remains the fallback.
+- CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
+  unit tests, `verify-play-build.sh` (the brand guard now includes the Play announcement gate), both
+  smoke suites and the API 37 emulator smoke.
+- Inspect the runtime artifacts after the run:
+  - `role-consent-settings.xml` / `.png`: the settings warning is visible and the screenshot is
+    clean. There must be no `Lawnchair`, `sneak peek`, `important announcement` or `announcement`
+    text from the inherited cards. If the upstream card wording changes, update the smoke markers
+    from the captured XML rather than weakening the assertion.
   - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control.
   - `role-consent-before.txt` / `role-consent-after.txt`: our package is not a holder and the lists
     are unchanged after cancel.
   - `activities-role-consent-cancel.txt`: the settings activity (or launcher) is foreground after
     cancel, not a granted role.
+  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-N.txt`: start `540 1616` and duration 1500.
+  - `appdrawer-attempt-N.xml` / `.png`: the first ready drawer differs from HOME and exposes the
+    search input or app-list container.
 - If the API 37 system image uses a different cancel label, change `ui_cancel_bounds` from the
   captured XML. Do not guess a new coordinate or lower the assertion.
-- If the 1500 ms gesture still fails, use the `gestureSummary` to decide the next smallest
-  harness-only fix; do not change app gesture logic or the 0.4 threshold.
-- **Correction:** CI93 (`44944409947`) on `9076be5` had assembly, unit tests and emulator pass but a
-  style failure; it was not fully green. CI95 (`44946373901`) was fully green in 11m40 and its actual
-  pixels were verified black/white icons and black HOME/drawer QSB. Keep it as the merged-main
-  fallback.
-- P8 remains open beyond this slice: appearance controls, backup/restore wiring and any broader
-  onboarding. Do not start those in this run.
-- Pending gates: private-space runtime UI and a non-Play runtime control build remain unverified.
+- **Next separate slice (do not start in this run): verify the real grid and widgets.** No other UI
+  or theme feature change belongs to this cleanup.
+- P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
+  onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until PR12 CI runs on the new head.
-- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must approve/run PR12.
-- CI100's drawer failure is not fixed by this run's source change; the 1500 ms gesture and the
-  `gestureSummary` are diagnostic evidence only. The next CI must show whether the MOVE stream or
-  the delivered coordinates are the problem.
+  API 37 emulator run are unverified until CI runs on `ad05a12`.
+- No PR exists yet for `agent/newtinybranchagent-p9-settings`; a maintainer must create/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
+- The announcement assertion is worded for the current inherited cards. If the live-information
+  endpoint changes that wording, the smoke fails closed and the captured XML must drive the marker
+  update; do not replace the assertion with a weaker check.
 
 ## decisions locked
 
@@ -582,6 +601,19 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P9 Play settings announcement cleanup on `agent/newtinybranchagent-p9-settings`
+  (`ad05a12`), from `main` `5da711d` (PR12 merged after green CI102 `10244953269478`, 11m49).
+  `PreferencesDashboard` now renders `AnnouncementPreference()` only inside
+  `if (!isPlayStoreFlavor())`, so the inherited Lawnchair 16 sneak-peek and placeholder
+  "important announcement" cards no longer appear in Play settings; non-Play keeps them and nothing
+  was rebranded or fabricated. The debug warning, default-home warning/role consent, About and
+  NOTICE attribution are untouched. `play-brand-guard.sh` now requires the gate and import, rejects
+  a removed non-Play call, DotWel text in the announcement component and announcement resources in
+  `play/res`; its suite adds four negatives. The real settings smoke asserts no inherited
+  announcement markers and captures the clean `role-consent-settings.png` before tapping the
+  default-launcher warning; the 1500 ms / 4-attempt drawer, search, exact Settings foreground,
+  HOME-return and role-Cancel checks are unchanged. All local guard/smoke/verify suites pass;
+  `sh -n` and `git diff --check` clean. CI/device evidence and PR creation are still pending.
 - 2026-11-21: Drawer input pacing and per-gesture summary on `agent/p8-home-role-consent`
   (`d341e51`). CI100 (`44951103338`) was compile/style/unit green, the role consent cancel passed
   and the Play hint pixels say `DotWel Launcher`. Geometry was correct on all four attempts
