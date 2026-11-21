@@ -3,19 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (smoke gesture fix only)**. CI84 run
-  `44933644538` artifact `14719700048` proved the route works: DOWN accepted, dragStart
-  Normal→AllApps, dragEnd velocity 0 / fling false / displacement `-722.0703` / progress
-  `0.3760783` / target Normal. The old test swipe (start 1183, end 384, ~799 px of the 1920 range)
-  was too short to commit at zero velocity and correctly snapped back. This run changes only the
-  measurement-driven smoke gesture and its pure geometry tests, not app gesture logic or the
-  success threshold.
+- current_phase: **P3b — actual HOME visual slice (smoke gesture fixture fix only)**. CI87 run
+  `44935461427` artifact `14719887963` failed the same way: the actual HOME exposes
+  `search_container_workspace` as the y=91 workspace header, not the bottom QSB. `ui_qsb_top`
+  accepted that header, so the gutter branch never ran and `drawer_swipe_target` fell back to start
+  1183; the runtime trace still ended at progress `0.366` target Normal. This run fixes the fixture
+  to the real HOME shape and rejects any QSB candidate at or above the measured dock bottom. No app
+  gesture logic or success threshold changed.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `4ebc2b5` (gesture fix; base `main` at `0df97ff`)
+- head: `039a41d` (actual-home fixture/header-rejection fix; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — smoke gesture length only)
+## done (this run — actual-home fixture and header rejection)
+
+- **Root cause from CI87, not guessed:** the old fixture invented a bottom QSB node with the
+  `search_container_workspace` id at `[0,1640][1080,1775]`, so `ui_qsb_top` returned 1640 and the
+  geometry looked correct in tests. The actual UIAutomator dump instead puts that id on the HEADER
+  at `[22,91][1058,294]`; the bottom QSB is only visible in the PNG at 1640..1775. The header
+  therefore made `qsb_top=91`, failed the `qsb_top > dock_bottom` gutter condition, and fell back
+  to `hotseat_top - margin` = 1183. The runtime trace confirmed the same `0.366` progress.
+- **Geometry fix:** `ui_qsb_top` now requires a numeric dock bottom and accepts only a
+  `search_container_workspace` whose top is strictly below it, so the y=91 header is rejected.
+  `ui_dock_bottom` excludes search containers by resource-id, so the dock band is the hotseat
+  icons (1375..1568), not the header or QSB. `drawer_target_for_dump` computes `dock_bottom` first
+  and passes it to `ui_qsb_top`.
+- **No-QSB start:** when the bottom QSB is absent (the actual HOME), `drawer_swipe_target` starts
+  at `dock_bottom + (dock_bottom - hotseat_top) / 4`: 1568 + 48 = 1616, ending at 96. Travel is
+  1520 px (>1500), start is inside the measured 1568..1640 gutter. A real bottom QSB still uses the
+  midpoint start (1604).
+- **Duration:** the swipe is now 500 ms instead of 300 ms and the duration is logged with every
+  attempt, so adb delivers more MOVE samples for the zero-velocity gesture.
+- **Fixtures:** replaced the synthetic bottom-QSB "actual" fixture with the real CI87 HOME shape
+  (header at `[22,91][1058,294]`, hotseat node `[0,1375][1080,1920]`, four icons ending at 1568,
+  no bottom QSB) and kept a separate real-bottom-QSB fixture. Assertions require start >1568,
+  start <1640, travel >1500 and no 1183 fallback. The mock-adb drawer test uses the same actual
+  HOME and requires >1500 px travel, a 1568..1640 start and a logged 500 ms duration.
+- **Regressions actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 61 checks pass;
+  `emulator-smoke-drawer-test.sh` 38 checks pass; `nothingui-drawer-trace-guard-test.sh` 6/6;
+  `nothingui-home-guard-test.sh` 13/13; `verify-play-build-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean.
+- **Scope reminder:** no app gesture logic, threshold, animation, manifest, permission, SDK,
+  applicationId, signing, release or workflow change. The debug Play `DotwelDrawerTrace` stays
+  until the longer gesture is verified in CI. Colored icons and the blue QSB remain pending.
+
+## done (previous run — smoke gesture length only)
 
 - **Root cause read from the actual CI84 trace, not guessed:** the old measured target started at
   y 1183 and ended at y 384 (799 px on a 1920 shift range). The runtime trace showed only
@@ -197,13 +229,16 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> 34/34 passed (14 existing + 20 new
-  geometry/readiness/static cases).
-- This run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed;
-  `nothingui-theme-guard-test.sh` -> 9/9; `play-brand-guard-test.sh`,
-  `play-identity-guard-test.sh`, `manifest-guard-test.sh` -> all pass.
+- This run: `sh scripts/emulator-smoke-test.sh` -> 61 checks passed (actual HOME header rejection,
+  no-QSB start 1616, start >1568 and <1640, travel 1520 >1500, no 1183 fallback, real bottom QSB
+  still 1604, duration 500 logged).
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> 38 checks passed (actual HOME fixture,
+  four bounded swipes, >1500 px travel, 1568..1640 start, 500 ms duration).
+- This run: `sh scripts/nothingui-drawer-trace-guard-test.sh` -> 6/6;
+  `sh scripts/nothingui-home-guard-test.sh` -> 13/13;
+  `sh scripts/verify-play-build-test.sh` -> all pass.
 - This run: `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh`,
-  `emulator-smoke-test.sh`; `git diff --check` clean.
+  `emulator-smoke-test.sh`, `emulator-smoke-drawer-test.sh`; `git diff --check` clean.
 - Prior run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
 - Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13; `nothingui-theme-guard-test.sh` ->
   9/9; `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
@@ -217,14 +252,15 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator approves CI on PR #11 for head `4ebc2b5`. Do not open a duplicate PR.
+- Coordinator approves CI on PR #11 for head `039a41d`. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
   tests unchanged; `verify-play-build.sh` including the home guard (13/13), the drawer-trace
-  guard (6/6), `emulator-smoke-test.sh` (now 48 checks) and `emulator-smoke-drawer-test.sh`
-  (now 45 checks); and the API 37 emulator smoke.
+  guard (6/6), `emulator-smoke-test.sh` (61 checks) and `emulator-smoke-drawer-test.sh`
+  (38 checks); and the API 37 emulator smoke.
 - Read the new runtime evidence after the first swipe:
-  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured dock/QSB
-    gutter (`540 1604 540 96` on the 1080x1920 HOME), not the old `540 1183 540 384`;
+  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured hotseat
+    gutter (`540 1616 540 96` on the 1080x1920 actual HOME), not the old `540 1183 ...`; the
+    duration must read 500;
   - `appdrawer-trace-1.txt`: `dragEnd` must show a displacement well above 768 px and progress
     above 0.4 at velocity 0, with target AllApps; if the gutter start is not accepted, the trace
     will show the DOWN/UP decision and the next smallest fix must follow that evidence.
@@ -257,9 +293,12 @@ when no task input is given, and continues from "next".
 - P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
   is not visually ready.
 - P3b drawer smoke: CI84 (`44933644538`, artifact `14719700048`) proved the route works but the old
-  gesture only reached `0.3760783` progress. The longer measured dock/QSB-gutter gesture is pushed
-  on `4ebc2b5`; a new API 37 run must show `dragEnd` target AllApps and a ready drawer. If the
-  gutter start is rejected, the trace artifacts will identify the exact DOWN/UP decision.
+  gesture only reached `0.3760783` progress. CI87 (`44935461427`, artifact `14719887963`) then
+  showed the fixture had invented a bottom QSB id, so the real y=91 header was used and the target
+  fell back to 1183; progress stayed at `0.366` target Normal. The real-home fixture and header
+  rejection are pushed on `039a41d`; a new API 37 run must show start `540 1616 540 96`, duration
+  500, `dragEnd` target AllApps and a ready drawer. If the gutter start is rejected, the trace
+  artifacts will identify the exact DOWN/UP decision.
 
 ## decisions locked
 
@@ -270,6 +309,16 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P3b actual-home fix: the bottom QSB is only accepted when its top is strictly below the measured
+  dock icon bottom; the same `search_container_workspace` id on the header is rejected. Cost if
+  wrong: a device whose QSB sits above the dock icons would fall back to the icon-band gutter
+  instead of the dock/QSB midpoint, which is still a >1500 px swipe.
+- P3b actual-home fix: when the bottom QSB is absent, start a quarter of the measured icon band
+  below the icon bottom (1568 + 48 = 1616). Cost if wrong: a shorter icon band starts closer to
+  the icons, but the start remains below every icon and above the PNG-visible QSB top.
+- P3b actual-home fix: the swipe duration is 500 ms instead of 300 ms. Cost if wrong: a slower
+  gesture on a low-end emulator could take longer, but it is still a bounded `input swipe` and
+  gives adb more MOVE samples at zero release velocity.
 - P3b drawer-readiness repair: derive the swipe target from the live HOME hierarchy (root bounds +
   lowest labelled row) rather than a fixed display fraction. Cost if wrong: the hierarchy adds one
   uiautomator dump per attempt, but the gesture can no longer land on the dock; if no labelled row
@@ -349,6 +398,18 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Actual-home fixture fix on `agent/p3b-actual-home-visual-slice-n` (`039a41d`).
+  CI87 (`44935461427`, artifact `14719887963`) still traced `0.366` progress target Normal. The
+  actual HOME XML puts `search_container_workspace` on the y=91 HEADER, not the bottom QSB, so
+  `ui_qsb_top` returned 91 and the gutter branch fell back to start 1183. The fixture had invented
+  a bottom-QSB id at 1640. `ui_qsb_top` now requires a dock bottom and rejects candidates at or
+  above it; `ui_dock_bottom` excludes search containers; `drawer_target_for_dump` derives the dock
+  bottom first. With no bottom QSB, the start is dock_bottom + icon_band/4 = 1568 + 48 = 1616,
+  ending at 96 (1520 px, 79.2 percent). The swipe duration is 500 ms and is logged. The real CI87
+  HOME is now the fixture; a separate bottom-QSB fixture still proves the 1604 midpoint. Local
+  shell suites: smoke 61 checks, drawer 38 checks, trace 6/6, home 13/13, verify suite all pass;
+  `sh -n` and `git diff --check` clean. No app logic, thresholds, manifest, permissions, SDK,
+  applicationId, signing or workflow change. New API 37 evidence is still required.
 - 2026-11-21: Smoke gesture length fix only on `agent/p3b-actual-home-visual-slice-n`
   (`96e2f7b`, `4ebc2b5`). CI84 (`44933644538`, artifact `14719700048`) showed the route works
   (DOWN accepted, Normal→AllApps) but the old test swipe covered only 799 px of the 1920 shift
