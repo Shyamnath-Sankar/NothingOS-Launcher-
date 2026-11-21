@@ -519,14 +519,14 @@ dependencies {
 // with NO-SOURCE when a source set is empty, so fail closed if the locked-profile test stops
 // being part of that task's test source set.
 def lockedProfileTestFile = file('tests/unit/java/app/lawnchair/search/algorithms/LockedProfilePredicateTest.kt')
+def lockedProfileTestSourceDirs = android.sourceSets.test.java.srcDirs.collect { it.canonicalFile }
 tasks.register('verifyLockedProfileTestWiring') {
     doLast {
         if (!lockedProfileTestFile.isFile()) {
             throw new GradleException("Missing locked-profile unit test: ${lockedProfileTestFile}")
         }
-        def testSourceDirs = android.sourceSets.test.java.srcDirs.collect { it.canonicalFile }
         def canonicalTestFile = lockedProfileTestFile.canonicalFile
-        if (!testSourceDirs.any { dir -> canonicalTestFile.path.startsWith(dir.path + File.separator) }) {
+        if (!lockedProfileTestSourceDirs.any { dir -> canonicalTestFile.path.startsWith(dir.path + File.separator) }) {
             throw new GradleException("Locked-profile unit test is not in the test source set: ${canonicalTestFile}")
         }
     }
