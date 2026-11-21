@@ -20,7 +20,7 @@ design language, our own widgets/wallpapers, and a Play-safe build.
 | D2 | Import | `upstream` remote + merge, full history preserved | Apache attribution + future upstream merges. |
 | D3 | Internal flavor | keep `lawn` | Avoid a re-name across ~9,700 files. Rebrand labels/ids only. |
 | D4 | Play artifact | `lawnWithQuickstepPlay` for v1 | The fork's `recents` flavor dimension has a single `withQuickstep` flavor, so `lawnPlay` does not exist. Dropping Quickstep needs a new `withoutQuickstep` flavor — backlog, not v1. |
-| D5 | `applicationId` | `dev.shyamnath.launcher` | Decoupled from the brand; permanent once published. |
+| D5 | `applicationId` | `com.launchernos.dotwellabs` (Play only; github/nightly unchanged) | Decoupled from the brand; permanent once published. |
 | D6 | SDK | `compileSdk 37`, `targetSdk 37`, `minSdk 26` | Matches upstream. Play floor is 36; 37 is allowed and is the whole point of "works on Android 17". |
 | D7 | Monetization | free + optional Pro via Play Billing, no ads | Deferred until after v1 ships; no billing code in v1. |
 
