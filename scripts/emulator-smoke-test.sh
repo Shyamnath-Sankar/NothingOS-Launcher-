@@ -370,6 +370,34 @@ assert_true 'the drawer swipe uses a 500 ms duration for MOVE delivery' \
 assert_true 'the drawer swipe passes the logged duration to adb' \
     grep -Fq 'input swipe "$1" "$2" "$3" "$4" "$swipe_duration"' "$open_body"
 
+# --- static regression on the real HOME role consent capture ---------------
+
+consent_body="$TMP_DIR/verify_default_home_consent.sh"
+sed -n '/^verify_default_home_consent() {/,/^}/p' "$SMOKE" > "$consent_body"
+
+assert_true 'the smoke captures the settings default-launcher warning' \
+    grep -Fq 'role-consent-settings.xml' "$consent_body"
+assert_true 'the smoke taps the warning, not a guessed coordinate' \
+    grep -Fq 'tap_center_of_bounds "$_vdhc_warning"' "$consent_body"
+assert_true 'the smoke waits for the real platform consent screen' \
+    grep -Fq 'ui_cancel_bounds' "$consent_body"
+assert_true 'the smoke captures the consent XML and screenshot' \
+    grep -Fq 'role-consent.png' "$consent_body"
+assert_true 'the smoke cancels the platform consent screen' \
+    grep -Fq 'tap_center_of_bounds "$_vdhc_cancel"' "$consent_body"
+assert_true 'the smoke proves the role holder list is unchanged after cancel' \
+    grep -Fq 'role-consent-after.sorted' "$consent_body"
+assert_false 'the consent capture does not grant the role itself' \
+    grep -Fq 'add-role-holder' "$consent_body"
+consent_call_line=$(grep -n '^verify_default_home_consent$' "$SMOKE" | sed -n '1s/:.*//p')
+grant_line=$(grep -n 'add-role-holder' "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$consent_call_line" ] && [ -n "$grant_line" ] &&
+    [ "$consent_call_line" -lt "$grant_line" ]; then
+    pass 'the consent capture runs before the smoke grants the role'
+else
+    fail 'the consent capture runs before the smoke grants the role'
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1
