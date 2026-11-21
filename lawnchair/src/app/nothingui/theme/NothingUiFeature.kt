@@ -25,9 +25,13 @@ object NothingUiFeature {
 
 @Composable
 fun NothingUiThemeIfEnabled(
+    fallback: @Composable () -> Unit,
     darkTheme: Boolean = true,
     content: @Composable () -> Unit,
 ) {
-    if (!NothingUiFeature.themeEnabled) return
-    NothingUiTheme(darkTheme = darkTheme, content = content)
+    if (NothingUiFeature.themeEnabled) {
+        NothingUiTheme(darkTheme = darkTheme, content = content)
+    } else {
+        fallback()
+    }
 }
