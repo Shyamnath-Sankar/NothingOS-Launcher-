@@ -27,11 +27,10 @@ enum class SleepMode(
 
         fun fromString(string: String) = values().firstOrNull { it.toString() == string }
 
-        fun entries(includeAccessibility: Boolean = true): List<ListPreferenceEntry<SleepMode>> =
-            values()
-                .filter { includeAccessibility || it != ACCESSIBILITY }
-                .map {
-                    ListPreferenceEntry(value = it) { stringResource(id = it.labelResourceId) }
-                }
+        fun entries(includeAccessibility: Boolean = true): List<ListPreferenceEntry<SleepMode>> = values()
+            .filter { includeAccessibility || it != ACCESSIBILITY }
+            .map {
+                ListPreferenceEntry(value = it) { stringResource(id = it.labelResourceId) }
+            }
     }
 }
