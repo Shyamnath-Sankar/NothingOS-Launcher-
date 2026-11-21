@@ -11,7 +11,7 @@ when no task input is given, and continues from "next".
   runtime evidence is pending the next CI smoke run. Colored icons and the blue QSB are still
   pending pixel repair, and the header is **not visually ready**. P3b is not done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `eab635e` (diagnostic code; this closeout docs commit follows it; base `main` at `0df97ff`)
+- head: `f2377c5` (diagnostic code + fixture-safe verify; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
@@ -35,7 +35,8 @@ when no task input is given, and continues from "next".
   `appdrawer-trace-N.txt` for all four attempts.
 - **Verification actually run (no Gradle, no emulator):** trace guard OK and its test 4/4;
   `emulator-smoke-drawer-test.sh` all pass (now 42 checks); `emulator-smoke-test.sh` 34/34;
-  `nothingui-home-guard-test.sh` 13/13; `sh -n` clean on edited scripts; `git diff --check` clean.
+  `nothingui-home-guard-test.sh` 13/13; `verify-play-build-test.sh` 11/11; `sh -n` clean on edited
+  scripts; `git diff --check` clean.
 - **Scope reminder:** no gesture routing, animation, workflow, SDK, manifest, permission,
   applicationId, signing, Gradle or app-visual change. No guessed fix was applied. The untracked
   local `w/` scratch directory was left uncommitted.
@@ -173,7 +174,7 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `eab635e` diagnostic diff and approves CI on PR #11. Do not open a
+- Coordinator reviews the `f2377c5` diagnostic diff and approves CI on PR #11. Do not open a
   duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
   tests unchanged; `verify-play-build.sh` including the home guard (13/13), the new drawer-trace
