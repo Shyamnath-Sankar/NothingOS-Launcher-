@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Play-only display label. github and nightly keep the inherited Lawnchair
+  branding (build.gradle's derived_app_name resValue).
+
+  "DotWel Launcher" (single l) is the approved display label as of
+  2026-11-21. This is a product label only; it is not a claim of trademark or
+  name clearance, and it does not resolve the open public Play listing name.
+-->
+<resources>
+    <string name="play_app_name" translatable="false">DotWel Launcher</string>
+</resources>

@@ -34,9 +34,11 @@ Android 17 problem.
 
 ## P2 — Rebrand
 
-- [ ] `applicationId com.launchernos.dotwellabs` for the Play channel only.
-- [ ] app label, launcher activity label, icon, `mipmap-*`, default strings.
-- [ ] keep `NOTICE` and Apache headers; add our `NOTICE` entry.
+- [x] `applicationId com.launchernos.dotwellabs` for the Play channel only.
+- [x] Play-only app and launcher-activity label: **DotWel Launcher** (single l). github/nightly keep
+      their inherited "Lawnchair" branding; this is not a name-clearance claim.
+- [ ] icon, `mipmap-*` — deferred to a separate visually-reviewed original icon slice.
+- [x] keep `NOTICE` and Apache headers; add our `NOTICE` entry.
 - [ ] **Gate:** `assembleLawnPlayDebug` installs and becomes default home on emulator.
 
 ## P3 — Theme and home surface

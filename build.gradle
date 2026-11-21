@@ -326,6 +326,7 @@ android {
 
         play {
             manifest.srcFile "play/AndroidManifest.xml"
+            res.srcDirs = ["play/res"]
         }
 
         lawnWithQuickstepGithub {
