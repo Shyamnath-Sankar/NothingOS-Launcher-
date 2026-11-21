@@ -3,17 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — neutral Play icon and QSB pixels**. CI93 run `44944409947` on `9076be5`
-  was green (assembly, unit tests, emulator drawer/Settings/HOME), but real HOME/drawer pixels still
-  showed the icon fallback and QSB search glyph on the inherited wallpaper-derived blue/lavender
-  accent. The root cause (the process-wide `ThemedIconDrawable.COLORS_LOADER`) is fixed this run on
-  `9fc5a33`; CI and pixel re-review are pending. P3b is not complete.
-- branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `9fc5a33` (neutral icon/QSB fix; prior renderer wiring `9076be5`; base `main` at `0df97ff`)
-- pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
+- current_phase: **P8 — Play-only user-initiated HOME role consent (tiny slice)**. PR11 is merged
+  and CI95 (`44946373901`) was fully green in 11m40; the actual black/white icons and black
+  HOME/drawer QSB were verified. This run adds the native `RoleManager` consent path through the
+  existing settings warning. It is source-guarded and smoke-scripted; CI runtime capture is pending.
+- branch: `agent/p8-home-role-consent`
+- head: `38348e7` (base `main` at `a446b11`, the PR11 merge)
+- pr: **PR12 pending** (not opened by this agent):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p8-home-role-consent
 
-## done (this run — neutral Play icons and QSB)
+## done (this run — P8 Play-only HOME role consent)
+
+- **Play-only UI entry:** `PreferencesSetDefaultLauncherWarning` now calls
+  `DefaultHomeRoleConsent.requestRole(context)` only when `isPlayStoreFlavor()` is true. If the
+  platform dialog cannot be shown (API < 29, role unavailable, role already held, or the intent
+  throws), it falls through to the inherited `Settings.ACTION_HOME_SETTINGS` path and finishes the
+  settings activity exactly as before. Non-Play is unchanged.
+- **Pure policy:** `DefaultHomeRolePolicy.resolve` returns `REQUEST_ROLE` only when
+  `sdkInt >= 29 && roleAvailable && !roleHeld`; every other case returns `OPEN_HOME_SETTINGS`.
+  `DefaultHomeRolePolicyTest` covers API 26, API 28, API 29, unavailable and already-held roles.
+- **Native helper:** `DefaultHomeRoleConsent` uses `RoleManager.ROLE_HOME`, `isRoleAvailable`,
+  `isRoleHeld` and `createRequestRoleIntent`; it starts the platform consent with
+  `startActivityForResult` from the settings activity (or `FLAG_ACTIVITY_NEW_TASK` from a
+  non-Activity context). It never uses `cmd role`, `add-role-holder`, or any privileged bypass. The
+  result is not interpreted, so cancelling leaves the current default-home choice unchanged. No
+  startup/launcher code calls it.
+- **Guards:** added `scripts/nothingui-home-role-guard.sh` (7/7 fixture checks) and wired it plus its
+  test into `scripts/verify-play-build.sh`. It rejects a missing API gate, a missing already-held
+  check, a non-Play request, a missing Home settings fallback, a privileged bypass, and any
+  startup/application reference.
+- **Smoke:** `scripts/emulator-smoke.sh` now opens the existing settings warning before granting the
+  role, taps the warning, waits for the real platform HOME consent, captures
+  `role-consent-settings.xml/.png` and `role-consent.xml/.png`, taps the platform Cancel control,
+  and requires the role holder list to be unchanged. It then grants the role for the existing
+  HOME/drawer/Settings assertions, which are untouched. `emulator-smoke-test.sh` is 69 checks;
+  `emulator-smoke-drawer-test.sh` remains 38.
+- **Verification actually run (no Gradle, no emulator):** `DefaultHomeRolePolicy` TDD harness RED
+  then GREEN; `nothingui-home-role-guard.sh` OK; its suite 7/7; `emulator-smoke-test.sh` 69; drawer
+  suite 38; `verify-play-build-test.sh` 11; brand 14, identity 8, manifest 31, theme 9, home 13,
+  icon 15, trace 6; `sh -n` clean; `git diff --check` clean. CI must still run the Android build,
+  unit tests and the API 37 emulator consent capture.
+- **Scope reminder:** no manifest, permission, SDK, Gradle, workflow, applicationId, signing,
+  release, paid-service or asset change. The untracked local `w/` scratch directory was left
+  uncommitted.
+
+## done (previous run — neutral Play icons and QSB)
 
 - **Root cause, not guessed:** the Play policy only changed *which* renderer ran. `MonoIconThemeController`
   and `MonoThemedBitmap` still defaulted to `ThemedIconDrawable.getColors`, and
@@ -300,80 +334,50 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> 61 checks passed (actual HOME header rejection,
-  no-QSB start 1616, start >1568 and <1640, travel 1520 >1500, no 1183 fallback, real bottom QSB
-  still 1604, duration 500 logged).
-- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> 38 checks passed (actual HOME fixture,
-  four bounded swipes, >1500 px travel, 1568..1640 start, 500 ms duration).
-- This run: `sh scripts/nothingui-drawer-trace-guard-test.sh` -> 6/6;
-  `sh scripts/nothingui-home-guard-test.sh` -> 13/13;
-  `sh scripts/verify-play-build-test.sh` -> all pass.
-- This run: `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh`,
-  `emulator-smoke-test.sh`, `emulator-smoke-drawer-test.sh`; `git diff --check` clean.
-- Prior run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
-- Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13; `nothingui-theme-guard-test.sh` ->
-  9/9; `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
-  `verify-play-build-test.sh` -> all pass.
-- Prior run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`.
-- Prior run: `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the
-  Android-dependent header/chrome/QSB files produced only expected unresolved-Android-reference
-  cascades, no syntax errors.
+- This run: `DefaultHomeRolePolicy` TDD harness failed first with unresolved references, then passed
+  after the pure policy was added (`DefaultHomeRolePolicy: OK`).
+- This run: `sh scripts/nothingui-home-role-guard.sh "$PWD"` -> `nothingui-home-role-guard: OK`;
+  `sh scripts/nothingui-home-role-guard-test.sh` -> 7/7.
+- This run: `sh scripts/emulator-smoke-test.sh` -> 69 checks; `sh scripts/emulator-smoke-drawer-test.sh`
+  -> 38 checks; `sh scripts/verify-play-build-test.sh` -> 11 checks.
+- This run: `play-brand-guard-test.sh` 14, `play-identity-guard-test.sh` 8,
+  `manifest-guard-test.sh` 31, `nothingui-theme-guard-test.sh` 9, `nothingui-home-guard-test.sh` 13,
+  `nothingui-icon-render-guard-test.sh` 15, `nothingui-drawer-trace-guard-test.sh` 6.
+- This run: `sh -n` clean on the edited smoke/guard/verify scripts; `git diff --check` clean.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
-  branch is statically verified only.
+  branch is statically verified only; the real role consent dialog is scripted but unverified.
 
 ## next
 
-- Coordinator approves CI on PR #11 for head `9fc5a33`. Do not open a duplicate PR.
-- CI must show: `spotlessCheck` (the CI93 `policyFor` violation is fixed); `assembleLawnWithQuickstepPlayDebug`;
-  the Play unit tests including `NothingUiIconColorsTest`; `verify-play-build.sh` including the home
-  guard, the icon-render guard (15/15), the drawer-trace guard, `emulator-smoke-test.sh` and
-  `emulator-smoke-drawer-test.sh`; and the API 37 emulator smoke.
-- **Required pixel review:** the HOME/drawer PNGs must now show black/white icon plates and a
-  neutral (black/white) QSB search glyph, not the inherited blue/lavender accent. The header red
-  accent must stay red. Do not claim visual sign-off from the source guards alone.
-- Read the new runtime evidence after the first swipe:
-  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured hotseat
-    gutter (`540 1616 540 96` on the 1080x1920 actual HOME), not the old `540 1183 ...`; the
-    duration must read 500;
-  - `appdrawer-trace-1.txt`: `dragEnd` must show a displacement well above 768 px and progress
-    above 0.4 at velocity 0, with target AllApps; if the gutter start is not accepted, the trace
-    will show the DOWN/UP decision and the next smallest fix must follow that evidence.
-  - `appdrawer-attempt-1.xml` / `.png`: the first ready drawer, which must differ from HOME and
-    expose the search input or app-list container.
-- Confirm CI70's hang is gone: the API 37 smoke must finish the drawer phase instead of running past
-  22m. The bounded retry must produce at most four `appdrawer-attempt-*` sets; if readiness fails,
-  the run must exit nonzero with the retained evidence, not loop.
-- Review the new drawer artifacts before claiming the repair:
-  - `appdrawer-swipe-log.txt` and `appdrawer-swipe-N.txt`: the start y must be above the measured
-    dock top, not the old 75% point;
-  - `appdrawer-attempt-N-before.xml` / `.png`: HOME before each swipe;
-  - `appdrawer-attempt-N.xml` / `.png`: the state after each bounded wait;
-  - `appdrawer.xml` / `appdrawer.png`: the first ready drawer, which must differ from HOME and
-    expose the search input or app-list container;
-  - `activities-app-launch.txt`: only `topResumedActivity`/`mResumedActivity` lines are used; the
-    resumed package must be exactly `com.android.settings/`;
-  - `settings-launched.xml` / `.png` and `home-after-app-launch.xml` / `.png`.
-- The neutral icon/QSB fix is source-guarded only here. CI93 pixels were blue/lavender; the new
-  head `9fc5a33` must be re-inspected. The header fits the pinned row but is not otherwise visually
-  signed off.
-- P4 (drawer restyle) follows P3b; the inherited drawer/search/drag/widgets engine must stay.
-- Pending gates: private-space runtime UI, the in-app `RoleManager` prompt, and a non-Play runtime
-  control build remain unverified.
+- Open **PR12** for `agent/p8-home-role-consent` (the agent cannot open/approve it; `gh` is
+  unauthenticated). Do not resume merged PR11.
+- CI must be green: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
+  including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the new role guard (7/7),
+  and the API 37 emulator smoke.
+- Inspect the new runtime artifacts after the first run:
+  - `role-consent-settings.xml` / `.png`: the existing warning is visible and is the node tapped;
+  - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control;
+  - `role-consent-before.txt` / `role-consent-after.txt`: our package is not a holder and the lists
+    are unchanged after cancel;
+  - `activities-role-consent-cancel.txt`: the settings activity (or launcher) is foreground after
+    cancel, not a granted role.
+- If the API 37 system image uses a different cancel label, change `ui_cancel_bounds` from the
+  captured XML. Do not guess a new coordinate or lower the assertion.
+- **Correction:** CI93 (`44944409947`) on `9076be5` had assembly, unit tests and emulator pass but a
+  style failure; it was not fully green. CI95 (`44946373901`) was fully green in 11m40 and its actual
+  pixels were verified black/white icons and black HOME/drawer QSB.
+- P8 remains open beyond this slice: appearance controls, backup/restore wiring and any broader
+  onboarding. Do not start those in this run.
+- Pending gates: private-space runtime UI and a non-Play runtime control build remain unverified.
 
 ## blockers
 
-- No local Gradle build or emulator run is allowed here, so CI and pixels are unverified.
-- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
-- P3b visuals: the neutral icon/QSB fix on `9fc5a33` is statically verified only; CI93's blue/
-  lavender pixels require re-review on the new head. The header fits but is not otherwise visually
-  signed off.
-- P3b drawer smoke: CI84 (`44933644538`, artifact `14719700048`) proved the route works but the old
-  gesture only reached `0.3760783` progress. CI87 (`44935461427`, artifact `14719887963`) then
-  showed the fixture had invented a bottom QSB id, so the real y=91 header was used and the target
-  fell back to 1183; progress stayed at `0.366` target Normal. The real-home fixture and header
-  rejection are pushed on `039a41d`; a new API 37 run must show start `540 1616 540 96`, duration
-  500, `dragEnd` target AllApps and a ready drawer. If the gutter start is rejected, the trace
-  artifacts will identify the exact DOWN/UP decision.
+- No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
+  real role consent dialog are unverified until PR12 CI runs.
+- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must open PR12 and run
+  the workflow.
+- The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
+  script fails closed if it does not; the captured XML will name the exact label to add.
 
 ## decisions locked
 
@@ -473,14 +477,26 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P8 Play-only HOME role consent slice on `agent/p8-home-role-consent` (`7f5a6c9`,
+  `567203f`, `38348e7`). The existing settings warning now requests `RoleManager.ROLE_HOME` only on
+  Play, through a pure API/role-state policy and a native consent helper; non-Play keeps the inherited
+  `ACTION_HOME_SETTINGS` path. Cancelling leaves the role unchanged; API < 29, unavailable and
+  already-held roles fall back to Home settings. Added `DefaultHomeRolePolicyTest`, a 7/7 static
+  guard, and a smoke phase that taps the warning, captures and cancels the real platform consent,
+  and proves the holder list is unchanged before granting the role for the existing HOME/drawer
+  assertions. Local shell suites pass; CI/PR12 and runtime consent are pending. Corrected CI93
+  (style failure, not fully green) and recorded CI95 as fully green with verified pixels.
 - 2026-11-21: Neutral Play icon/QSB fix on `agent/p3b-actual-home-visual-slice-n` (`9fc5a33`).
-  CI93 (`44944409947`) on `9076be5` was green, but the inspected HOME/drawer pixels kept the
-  wallpaper-derived blue/lavender tint on the icon fallback and the QSB glyph. Root cause was the
+  CI93 (`44944409947`) on `9076be5` had assembly, unit tests and emulator pass but a style failure;
+  it was not fully green. CI95 (`44946373901`) was fully green in 11m40 and its actual pixels were
+  verified black/white icons and black HOME/drawer QSB. Before CI95, the inspected HOME/drawer pixels
+  kept the wallpaper-derived blue/lavender tint on the icon fallback and the QSB glyph. Root cause was the
   inherited process-wide `ThemedIconDrawable.COLORS_LOADER`, not the policy. Added
   `NothingUiIconColors`, gated the loader to the neutral black/white pair in Play (non-Play
   unchanged), passed the provider through the controller and fallback, kept the Play freshness key
   neutral, neutralized themed QSB layers behind the Play gate, and fixed the CI93 `policyFor`
-  style. Icon-render guard now 15/15 with `NothingUiIconColorsTest`. CI/pixel review pending.
+  style. Icon-render guard now 15/15 with `NothingUiIconColorsTest`. CI95 then verified the
+  black/white icons and black HOME/drawer QSB pixels.
 - 2026-11-21: Actual-home fixture fix on `agent/p3b-actual-home-visual-slice-n` (`039a41d`).
   CI87 (`44935461427`, artifact `14719887963`) still traced `0.366` progress target Normal. The
   actual HOME XML puts `search_container_workspace` on the y=91 HEADER, not the bottom QSB, so
