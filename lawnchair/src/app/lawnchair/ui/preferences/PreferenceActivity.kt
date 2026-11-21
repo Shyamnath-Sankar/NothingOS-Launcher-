@@ -41,7 +41,6 @@ class PreferenceActivity : ComponentActivity() {
     @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
 
         val initialRoute: PreferenceRoute? = intent.getStringExtra(EXTRA_DESTINATION_ROUTE)?.let { routeString ->
             try {
@@ -51,6 +50,10 @@ class PreferenceActivity : ComponentActivity() {
             }
         }
         val themeSampleMode = resolveThemeSampleMode(intent)
+        val themeSampleDark = themeSampleMode == THEME_SAMPLE_DARK
+        if (themeSampleMode == null) {
+            enableEdgeToEdge()
+        }
 
         setContent {
             if (themeSampleMode == null) {
@@ -64,8 +67,8 @@ class PreferenceActivity : ComponentActivity() {
                     )
                 }
             } else {
-                NothingUiTheme(darkTheme = themeSampleMode == THEME_SAMPLE_DARK) {
-                    EdgeToEdge()
+                NothingUiTheme(darkTheme = themeSampleDark) {
+                    EdgeToEdge(darkTheme = themeSampleDark)
                     NothingUiThemeSampleScreen()
                 }
             }

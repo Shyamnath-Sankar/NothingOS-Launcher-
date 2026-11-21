@@ -108,6 +108,20 @@ package app.nothingui.theme
 fun NothingUiThemeSampleScreen() = Unit
 EOF
 
+    write_file "$root/lawnchair/src/app/lawnchair/ui/theme/Theme.kt" <<'EOF'
+package app.lawnchair.ui.theme
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+
+@Composable
+fun ComponentActivity.EdgeToEdge(darkTheme: Boolean = isSelectedThemeDark) {
+    LaunchedEffect(darkTheme) {
+        Unit
+    }
+}
+EOF
+
     write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt" <<'EOF'
 package app.lawnchair.ui.preferences
 
@@ -116,11 +130,23 @@ import app.nothingui.theme.NothingUiThemeSampleScreen
 import com.android.launcher3.BuildConfig
 
 private const val EXTRA_THEME_SAMPLE = "app.lawnchair.ui.preferences.THEME_SAMPLE"
+private const val THEME_SAMPLE_DARK = "dark"
 
 private fun resolveThemeSampleMode(): String? {
     if (!BuildConfig.DEBUG || !NothingUiFeature.themeEnabled) return null
-    NothingUiThemeSampleScreen()
     return EXTRA_THEME_SAMPLE
+}
+
+private fun render(mode: String?) {
+    val themeSampleMode = mode
+    val themeSampleDark = themeSampleMode == THEME_SAMPLE_DARK
+    if (themeSampleMode == null) {
+        EdgeToEdge()
+        NothingUiThemeSampleScreen()
+    } else {
+        NothingUiThemeSampleScreen()
+        EdgeToEdge(darkTheme = themeSampleDark)
+    }
 }
 EOF
 }
@@ -196,6 +222,57 @@ private fun resolveThemeSampleMode(): String? {
 EOF
 expect_fail_contains 'theme sample without the debug gate fails' \
     "$missing_debug_gate" 'debug-gated'
+
+missing_sample_mode="$TMP_DIR/NothingOS-Launcher/missing-sample-mode"
+cp -R "$clean" "$missing_sample_mode"
+write_file "$missing_sample_mode/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt" <<'EOF'
+package app.lawnchair.ui.preferences
+
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiThemeSampleScreen
+import com.android.launcher3.BuildConfig
+
+private const val EXTRA_THEME_SAMPLE = "app.lawnchair.ui.preferences.THEME_SAMPLE"
+private const val THEME_SAMPLE_DARK = "dark"
+
+private fun resolveThemeSampleMode(): String? {
+    if (!BuildConfig.DEBUG || !NothingUiFeature.themeEnabled) return null
+    return EXTRA_THEME_SAMPLE
+}
+
+private fun render(mode: String?) {
+    val themeSampleMode = mode
+    val themeSampleDark = themeSampleMode == THEME_SAMPLE_DARK
+    if (themeSampleMode == null) {
+        EdgeToEdge()
+        NothingUiThemeSampleScreen()
+    } else {
+        NothingUiThemeSampleScreen()
+        EdgeToEdge()
+    }
+}
+EOF
+expect_fail_contains 'theme sample without explicit sample-mode system bars fails' \
+    "$missing_sample_mode" 'sample mode'
+
+missing_explicit_edge="$TMP_DIR/NothingOS-Launcher/missing-explicit-edge"
+cp -R "$clean" "$missing_explicit_edge"
+write_file "$missing_explicit_edge/lawnchair/src/app/lawnchair/ui/theme/Theme.kt" <<'EOF'
+package app.lawnchair.ui.theme
+
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+
+@Composable
+fun ComponentActivity.EdgeToEdge() {
+    val darkTheme = isSelectedThemeDark
+    LaunchedEffect(darkTheme) {
+        Unit
+    }
+}
+EOF
+expect_fail_contains 'EdgeToEdge without an explicit override fails' \
+    "$missing_explicit_edge" 'explicit dark-theme override'
 
 provenance="$TMP_DIR/NothingOS-Launcher/provenance"
 cp -R "$clean" "$provenance"

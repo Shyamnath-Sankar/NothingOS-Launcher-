@@ -37,6 +37,7 @@ LICENSE_FILE="$ROOT/licenses/fonts/OFL-Doto.txt"
 ATTRIBUTION_FILE="$ROOT/licenses/fonts/doto.md"
 BUILD_FILE="$ROOT/build.gradle"
 PREFS_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt"
+THEME_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
 
 [ -d "$FONT_DIR" ] || fail "missing $FONT_DIR"
 [ -d "$THEME_DIR" ] || fail "missing $THEME_DIR"
@@ -44,6 +45,7 @@ PREFS_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.
 [ -f "$ATTRIBUTION_FILE" ] || fail "missing $ATTRIBUTION_FILE"
 [ -f "$BUILD_FILE" ] || fail "missing $BUILD_FILE"
 [ -f "$PREFS_FILE" ] || fail "missing $PREFS_FILE"
+[ -f "$THEME_FILE" ] || fail "missing $THEME_FILE"
 
 for font in doto_regular.ttf doto_bold.ttf; do
     path="$FONT_DIR/$font"
@@ -144,6 +146,18 @@ grep -Fq '!NothingUiFeature.themeEnabled' "$PREFS_FILE" ||
     fail "the theme sample route must be Play-gated"
 grep -Fq 'NothingUiThemeSampleScreen' "$PREFS_FILE" ||
     fail "the theme sample route is not wired to the sample screen"
+
+# The diagnostic sample must drive system-bar contrast from the requested sample
+# mode, not from the launcher's inherited theme preference. The normal settings
+# path must keep using the inherited default.
+grep -Fq 'fun ComponentActivity.EdgeToEdge(darkTheme: Boolean = isSelectedThemeDark)' "$THEME_FILE" ||
+    fail "EdgeToEdge does not accept an explicit dark-theme override"
+grep -Fq 'LaunchedEffect(darkTheme)' "$THEME_FILE" ||
+    fail "EdgeToEdge does not react to explicit dark-theme changes"
+grep -Fq 'EdgeToEdge(darkTheme = themeSampleDark)' "$PREFS_FILE" ||
+    fail "the theme sample does not pass its sample mode to EdgeToEdge"
+grep -Fq 'EdgeToEdge()' "$PREFS_FILE" ||
+    fail "the normal settings path no longer uses the inherited EdgeToEdge"
 
 # Inspect basenames only. The repository parent directory may legitimately contain
 # a brand token (for example .../NothingOS-Launcher-...), which must not be read as
