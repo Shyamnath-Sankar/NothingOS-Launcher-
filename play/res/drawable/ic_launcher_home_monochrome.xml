@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Original DotWel Launcher artwork, Play channel only.
+  Monochrome layer for themed icons: the same 3x3 dot grid in a single tintable
+  white, without the red accent.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+</vector>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Original DotWel Launcher artwork, Play channel only.
+  Compose About-screen variant; the screen clips it to a circle. Same geometric
+  dot grid and single red accent.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#0B0B0B"
+        android:pathData="M22,4H86Q104,4 104,22V86Q104,104 86,104H22Q4,104 4,86V22Q4,4 22,4Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#D7261E"
+        android:pathData="M72,36m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,54m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M72,72m-5.5,0a5.5,5.5 0,1 0,11 0a5.5,5.5 0,1 0,-11 0" />
+</vector>
