@@ -45,6 +45,11 @@ if [ -d "$ROOT/play/res" ]; then
     sh "$SCRIPT_DIR/play-brand-guard.sh" "$ROOT"
 fi
 
+# NothingUI theme foundation and Play-only gate (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/theme" ]; then
+    sh "$SCRIPT_DIR/nothingui-theme-guard.sh" "$ROOT"
+fi
+
 # 2. Locate the merged manifest for the Play debug variant.
 INTERMEDIATES="$ROOT/build/intermediates"
 if [ ! -d "$INTERMEDIATES" ]; then
