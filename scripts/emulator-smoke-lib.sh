@@ -139,9 +139,10 @@ ui_dock_top() (
 
 # Print the bottom y of the lowest labelled row (the hotseat/dock) from a
 # UIAutomator dump. This complements ui_dock_top: together they bound the dock
-# icon band so a swipe can start in the empty gutter below it. When the QSB top
-# is supplied, anything at or below it is excluded so the search widget cannot
-# be mistaken for the dock.
+# icon band so a swipe can start in the empty gutter below it. Search
+# containers (the workspace header and any bottom QSB) are excluded by
+# resource-id so they cannot be mistaken for the dock. When the QSB top is
+# supplied, anything at or below it is also excluded.
 ui_dock_bottom() (
     xml=$1
     root=$2
@@ -175,6 +176,8 @@ ui_dock_bottom() (
             }
             {
                 if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                if (rid ~ /(^|\/)search_container_workspace$/) next
                 bounds = attr($0, "bounds")
                 text = attr($0, "text")
                 desc = attr($0, "content-desc")
@@ -191,14 +194,19 @@ ui_dock_bottom() (
         '
 )
 
-# Print the top y of the QSB/search container when the dump exposes it. The
-# id is checked as a path suffix so both the Play applicationId and the
-# inherited github/nightly package work.
+# Print the top y of the bottom QSB/search container when the dump exposes it.
+# The id is checked as a path suffix so both the Play applicationId and the
+# inherited github/nightly package work. A search container above the measured
+# dock bottom is the workspace header, not the bottom QSB, so it is rejected:
+# the candidate must start below $2. Without a numeric dock bottom there is no
+# way to tell the header from the QSB, so nothing is printed.
 ui_qsb_top() (
     xml=$1
+    dock_bottom=${2:-}
     [ -s "$xml" ] || return 0
+    case "$dock_bottom" in '' | *[!0-9]*) return 0 ;; esac
     tr '>' '\n' < "$xml" |
-        awk '
+        awk -v dock_bottom="$dock_bottom" '
             function attr(s, name,    pat, v) {
                 pat = "[[:space:]]" name "=\"[^\"]*\""
                 if (!match(s, pat)) return ""
@@ -223,7 +231,7 @@ ui_qsb_top() (
                 bounds = attr($0, "bounds")
                 if (bounds == "") next
                 y1 = y_of(bounds, 2)
-                if (y1 >= 0) {
+                if (y1 > dock_bottom) {
                     print y1
                     exit
                 }
@@ -264,14 +272,17 @@ drawer_swipe_travel_fraction() (
 
 # Compute a safe upward swipe for opening the app drawer. $1/$2 are the
 # measured display width/height; $3 is the measured hotseat top, $4 the dock
-# icon bottom and $5 the QSB top (all optional).
+# icon bottom and $5 the bottom QSB top (all optional).
 #
-# When the hierarchy exposes the dock icon band and the QSB, start in the empty
-# gutter between them and end near the top of the display. That gives the
-# zero-velocity drawer drag more than half the shift range instead of the old
-# ~42 percent that snapped back. Without those measurements, start above the
-# dock as before. The x is the horizontal centre: the start row is below every
-# dock icon, so no icon can consume the DOWN. Prints "x1 y1 x2 y2".
+# When the hierarchy exposes the dock icon band and a bottom QSB, start in the
+# empty gutter between them and end near the top of the display. When only the
+# dock icon band is exposed (the bottom QSB is not in UIAutomator on the actual
+# HOME), start a quarter of the measured icon band below the icon bottom: the
+# visible gutter above the QSB. Both give the zero-velocity drawer drag more
+# than half the shift range instead of the old ~42 percent that snapped back.
+# Without those measurements, start above the dock as before. The x is the
+# horizontal centre: the start row is below every dock icon, so no icon can
+# consume the DOWN. Prints "x1 y1 x2 y2".
 drawer_swipe_target() (
     width=$1
     height=$2
@@ -292,6 +303,14 @@ drawer_swipe_target() (
         [ "$qsb_top" -gt "$dock_bottom" ] &&
         [ $((qsb_top - dock_bottom)) -ge "$min_gap" ]; then
         start_y=$(((dock_bottom + qsb_top) / 2))
+    elif [ -n "$dock_bottom" ] && [ -n "$hotseat_top" ] &&
+        [ "$hotseat_top" -gt 0 ] && [ "$dock_bottom" -gt "$hotseat_top" ] &&
+        [ "$dock_bottom" -lt "$height" ]; then
+        icon_band=$((dock_bottom - hotseat_top))
+        start_y=$((dock_bottom + icon_band / 4))
+        if [ "$start_y" -ge "$height" ]; then
+            start_y=$((hotseat_top - margin))
+        fi
     elif [ -n "$hotseat_top" ] && [ "$hotseat_top" -gt 0 ] &&
         [ "$hotseat_top" -le "$height" ]; then
         start_y=$((hotseat_top - margin))

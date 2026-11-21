@@ -361,8 +361,8 @@ drawer_target_for_dump() (
         width=$(($3 - $1))
         height=$(($4 - $2))
         dock_top=$(ui_dock_top "$xml" "$root")
-        qsb_top=$(ui_qsb_top "$xml")
-        dock_bottom=$(ui_dock_bottom "$xml" "$root" "$qsb_top")
+        dock_bottom=$(ui_dock_bottom "$xml" "$root")
+        qsb_top=$(ui_qsb_top "$xml" "$dock_bottom")
     else
         origin_x=0
         origin_y=0
@@ -397,6 +397,10 @@ open_app_drawer() {
 
     : > "$ARTIFACTS/appdrawer-swipe-log.txt"
     max_attempts=4
+    # adb delivers move samples over the swipe duration; 300 ms left the
+    # zero-velocity gesture with only a partial displacement, so use 500 ms
+    # and record it with every attempt.
+    swipe_duration=500
     attempt=1
     while [ "$attempt" -le "$max_attempts" ]; do
         wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt" 10 ||
@@ -408,9 +412,10 @@ open_app_drawer() {
             "$fallback_width" "$fallback_height") ||
             fail "could not compute a safe app-drawer swipe target on attempt $attempt"
         set -- $target
-        printf 'attempt=%s start=%s,%s end=%s,%s duration=300\n' \
-            "$attempt" "$1" "$2" "$3" "$4" >> "$ARTIFACTS/appdrawer-swipe-log.txt"
-        adb_cmd shell input swipe "$1" "$2" "$3" "$4" 300 \
+        printf 'attempt=%s start=%s,%s end=%s,%s duration=%s\n' \
+            "$attempt" "$1" "$2" "$3" "$4" "$swipe_duration" \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+        adb_cmd shell input swipe "$1" "$2" "$3" "$4" "$swipe_duration" \
             > "$ARTIFACTS/appdrawer-swipe-$attempt.txt" 2>&1 ||
             fail "could not swipe open the app drawer on attempt $attempt"
 

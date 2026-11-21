@@ -24,6 +24,9 @@ MOCK_BIN="$TMP_DIR/bin"
 ARTIFACTS="$TMP_DIR/artifacts"
 mkdir -p "$MOCK_BIN" "$ARTIFACTS"
 
+# The actual HOME hierarchy: the search_container_workspace id belongs to the
+# header at y=91, the hotseat icons end at y=1568, and the bottom QSB is not in
+# UIAutomator. This is the CI87 shape that exposed the 1183 px fallback.
 HOME_XML="$TMP_DIR/home.xml"
 cat > "$HOME_XML" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -31,8 +34,13 @@ cat > "$HOME_XML" <<'EOF'
   <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
     <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
     <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
-    <node index="2" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1400][240,1460]" />
-    <node index="3" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[300,1400][420,1460]" />
+    <node index="2" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[22,91][1058,294]" />
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,1375][1080,1920]">
+      <node index="0" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[22,1375][281,1568]" />
+      <node index="1" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[281,1375][540,1568]" />
+      <node index="2" text="Contacts" class="android.widget.TextView" content-desc="" clickable="true" bounds="[540,1375][799,1568]" />
+      <node index="3" text="WebView Browser Tester" class="android.widget.TextView" content-desc="" clickable="true" bounds="[799,1375][1058,1568]" />
+    </node>
   </node>
 </hierarchy>
 EOF
@@ -197,12 +205,30 @@ while [ "$attempt" -le 4 ]; do
 done
 
 short_swipes=$(awk -F'[ =,]' '
-    /^attempt=.* start=/ && ($5 - $8) <= 960 { print }
+    /^attempt=.* start=/ && ($5 - $8) <= 1500 { print }
 ' "$ARTIFACTS/appdrawer-swipe-log.txt")
 if [ -z "$short_swipes" ]; then
-    pass 'every attempt swipes more than half of the 1920 px display'
+    pass 'every attempt swipes more than 1500 px of the 1920 px display'
 else
-    fail "an attempt swiped half the display or less: $short_swipes"
+    fail "an attempt swiped 1500 px or less: $short_swipes"
+fi
+
+bad_starts=$(awk -F'[ =,]' '
+    /^attempt=.* start=/ && ($5 <= 1568 || $5 >= 1640) { print }
+' "$ARTIFACTS/appdrawer-swipe-log.txt")
+if [ -z "$bad_starts" ]; then
+    pass 'every attempt starts in the 1568..1640 empty gutter'
+else
+    fail "an attempt started outside the gutter: $bad_starts"
+fi
+
+bad_durations=$(awk -F'[ =,]' '
+    /^attempt=.* start=/ && $10 != 500 { print }
+' "$ARTIFACTS/appdrawer-swipe-log.txt")
+if [ -z "$bad_durations" ]; then
+    pass 'every attempt logs the 500 ms swipe duration'
+else
+    fail "an attempt did not log a 500 ms duration: $bad_durations"
 fi
 
 if grep -Fq 'emulator-smoke: FAIL: app drawer did not expose' "$TMP_DIR/runner.err"; then

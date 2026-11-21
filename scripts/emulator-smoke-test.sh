@@ -187,10 +187,12 @@ assert_eq 'a high dock still keeps the swipe above it' \
 assert_false 'an invalid display width cannot produce a swipe target' \
     drawer_swipe_target 0 1920 1400
 
-# The CI84 HOME: root 1080x1920, dock icons 1375..1568, QSB visual 1640..1775.
-# The old target (start 1183, end 384) only travelled 799 px and the runtime
-# trace showed 0.376 progress, so it snapped back. The new target starts in the
-# empty gutter between the dock icon bottom and the QSB, and ends near the top.
+# The actual CI87 HOME: root 1080x1920, a workspace HEADER search container at
+# [22,91][1058,294], and a hotseat whose icons end at y=1568. UIAutomator does
+# not expose the bottom QSB; the PNG puts its visual top at 1640. The old code
+# treated the header (y=91) as the QSB top, so it fell back to start 1183 and
+# the runtime trace only reached 0.366 progress. The gutter is derived from the
+# measured icon band, not from the header.
 actual_home_xml="$TMP_DIR/actual-home.xml"
 cat > "$actual_home_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -198,9 +200,13 @@ cat > "$actual_home_xml" <<'EOF'
   <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
     <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
     <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
-    <node index="2" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1375][240,1568]" />
-    <node index="3" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[300,1375][420,1568]" />
-    <node index="4" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[0,1640][1080,1775]" />
+    <node index="2" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[22,91][1058,294]" />
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,1375][1080,1920]">
+      <node index="0" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[22,1375][281,1568]" />
+      <node index="1" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[281,1375][540,1568]" />
+      <node index="2" text="Contacts" class="android.widget.TextView" content-desc="" clickable="true" bounds="[540,1375][799,1568]" />
+      <node index="3" text="WebView Browser Tester" class="android.widget.TextView" content-desc="" clickable="true" bounds="[799,1375][1058,1568]" />
+    </node>
   </node>
 </hierarchy>
 EOF
@@ -208,18 +214,65 @@ actual_root=$(ui_root_bounds "$actual_home_xml")
 assert_eq 'the actual HOME dock top is measured from the hierarchy' \
     '1375' \
     "$(ui_dock_top "$actual_home_xml" "$actual_root")"
-assert_eq 'the actual HOME QSB top is measured from the hierarchy' \
-    '1640' \
-    "$(ui_qsb_top "$actual_home_xml")"
-assert_eq 'the actual HOME dock bottom is measured and excludes the QSB' \
+assert_eq 'the actual HOME dock bottom comes from the hotseat icon band' \
     '1568' \
-    "$(ui_dock_bottom "$actual_home_xml" "$actual_root" "$(ui_qsb_top "$actual_home_xml")")"
-assert_eq 'the actual 1080x1920 HOME swipes from the dock/QSB gutter to the top' \
+    "$(ui_dock_bottom "$actual_home_xml" "$actual_root")"
+assert_eq 'the workspace header is rejected as the bottom QSB' \
+    '' \
+    "$(ui_qsb_top "$actual_home_xml" 1568)"
+assert_eq 'a QSB cannot be derived without a measured dock bottom' \
+    '' \
+    "$(ui_qsb_top "$actual_home_xml")"
+actual_target=$(drawer_swipe_target 1080 1920 1375 1568 '')
+assert_eq 'the actual 1080x1920 HOME swipes from the measured gutter to the top' \
+    '540 1616 540 96' "$actual_target"
+actual_start=$(printf '%s\n' "$actual_target" | awk '{ print $2 }')
+actual_end=$(printf '%s\n' "$actual_target" | awk '{ print $4 }')
+actual_travel=$((actual_start - actual_end))
+if [ "$actual_start" -gt 1568 ] && [ "$actual_start" -lt 1640 ]; then
+    pass 'the actual swipe starts below the icons and above the visual QSB'
+else
+    fail "the actual swipe start $actual_start is not in the 1568..1640 gutter"
+fi
+if [ "$actual_travel" -gt 1500 ]; then
+    pass 'the actual swipe travels more than 1500 px'
+else
+    fail "the actual swipe only travels $actual_travel px"
+fi
+assert_false 'the actual HOME swipe does not use the old 1183 px fallback' \
+    test "$actual_start" = 1183
+assert_true 'the actual 1080x1920 swipe covers more than half the display' \
+    drawer_swipe_is_long_enough 1920 "$actual_start" "$actual_end"
+assert_eq 'the actual 1080x1920 swipe covers 79.2 percent of the display' \
+    '0.7917' \
+    "$(drawer_swipe_travel_fraction 1920 "$actual_start" "$actual_end")"
+
+# A real bottom QSB, when UIAutomator does expose one, still wins: the swipe
+# starts in the dock/QSB gutter and the QSB is excluded from the dock band.
+bottom_qsb_xml="$TMP_DIR/bottom-qsb.xml"
+cat > "$bottom_qsb_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[22,1375][281,1568]" />
+    <node index="1" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[281,1375][540,1568]" />
+    <node index="2" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[0,1640][1080,1775]" />
+  </node>
+</hierarchy>
+EOF
+bottom_root=$(ui_root_bounds "$bottom_qsb_xml")
+assert_eq 'a bottom QSB is excluded from the dock band' \
+    '1568' \
+    "$(ui_dock_bottom "$bottom_qsb_xml" "$bottom_root")"
+assert_eq 'a bottom QSB below the dock is measured' \
+    '1640' \
+    "$(ui_qsb_top "$bottom_qsb_xml" 1568)"
+assert_eq 'a bottom QSB still produces the dock/QSB gutter swipe' \
     '540 1604 540 96' \
     "$(drawer_swipe_target 1080 1920 1375 1568 1640)"
-assert_true 'the actual 1080x1920 swipe covers more than half the display' \
+assert_true 'the bottom-QSB swipe covers more than half the display' \
     drawer_swipe_is_long_enough 1920 1604 96
-assert_eq 'the actual 1080x1920 swipe covers 78.5 percent of the display' \
+assert_eq 'the bottom-QSB swipe covers 78.5 percent of the display' \
     '0.7854' \
     "$(drawer_swipe_travel_fraction 1920 1604 96)"
 assert_false 'the old 799 px swipe is rejected as too short' \
@@ -308,6 +361,14 @@ assert_true 'the drawer target measures the dock icon bottom from the HOME dump'
     grep -Fq 'ui_dock_bottom' "$target_body"
 assert_true 'the drawer target passes the measured dock band and QSB to the geometry' \
     grep -Fq '"$dock_top" "$dock_bottom" "$qsb_top"' "$target_body"
+assert_true 'the drawer target rejects a header by deriving the QSB after the dock bottom' \
+    grep -Fq 'qsb_top=$(ui_qsb_top "$xml" "$dock_bottom")' "$target_body"
+assert_true 'the drawer swipe logs its duration' \
+    grep -Fq 'duration=%s' "$open_body"
+assert_true 'the drawer swipe uses a 500 ms duration for MOVE delivery' \
+    grep -Fq 'swipe_duration=500' "$open_body"
+assert_true 'the drawer swipe passes the logged duration to adb' \
+    grep -Fq 'input swipe "$1" "$2" "$3" "$4" "$swipe_duration"' "$open_body"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
