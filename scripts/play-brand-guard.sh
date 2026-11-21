@@ -30,6 +30,7 @@ PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 NOTICE_FILE="$ROOT/NOTICE.md"
 ABOUT_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/about/About.kt"
 ONBOARDING_KT="$ROOT/lawnchair/src/app/lawnchair/smartspace/provider/OnboardingProvider.kt"
+DASHBOARD_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt"
 
 violations=0
 
@@ -78,6 +79,7 @@ require_file "$PLAY_MANIFEST"
 require_file "$NOTICE_FILE"
 require_file "$ABOUT_KT"
 require_file "$ONBOARDING_KT"
+require_file "$DASHBOARD_KT"
 require_file "$PLAY_RES/values/strings.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home_comp.xml"
@@ -126,6 +128,23 @@ for source_strings in "$ROOT"/lawnchair/res/values*/strings.xml; do
         *Lawnchair*) violate "Play onboarding override for $qualifier still says Lawnchair" ;;
     esac
 done
+
+play_default_tip=$(extract_string set_default_launcher_tip "$PLAY_RES/values/strings.xml")
+case "$play_default_tip" in
+    *'DotWel Launcher'*) ;;
+    *) violate "Play default-launcher hint does not name DotWel Launcher: '$play_default_tip'" ;;
+esac
+case "$play_default_tip" in
+    *Lawnchair*) violate 'Play default-launcher hint still says Lawnchair' ;;
+esac
+
+# The Play overlay is additive: github/nightly must keep the inherited
+# Lawnchair text, and the Apache/NOTICE attribution must remain.
+base_default_tip=$(extract_string set_default_launcher_tip "$ROOT/lawnchair/res/values/strings.xml")
+case "$base_default_tip" in
+    *Lawnchair*) ;;
+    *) violate "non-Play default-launcher hint no longer keeps the inherited Lawnchair text: '$base_default_tip'" ;;
+esac
 
 if grep -rqi 'nothing' "$PLAY_RES"; then
     violate 'Play brand resources contain a Nothing mark or asset reference'
@@ -181,6 +200,9 @@ if ! grep -Fq 'R.drawable.ic_launcher_home_comp' "$ABOUT_KT"; then
 fi
 if ! grep -Fq 'R.string.onboarding_welcome' "$ONBOARDING_KT"; then
     violate 'OnboardingProvider no longer consumes R.string.onboarding_welcome; Play HOME welcome override is unused'
+fi
+if ! grep -Fq 'R.string.set_default_launcher_tip' "$DASHBOARD_KT"; then
+    violate 'PreferencesDashboard no longer consumes R.string.set_default_launcher_tip; Play default-launcher hint override is unused'
 fi
 
 if ! grep -Fq 'android:icon="@mipmap/ic_launcher_home"' "$PLAY_MANIFEST"; then

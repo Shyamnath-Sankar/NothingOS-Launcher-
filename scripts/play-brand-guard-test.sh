@@ -89,6 +89,12 @@ package app.lawnchair.smartspace.provider
 val welcome = R.string.onboarding_welcome
 EOF
 
+    write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt" <<'EOF'
+package app.lawnchair.ui.preferences.destinations
+
+val tip = R.string.set_default_launcher_tip
+EOF
+
     write_file "$root/play/AndroidManifest.xml" <<'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -111,6 +117,7 @@ EOF
     write_file "$root/lawnchair/res/values/strings.xml" <<'EOF'
 <resources>
     <string name="onboarding_welcome">Welcome to Lawnchair!</string>
+    <string name="set_default_launcher_tip">To access shortcuts and additional features, set Lawnchair as your default launcher</string>
 </resources>
 EOF
 
@@ -124,6 +131,7 @@ EOF
 <resources>
     <string name="play_app_name" translatable="false">DotWel Launcher</string>
     <string name="onboarding_welcome">Welcome to DotWel Launcher!</string>
+    <string name="set_default_launcher_tip">To access shortcuts and additional features, set DotWel Launcher as your default launcher</string>
 </resources>
 EOF
 
@@ -236,9 +244,54 @@ write_file "$lawnchair_welcome/play/res/values/strings.xml" <<'EOF'
 <resources>
     <string name="play_app_name" translatable="false">DotWel Launcher</string>
     <string name="onboarding_welcome">Welcome to Lawnchair!</string>
+    <string name="set_default_launcher_tip">To access shortcuts and additional features, set DotWel Launcher as your default launcher</string>
 </resources>
 EOF
 expect_fail_contains 'inherited welcome text fails' "$lawnchair_welcome" 'Lawnchair'
+
+lawnchair_tip="$TMP_DIR/lawnchair-tip"
+cp -R "$clean" "$lawnchair_tip"
+write_file "$lawnchair_tip/play/res/values/strings.xml" <<'EOF'
+<resources>
+    <string name="play_app_name" translatable="false">DotWel Launcher</string>
+    <string name="onboarding_welcome">Welcome to DotWel Launcher!</string>
+    <string name="set_default_launcher_tip">To access shortcuts and additional features, set Lawnchair as your default launcher</string>
+</resources>
+EOF
+expect_fail_contains 'Play default-launcher hint still saying Lawnchair fails' \
+    "$lawnchair_tip" 'default-launcher hint still says Lawnchair'
+
+missing_play_tip="$TMP_DIR/missing-play-tip"
+cp -R "$clean" "$missing_play_tip"
+write_file "$missing_play_tip/play/res/values/strings.xml" <<'EOF'
+<resources>
+    <string name="play_app_name" translatable="false">DotWel Launcher</string>
+    <string name="onboarding_welcome">Welcome to DotWel Launcher!</string>
+</resources>
+EOF
+expect_fail_contains 'missing Play default-launcher hint fails' \
+    "$missing_play_tip" 'default-launcher hint does not name DotWel Launcher'
+
+rebranded_base_tip="$TMP_DIR/rebranded-base-tip"
+cp -R "$clean" "$rebranded_base_tip"
+write_file "$rebranded_base_tip/lawnchair/res/values/strings.xml" <<'EOF'
+<resources>
+    <string name="onboarding_welcome">Welcome to Lawnchair!</string>
+    <string name="set_default_launcher_tip">To access shortcuts and additional features, set DotWel Launcher as your default launcher</string>
+</resources>
+EOF
+expect_fail_contains 'rebranding the non-Play inherited hint fails' \
+    "$rebranded_base_tip" 'non-Play default-launcher hint no longer keeps the inherited Lawnchair text'
+
+unused_tip="$TMP_DIR/unused-tip"
+cp -R "$clean" "$unused_tip"
+write_file "$unused_tip/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt" <<'EOF'
+package app.lawnchair.ui.preferences.destinations
+
+val tip = R.string.smartspace_onboarding
+EOF
+expect_fail_contains 'default-launcher hint consumer drift fails' \
+    "$unused_tip" 'Play default-launcher hint override is unused'
 
 missing_locale="$TMP_DIR/missing-locale"
 cp -R "$clean" "$missing_locale"
