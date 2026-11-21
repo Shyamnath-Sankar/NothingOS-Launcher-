@@ -155,6 +155,22 @@ if printf '%s\n' "$play_flavor_block" |
     violate 'build.gradle play flavor owns play/res; single-flavor resources lose to lawn, wire it to lawnWithQuickstepPlay instead'
 fi
 
+# The Play-only move must not strip the inherited channels. github/nightly keep
+# resolving their icon and strings from the lawn/nightly source sets. Extract
+# the sourceSets block first because the flavor blocks above also match these
+# names.
+source_sets_block=$(extract_gradle_block sourceSets "$BUILD_FILE")
+lawn_block=$(printf '%s\n' "$source_sets_block" | extract_gradle_block lawn -)
+if ! printf '%s\n' "$lawn_block" |
+    grep -Eq 'res\.srcDirs[[:space:]]*=.*["'"'"']lawnchair/res["'"'"']'; then
+    violate 'build.gradle lawn source set no longer owns lawnchair/res; github/nightly lose inherited branding'
+fi
+nightly_block=$(printf '%s\n' "$source_sets_block" | extract_gradle_block nightly -)
+if ! printf '%s\n' "$nightly_block" |
+    grep -Eq 'res\.srcDirs[[:space:]]*=.*["'"'"']nightly/res["'"'"']'; then
+    violate 'build.gradle nightly source set no longer owns nightly/res'
+fi
+
 # Actual consumers. If these references change, the Play overlay no longer
 # reaches the screen even when the files above are perfect.
 if ! grep -Fq 'R.drawable.ic_launcher_home_comp' "$ABOUT_KT"; then

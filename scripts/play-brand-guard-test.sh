@@ -43,12 +43,21 @@ android {
         withQuickstep {
             dimension "recents"
         }
+        nightly {
+            dimension "channel"
+        }
         play {
             dimension "channel"
             manifest.srcFile "play/AndroidManifest.xml"
         }
     }
     sourceSets {
+        lawn {
+            res.srcDirs = ["lawnchair/res"]
+        }
+        nightly {
+            res.srcDirs = ["nightly/res"]
+        }
         lawnWithQuickstepPlay {
             manifest.srcFile "play/AndroidManifest.xml"
             res.srcDirs = ["play/res"]
@@ -300,6 +309,9 @@ android {
         withQuickstep {
             dimension "recents"
         }
+        nightly {
+            dimension "channel"
+        }
         play {
             dimension "channel"
             manifest.srcFile "play/AndroidManifest.xml"
@@ -307,6 +319,12 @@ android {
         }
     }
     sourceSets {
+        lawn {
+            res.srcDirs = ["lawnchair/res"]
+        }
+        nightly {
+            res.srcDirs = ["nightly/res"]
+        }
         lawnWithQuickstepPlay {
             manifest.srcFile "play/AndroidManifest.xml"
         }
@@ -326,6 +344,51 @@ androidComponents {
 EOF
 expect_fail_contains 'play res in the single flavor fails precedence' \
     "$play_res_loses" 'does not own play/res'
+
+lawn_res_lost="$TMP_DIR/lawn-res-lost"
+cp -R "$clean" "$lawn_res_lost"
+write_file "$lawn_res_lost/build.gradle" <<'EOF'
+android {
+    flavorDimensions += ["app", "recents", "channel"]
+    productFlavors {
+        lawn {
+            dimension "app"
+        }
+        withQuickstep {
+            dimension "recents"
+        }
+        nightly {
+            dimension "channel"
+        }
+        play {
+            dimension "channel"
+            manifest.srcFile "play/AndroidManifest.xml"
+        }
+    }
+    sourceSets {
+        nightly {
+            res.srcDirs = ["nightly/res"]
+        }
+        lawnWithQuickstepPlay {
+            manifest.srcFile "play/AndroidManifest.xml"
+            res.srcDirs = ["play/res"]
+        }
+    }
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def channel = variant.productFlavors.last().second
+        if (channel == "play") {
+            variant.resValues.put(
+                variant.makeResValueKey("string", "derived_app_name"),
+                new com.android.build.api.variant.ResValue("DotWel Launcher", "Play display label")
+            )
+        }
+    }
+}
+EOF
+expect_fail_contains 'lawn resources stripped from github/nightly fails' \
+    "$lawn_res_lost" 'lawnchair/res'
 
 unused_about_icon="$TMP_DIR/unused-about-icon"
 cp -R "$clean" "$unused_about_icon"
