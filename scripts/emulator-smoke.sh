@@ -12,10 +12,12 @@
 #     launcher is the resumed/default home
 #   - captures a screenshot, logcat, dumpsys and aapt evidence under an
 #     artifact directory, and fails on install/launch/crash problems
-#   - dumps the HOME UIAutomator hierarchy and, when the smartspace onboarding
-#     card is visible, requires the rendered welcome text to be "DotWel
-#     Launcher" with no "Lawnchair" text; otherwise records a pending note and
-#     fails if the hierarchy cannot be dumped at all
+#   - dumps the actual HOME UIAutomator hierarchy and requires the rendered
+#     NothingUI clock and date text, with no inherited "Lawnchair" text; captures
+#     home.png as the actual-home visual evidence
+#   - opens the inherited app drawer, captures its UI XML + screenshot, searches
+#     for Settings, taps the result, verifies the installed Settings app is
+#     foreground, then returns HOME
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
 #   - opens the debug-only Play theme sample through the existing
@@ -237,35 +239,117 @@ capture_theme_sample() {
         >> "$ARTIFACTS/theme-sample-$mode.txt"
 }
 
-# The smartspace onboarding card reads onboarding_welcome. A clean install has
-# HOME_BOUNCE_SEEN unset, so the card is expected. Assert the rendered text when
-# the card is present; if it has not rendered, record pending rather than claim
-# a brand pass that the evidence does not support.
-verify_home_welcome() {
+# Extract the first UIAutomator bounds tuple for a node that contains the given
+# needle. Prints "x1 y1 x2 y2" or nothing.
+ui_bounds_for() {
+    xml=$1
+    needle=$2
+    tr '>' '\n' < "$xml" |
+        grep -F "$needle" |
+        sed -n 's/.*bounds="\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]".*/\1 \2 \3 \4/p' |
+        sed -n '1p'
+}
+
+tap_center_of_bounds() {
+    bounds=$1
+    set -- $bounds
+    x=$((($1 + $3) / 2))
+    y=$((($2 + $4) / 2))
+    adb_cmd shell input tap "$x" "$y" > "$ARTIFACTS/tap-$x-$y.txt" 2>&1
+}
+
+# The Play home replaces the inherited welcome smartspace with the original
+# NothingUI clock/date header. Assert the rendered clock and date text, not a
+# static source guard, and keep the inherited brand check on the actual HOME.
+verify_nothing_home() {
     attempt=1
     captured=0
-    while [ "$attempt" -le 3 ]; do
+    while [ "$attempt" -le 4 ]; do
         if capture_ui_xml home.xml; then
             captured=1
-            if grep -Fqi 'welcome' "$ARTIFACTS/home.xml"; then
-                if grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/home.xml" &&
-                    ! grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
-                    printf 'HOME welcome: "%s" is visible and no Lawnchair text is present.\n' \
-                        "$EXPECTED_LABEL" > "$ARTIFACTS/home-welcome.txt"
-                    return 0
+            if grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$ARTIFACTS/home.xml" &&
+                grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$ARTIFACTS/home.xml"; then
+                if grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
+                    fail "actual HOME UI still exposes inherited Lawnchair text"
                 fi
-                printf 'HOME welcome: card is visible but the brand is wrong.\n' \
-                    > "$ARTIFACTS/home-welcome.txt"
-                fail "HOME welcome UI does not say $EXPECTED_LABEL"
+                capture_screenshot_to home.png
+                [ -s "$ARTIFACTS/home.png" ] || fail "actual HOME screenshot capture failed"
+                printf 'Actual HOME: live clock and date text are visible; no Lawnchair text.\n' \
+                    > "$ARTIFACTS/home-nothing.txt"
+                printf 'Screenshot: home.png.\n' >> "$ARTIFACTS/home-nothing.txt"
+                return 0
             fi
         fi
         attempt=$((attempt + 1))
         sleep 1
     done
-    [ "$captured" -eq 1 ] ||
-        fail "could not dump the HOME UIAutomator hierarchy; the welcome brand is unverified"
-    printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
-        > "$ARTIFACTS/home-welcome-pending.txt"
+    [ "$captured" -eq 1 ] || fail "could not dump the actual HOME UIAutomator hierarchy"
+    fail "actual HOME does not expose the NothingUI clock/date text"
+}
+
+app_drawer_visible() {
+    grep -Fq '/input"' "$ARTIFACTS/appdrawer.xml" ||
+        grep -Fq 'EditText' "$ARTIFACTS/appdrawer.xml" ||
+        grep -Fq 'Settings' "$ARTIFACTS/appdrawer.xml"
+}
+
+open_app_drawer() {
+    size=$(adb_cmd shell wm size | tr -d '\r' |
+        sed -n 's/.*: \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1 \2/p')
+    [ -n "$size" ] || fail "could not read the display size for the app-drawer swipe"
+    set -- $size
+    width=$1
+    height=$2
+    adb_cmd shell input swipe \
+        $((width / 2)) $((height * 3 / 4)) \
+        $((width / 2)) $((height / 4)) 300 \
+        > "$ARTIFACTS/appdrawer-swipe.txt" 2>&1 ||
+        fail "could not swipe open the app drawer"
+    sleep 2
+    capture_ui_xml appdrawer.xml || fail "app drawer UI XML capture failed"
+    app_drawer_visible || fail "app drawer did not expose a search input or an app label"
+}
+
+# Open the inherited app drawer, search for a real installed app, tap the result,
+# verify the app is foreground, then resume HOME. This exercises search, tap
+# launch and HOME resume on the actual device rather than reading source.
+exercise_app_drawer() {
+    adb_cmd shell pm path com.android.settings | grep -q '^package:' ||
+        fail "com.android.settings is not installed on the emulator"
+
+    open_app_drawer
+    capture_screenshot_to appdrawer.png
+    [ -s "$ARTIFACTS/appdrawer.png" ] || fail "app drawer screenshot capture failed"
+    grep -Fq 'Settings' "$ARTIFACTS/appdrawer.xml" ||
+        fail "app drawer does not list Settings"
+
+    input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" '/input"')
+    [ -n "$input_bounds" ] ||
+        input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" 'android.widget.EditText')
+    [ -n "$input_bounds" ] || fail "could not find the app drawer search input"
+    tap_center_of_bounds "$input_bounds" || fail "could not focus the app drawer search input"
+    sleep 1
+    adb_cmd shell input text 'settings' > "$ARTIFACTS/search-input.txt" 2>&1 ||
+        fail "could not type into the app drawer search input"
+    sleep 2
+    capture_ui_xml appdrawer-search.xml || fail "app drawer search UI XML capture failed"
+    capture_screenshot_to appdrawer-search.png
+    [ -s "$ARTIFACTS/appdrawer-search.png" ] ||
+        fail "app drawer search screenshot capture failed"
+    grep -Fq 'text="Settings"' "$ARTIFACTS/appdrawer-search.xml" ||
+        fail "app drawer search did not return Settings"
+
+    result_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer-search.xml" 'text="Settings"')
+    [ -n "$result_bounds" ] || fail "could not find the Settings search result bounds"
+    tap_center_of_bounds "$result_bounds" || fail "could not tap the Settings search result"
+    sleep 4
+    adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities-app-launch.txt" 2>&1 || true
+    grep -Fq 'com.android.settings/' "$ARTIFACTS/activities-app-launch.txt" ||
+        fail "tapping the Settings search result did not launch com.android.settings"
+    printf 'App drawer/search: Settings was found, tapped and launched.\n' \
+        > "$ARTIFACTS/appdrawer.txt"
+    printf 'Screenshots: appdrawer.png, appdrawer-search.png.\n' >> "$ARTIFACTS/appdrawer.txt"
+    return_home app-launch
 }
 
 fail() {
@@ -467,7 +551,8 @@ home_resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activit
 capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
 
-verify_home_welcome
+verify_nothing_home
+exercise_app_drawer
 
 capture_app_info
 return_home app-info
