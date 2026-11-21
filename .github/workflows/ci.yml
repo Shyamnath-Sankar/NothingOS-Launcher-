@@ -89,7 +89,7 @@ jobs:
       - name: API 37 install and home smoke
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 37
+          api-level: "37.0"
           system-image-api-level: "37.0"
           target: default
           arch: x86_64
