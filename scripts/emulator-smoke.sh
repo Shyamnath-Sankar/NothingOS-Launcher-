@@ -204,7 +204,11 @@ capture_about() {
 # outside debug Play builds, so this exercises the real device rendering path.
 capture_theme_sample() {
     mode=$1
+    # The About capture already used this activity. Force a fresh task so the
+    # new diagnostic extra is delivered to a new instance instead of the system
+    # merely bringing the existing About task to the front.
     if ! sample_out=$(adb_cmd shell am start -W \
+        -f 0x18000000 \
         -n "$PKG/$THEME_SAMPLE_ACTIVITY" \
         --es "$THEME_SAMPLE_EXTRA" "$mode" 2>&1); then
         printf '%s\n' "$sample_out" > "$ARTIFACTS/theme-sample-$mode-launch.txt"
