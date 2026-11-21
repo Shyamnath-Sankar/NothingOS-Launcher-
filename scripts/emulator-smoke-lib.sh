@@ -137,39 +137,171 @@ ui_dock_top() (
         '
 )
 
+# Print the bottom y of the lowest labelled row (the hotseat/dock) from a
+# UIAutomator dump. This complements ui_dock_top: together they bound the dock
+# icon band so a swipe can start in the empty gutter below it. When the QSB top
+# is supplied, anything at or below it is excluded so the search widget cannot
+# be mistaken for the dock.
+ui_dock_bottom() (
+    xml=$1
+    root=$2
+    qsb_top=${3:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$root" ] || return 0
+    set -- $root
+    root_y1=$2
+    root_h=$(($4 - $2))
+    [ "$root_h" -gt 0 ] || return 0
+    threshold=$((root_y1 + root_h * 55 / 100))
+    case "$qsb_top" in '' | *[!0-9]*) qsb_top= ;; esac
+    tr '>' '\n' < "$xml" |
+        awk -v threshold="$threshold" -v qsb_top="$qsb_top" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (bounds == "" || (text == "" && desc == "")) next
+                y1 = y_of(bounds, 2)
+                if (y1 < threshold) next
+                if (qsb_top != "" && y1 >= qsb_top) next
+                y2 = y_of(bounds, 4)
+                if (y2 > best) best = y2
+            }
+            END {
+                if (best > 0) print best
+            }
+        '
+)
+
+# Print the top y of the QSB/search container when the dump exposes it. The
+# id is checked as a path suffix so both the Play applicationId and the
+# inherited github/nightly package work.
+ui_qsb_top() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                if (rid !~ /(^|\/)search_container_workspace$/) next
+                bounds = attr($0, "bounds")
+                if (bounds == "") next
+                y1 = y_of(bounds, 2)
+                if (y1 >= 0) {
+                    print y1
+                    exit
+                }
+            }
+        '
+)
+
+# Succeed when a swipe covers more than half of the display height. The
+# launcher's shift range equals the display height on phones; at zero release
+# velocity the drawer only commits above 40 percent, so a half-screen floor
+# leaves room for touch slop and the final MOVE sample.
+drawer_swipe_is_long_enough() (
+    height=$1
+    start_y=$2
+    end_y=$3
+    case "$height" in '' | *[!0-9]*) return 1 ;; esac
+    case "$start_y" in '' | *[!0-9]*) return 1 ;; esac
+    case "$end_y" in '' | *[!0-9]*) return 1 ;; esac
+    [ "$height" -gt 0 ] || return 1
+    travel=$((start_y - end_y))
+    [ "$travel" -gt $((height / 2)) ]
+)
+
+# Print the fraction of the display height covered by a swipe, for geometry
+# regressions. This is the raw travel, before touch slop is subtracted.
+drawer_swipe_travel_fraction() (
+    height=$1
+    start_y=$2
+    end_y=$3
+    case "$height" in '' | *[!0-9]*) return 1 ;; esac
+    case "$start_y" in '' | *[!0-9]*) return 1 ;; esac
+    case "$end_y" in '' | *[!0-9]*) return 1 ;; esac
+    [ "$height" -gt 0 ] || return 1
+    travel=$((start_y - end_y))
+    awk -v travel="$travel" -v height="$height" \
+        'BEGIN { printf "%.4f\n", travel / height }'
+)
+
 # Compute a safe upward swipe for opening the app drawer. $1/$2 are the
-# measured display width/height; $3 is the measured hotseat top (optional).
-# The swipe starts inside the empty workspace above the dock, never on a dock
-# icon, and ends in the upper part of the workspace. Prints "x1 y1 x2 y2".
+# measured display width/height; $3 is the measured hotseat top, $4 the dock
+# icon bottom and $5 the QSB top (all optional).
+#
+# When the hierarchy exposes the dock icon band and the QSB, start in the empty
+# gutter between them and end near the top of the display. That gives the
+# zero-velocity drawer drag more than half the shift range instead of the old
+# ~42 percent that snapped back. Without those measurements, start above the
+# dock as before. The x is the horizontal centre: the start row is below every
+# dock icon, so no icon can consume the DOWN. Prints "x1 y1 x2 y2".
 drawer_swipe_target() (
     width=$1
     height=$2
     hotseat_top=${3:-}
+    dock_bottom=${4:-}
+    qsb_top=${5:-}
     case "$width" in '' | *[!0-9]*) return 1 ;; esac
     case "$height" in '' | *[!0-9]*) return 1 ;; esac
     [ "$width" -gt 0 ] && [ "$height" -gt 0 ] || return 1
     x=$((width / 2))
-    end_y=$((height / 5))
+    end_y=$((height * 5 / 100))
     margin=$((height / 10))
-    min_start=$((height * 30 / 100))
-    start_y=$((height * 55 / 100))
-    case "$hotseat_top" in
-        '' | *[!0-9]*) ;;
-        *)
-            if [ "$hotseat_top" -gt 0 ] && [ "$hotseat_top" -le "$height" ]; then
-                start_y=$((hotseat_top - margin))
-                if [ "$start_y" -lt "$min_start" ]; then
-                    start_y=$min_start
-                fi
-                if [ "$start_y" -ge "$hotseat_top" ]; then
-                    start_y=$((hotseat_top - margin))
-                fi
-            fi
-            ;;
-    esac
+    min_gap=$((height * 2 / 100))
+    case "$dock_bottom" in '' | *[!0-9]*) dock_bottom= ;; esac
+    case "$qsb_top" in '' | *[!0-9]*) qsb_top= ;; esac
+    start_y=
+    if [ -n "$dock_bottom" ] && [ -n "$qsb_top" ] &&
+        [ "$qsb_top" -gt "$dock_bottom" ] &&
+        [ $((qsb_top - dock_bottom)) -ge "$min_gap" ]; then
+        start_y=$(((dock_bottom + qsb_top) / 2))
+    elif [ -n "$hotseat_top" ] && [ "$hotseat_top" -gt 0 ] &&
+        [ "$hotseat_top" -le "$height" ]; then
+        start_y=$((hotseat_top - margin))
+    else
+        start_y=$((height * 60 / 100))
+    fi
     if [ "$start_y" -le "$end_y" ]; then
         return 1
     fi
+    drawer_swipe_is_long_enough "$height" "$start_y" "$end_y" || return 1
     printf '%s %s %s %s\n' "$x" "$start_y" "$x" "$end_y"
 )
 

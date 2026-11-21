@@ -346,8 +346,9 @@ capture_drawer_attempt() (
 )
 
 # Derive the swipe from the current HOME hierarchy: its root bounds give the
-# real display area (insets included) and the lowest labelled row gives the
-# dock top. Fall back to measured wm size only when the hierarchy is unavailable.
+# real display area (insets included), the lowest labelled row gives the dock
+# band and the QSB container bounds the gutter below it. Fall back to measured
+# wm size only when the hierarchy is unavailable.
 drawer_target_for_dump() (
     xml=$1
     fallback_width=$2
@@ -360,14 +361,19 @@ drawer_target_for_dump() (
         width=$(($3 - $1))
         height=$(($4 - $2))
         dock_top=$(ui_dock_top "$xml" "$root")
+        qsb_top=$(ui_qsb_top "$xml")
+        dock_bottom=$(ui_dock_bottom "$xml" "$root" "$qsb_top")
     else
         origin_x=0
         origin_y=0
         width=$fallback_width
         height=$fallback_height
         dock_top=
+        dock_bottom=
+        qsb_top=
     fi
-    target=$(drawer_swipe_target "$width" "$height" "$dock_top") || return 1
+    target=$(drawer_swipe_target \
+        "$width" "$height" "$dock_top" "$dock_bottom" "$qsb_top") || return 1
     set -- $target
     printf '%s %s %s %s\n' \
         $((origin_x + $1)) $((origin_y + $2)) \

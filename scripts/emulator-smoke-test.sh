@@ -172,17 +172,66 @@ assert_eq 'the UIAutomator root bounds are the measured display' \
 assert_eq 'the dock top comes from the lowest labelled row' \
     '1400' \
     "$(ui_dock_top "$home_xml" "$(ui_root_bounds "$home_xml")")"
+assert_eq 'the dock bottom comes from the lowest labelled row' \
+    '1460' \
+    "$(ui_dock_bottom "$home_xml" "$(ui_root_bounds "$home_xml")")"
 assert_eq 'the drawer swipe starts above the measured dock, not at 75 percent' \
-    '540 1208 540 384' \
+    '540 1208 540 96' \
     "$(drawer_swipe_target 1080 1920 1400)"
-assert_eq 'the drawer swipe falls back to 55 percent without a dock measurement' \
-    '540 1056 540 384' \
+assert_eq 'the drawer swipe falls back to 60 percent without a dock measurement' \
+    '540 1152 540 96' \
     "$(drawer_swipe_target 1080 1920 '')"
 assert_eq 'a high dock still keeps the swipe above it' \
-    '540 1608 540 384' \
+    '540 1608 540 96' \
     "$(drawer_swipe_target 1080 1920 1800)"
 assert_false 'an invalid display width cannot produce a swipe target' \
     drawer_swipe_target 0 1920 1400
+
+# The CI84 HOME: root 1080x1920, dock icons 1375..1568, QSB visual 1640..1775.
+# The old target (start 1183, end 384) only travelled 799 px and the runtime
+# trace showed 0.376 progress, so it snapped back. The new target starts in the
+# empty gutter between the dock icon bottom and the QSB, and ends near the top.
+actual_home_xml="$TMP_DIR/actual-home.xml"
+cat > "$actual_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
+    <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
+    <node index="2" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1375][240,1568]" />
+    <node index="3" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[300,1375][420,1568]" />
+    <node index="4" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[0,1640][1080,1775]" />
+  </node>
+</hierarchy>
+EOF
+actual_root=$(ui_root_bounds "$actual_home_xml")
+assert_eq 'the actual HOME dock top is measured from the hierarchy' \
+    '1375' \
+    "$(ui_dock_top "$actual_home_xml" "$actual_root")"
+assert_eq 'the actual HOME QSB top is measured from the hierarchy' \
+    '1640' \
+    "$(ui_qsb_top "$actual_home_xml")"
+assert_eq 'the actual HOME dock bottom is measured and excludes the QSB' \
+    '1568' \
+    "$(ui_dock_bottom "$actual_home_xml" "$actual_root" "$(ui_qsb_top "$actual_home_xml")")"
+assert_eq 'the actual 1080x1920 HOME swipes from the dock/QSB gutter to the top' \
+    '540 1604 540 96' \
+    "$(drawer_swipe_target 1080 1920 1375 1568 1640)"
+assert_true 'the actual 1080x1920 swipe covers more than half the display' \
+    drawer_swipe_is_long_enough 1920 1604 96
+assert_eq 'the actual 1080x1920 swipe covers 78.5 percent of the display' \
+    '0.7854' \
+    "$(drawer_swipe_travel_fraction 1920 1604 96)"
+assert_false 'the old 799 px swipe is rejected as too short' \
+    drawer_swipe_is_long_enough 1920 1183 384
+assert_eq 'the old 799 px swipe only covers 41.6 percent of the display' \
+    '0.4161' \
+    "$(drawer_swipe_travel_fraction 1920 1183 384)"
+assert_false 'the CI84 37.6 percent trace is rejected as too short' \
+    drawer_swipe_is_long_enough 1920 722 0
+assert_eq 'the CI84 trace displacement is 37.6 percent of the display' \
+    '0.3760' \
+    "$(drawer_swipe_travel_fraction 1920 722 0)"
 
 assert_false 'a closed HOME is not a ready app drawer' \
     drawer_is_ready "$home_xml"
@@ -226,6 +275,9 @@ sed -n '/^exercise_app_drawer() {/,/^}/p' "$SMOKE" > "$drawer_body"
 open_body="$TMP_DIR/open_app_drawer.sh"
 sed -n '/^open_app_drawer() {/,/^}/p' "$SMOKE" > "$open_body"
 
+target_body="$TMP_DIR/drawer_target_for_dump.sh"
+sed -n '/^drawer_target_for_dump() (/,/^)/p' "$SMOKE" > "$target_body"
+
 assert_true 'the drawer search taps the clickable Settings result node' \
     grep -Fq "ui_clickable_label_bounds \"\$ARTIFACTS/appdrawer-search.xml\" 'Settings'" "$drawer_body"
 assert_true 'the Settings launch polls the exact resumed package' \
@@ -250,6 +302,12 @@ assert_true 'each drawer attempt captures before XML and PNG' \
     grep -Fq 'appdrawer-attempt-$attempt-before' "$open_body"
 assert_false 'the drawer swipe no longer starts at the old 75 percent dock hit region' \
     grep -Fq 'height * 3 / 4' "$open_body"
+assert_true 'the drawer target measures the QSB top from the HOME dump' \
+    grep -Fq 'ui_qsb_top' "$target_body"
+assert_true 'the drawer target measures the dock icon bottom from the HOME dump' \
+    grep -Fq 'ui_dock_bottom' "$target_body"
+assert_true 'the drawer target passes the measured dock band and QSB to the geometry' \
+    grep -Fq '"$dock_top" "$dock_bottom" "$qsb_top"' "$target_body"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
