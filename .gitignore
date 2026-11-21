@@ -1,0 +1,53 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+**/build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+bin
+
+# Signing and secrets
+*.jks
+*.keystore
+*.p12
+*.pem
+keystore.properties
+secrets.properties
+.env
+
+# IDE
+.idea/
+.idea
+*.iml
+.project
+.classpath
+.project.properties
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated sources
+**/gen
+tests/stress/gen
+WallpaperPicker/gen
+WallpaperPicker/.project.properties
+db_files
+
+# Logs and reports
+*.log
+lint-results*
+reports/
+
+# Build output
+*.apk
+*.aab
+*.ap_
+*.dex
+output-metadata.json
+
+# OS
+desktop.ini

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # compileSdk 37 / buildTools 37.0.0 are newer than the runner image's
+      # preinstalled SDK. Accept licenses and let AGP download what it needs.
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: latest
+
+      - name: Install required SDK packages
+        run: |
+          sdkmanager --install "platform-tools" "build-tools;37.0.0" || true
+
+      - name: Assemble Play debug
+        run: ./gradlew assembleLawnWithQuickstepPlayDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: lawnWithQuickstepPlayDebug
+          path: build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+  check-style:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: latest
+
+      - run: ./gradlew spotlessCheck --stacktrace
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: latest
+
+      - name: Run unit tests
+        run: ./gradlew testLawnWithQuickstepPlayDebugUnitTest --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: |
+            build/reports/tests/**
+            build/test-results/**
