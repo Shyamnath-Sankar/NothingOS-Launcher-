@@ -35,9 +35,15 @@ fail() {
 # 1. Guard fixture suites.
 sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
+sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
+
+# Play-only icon and brand overlay (skipped for minimal test fixtures).
+if [ -d "$ROOT/play/res" ]; then
+    sh "$SCRIPT_DIR/play-brand-guard.sh" "$ROOT"
+fi
 
 # 2. Locate the merged manifest for the Play debug variant.
 INTERMEDIATES="$ROOT/build/intermediates"
