@@ -324,6 +324,10 @@ android {
             res.srcDirs = ["nightly/res"]
         }
 
+        play {
+            manifest.srcFile "play/AndroidManifest.xml"
+        }
+
         lawnWithQuickstepGithub {
             manifest.srcFile "quickstep/AndroidManifest-launcher.xml"
         }
@@ -332,8 +336,10 @@ android {
             manifest.srcFile "quickstep/AndroidManifest-launcher.xml"
         }
 
+        // Also used as the variant manifest so its tools:node="remove" markers
+        // outrank the lawn/withQuickstep flavor manifests during merging.
         lawnWithQuickstepPlay {
-            manifest.srcFile "quickstep/AndroidManifest-launcher.xml"
+            manifest.srcFile "play/AndroidManifest.xml"
         }
 
         withQuickstep {
