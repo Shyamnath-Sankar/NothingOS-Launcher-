@@ -136,11 +136,16 @@ adb_cmd get-state >/dev/null 2>&1 || fail "adb device $SERIAL is not available"
     adb_cmd shell getprop ro.build.version.release
     adb_cmd shell getprop ro.build.type
     adb_cmd shell getprop ro.product.cpu.abi
+    adb_cmd shell getprop ro.kernel.qemu
 } > "$ARTIFACTS/device.txt" 2>&1 || fail "could not read device properties"
 
 sdk=$(adb_cmd shell getprop ro.build.version.sdk | tr -d '\r')
 [ "$sdk" = "$EXPECTED_SDK" ] ||
     fail "expected an Android API $EXPECTED_SDK emulator, found API '$sdk'"
+
+qemu=$(adb_cmd shell getprop ro.kernel.qemu | tr -d '\r')
+[ "$qemu" = "1" ] ||
+    fail "expected a hardware-emulated device (ro.kernel.qemu=1), found '$qemu'; refusing to install/uninstall on a physical device"
 
 if [ -z "$APK" ]; then
     matches=$(
