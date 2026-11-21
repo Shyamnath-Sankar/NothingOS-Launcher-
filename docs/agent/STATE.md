@@ -3,17 +3,42 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (smoke harness retry-state repair only)**. CI70
-  (`44924192206`) was canceled after 22m because the real `scripts/emulator-smoke.sh` reused POSIX
-  global helper variables: `capture_ui_xml` reset the outer `open_app_drawer` attempt counter on
-  every capture, so the intended 4-attempt limit could repeat forever. This run isolates every
-  helper, bounds the adb/uiautomator calls, and adds an executable mock-adb regression. No app
-  visual change was made. Colored icons and the blue QSB are still pending pixel repair, and the
-  header fits the pinned row but is **not visually ready**. P3b is not visually done.
+- current_phase: **P3b — actual HOME visual slice (runtime drawer diagnostic only)**. CI78 run
+  `44928058399` swiped all four times (`540,1183` -> `540,384`, 300 ms) and left the actual HOME
+  unchanged on API 37; the selected touch controller is still unknown. This run adds a
+  debug+Play-only `DotwelDrawerTrace` log and captures it after every swipe attempt. It does **not**
+  change gesture routing, animation behavior, or any app visual. The drawer-open bug is not fixed;
+  runtime evidence is pending the next CI smoke run. Colored icons and the blue QSB are still
+  pending pixel repair, and the header is **not visually ready**. P3b is not done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `50176d8` (code head; this closeout docs commit follows it; base `main` at `0df97ff`)
+- head: `eab635e` (diagnostic code; this closeout docs commit follows it; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
+
+## done (this run — P3b runtime drawer diagnostic)
+
+- **Micro diagnostic only:** added `src/com/android/launcher3/touch/DotwelDrawerTrace.java`, a
+  temporary log helper gated by `BuildConfig.DEBUG && "play".equals(BuildConfig.FLAVOR_channel)`.
+  Release and github/nightly builds never emit the tag.
+- **Selected factory:** `Launcher.createTouchControllers()` logs the selected controller class
+  names and `DisplayController.getNavigationMode(...).name` when the trace is enabled.
+- **Central controller:** `AbstractStateChangeTouchController` logs ACTION_DOWN accept/skip with
+  state, ACTION_UP with no-intercept/dragging/state, `onDragStart` with start displacement and
+  from/to state, and `onDragEnd` with velocity, fling, last displacement, progress and target
+  state. There is deliberately no per-MOVE logging.
+- **Smoke evidence:** `scripts/emulator-smoke.sh` runs a bounded
+  `adb logcat -d -s DotwelDrawerTrace` into `appdrawer-trace-N.txt` after every swipe attempt,
+  before the readiness check, so a no-op swipe still leaves a trace artifact.
+- **Regression:** added `scripts/nothingui-drawer-trace-guard.sh` and its fixture test (debug gate,
+  factory/controller trace points, no MOVE logging, per-attempt smoke capture); wired into
+  `scripts/verify-play-build.sh`. The mock-adb drawer test now also requires
+  `appdrawer-trace-N.txt` for all four attempts.
+- **Verification actually run (no Gradle, no emulator):** trace guard OK and its test 4/4;
+  `emulator-smoke-drawer-test.sh` all pass (now 42 checks); `emulator-smoke-test.sh` 34/34;
+  `nothingui-home-guard-test.sh` 13/13; `sh -n` clean on edited scripts; `git diff --check` clean.
+- **Scope reminder:** no gesture routing, animation, workflow, SDK, manifest, permission,
+  applicationId, signing, Gradle or app-visual change. No guessed fix was applied. The untracked
+  local `w/` scratch directory was left uncommitted.
 
 ## done (this run — P3b smoke harness retry-state repair)
 
@@ -148,12 +173,16 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `50176d8` diff and approves CI on PR #11. Do not open a duplicate PR.
-- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
-  tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
-  `verify-play-build.sh` including `emulator-smoke-test.sh` (34/34), the new
-  `emulator-smoke-drawer-test.sh` (31 checks) and the home guard (13/13); and the API 37 emulator
-  smoke.
+- Coordinator reviews the `eab635e` diagnostic diff and approves CI on PR #11. Do not open a
+  duplicate PR.
+- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
+  tests unchanged; `verify-play-build.sh` including the home guard (13/13), the new drawer-trace
+  guard (4/4), `emulator-smoke-test.sh` (34/34) and `emulator-smoke-drawer-test.sh`; and the API 37
+  emulator smoke.
+- Read the new runtime evidence after each swipe:
+  - `appdrawer-trace-N.txt`: the selected controller classes/navigation mode, ACTION_DOWN/UP
+    interception decisions, and `onDragStart`/`onDragEnd` displacement, velocity and target state;
+  - use that trace to decide the next smallest gesture-routing fix; do not guess.
 - Confirm CI70's hang is gone: the API 37 smoke must finish the drawer phase instead of running past
   22m. The bounded retry must produce at most four `appdrawer-attempt-*` sets; if readiness fails,
   the run must exit nonzero with the retained evidence, not loop.
