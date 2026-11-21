@@ -28,6 +28,8 @@ PLAY_RES="$ROOT/play/res"
 BUILD_FILE="$ROOT/build.gradle"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 NOTICE_FILE="$ROOT/NOTICE.md"
+ABOUT_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/about/About.kt"
+ONBOARDING_KT="$ROOT/lawnchair/src/app/lawnchair/smartspace/provider/OnboardingProvider.kt"
 
 violations=0
 
@@ -48,9 +50,31 @@ extract_string() {
     sed -n "s:.*<string name=\"$name\"[^>]*>\\(.*\\)</string>.*:\\1:p" "$file" | head -n 1
 }
 
+extract_gradle_block() {
+    name=$1
+    file=$2
+    awk -v name="$name" '
+        $0 ~ "^[[:space:]]*" name "[[:space:]]*\\{" {
+            inblock = 1
+            depth = 1
+            print
+            next
+        }
+        inblock {
+            print
+            opens = gsub(/\{/, "{")
+            closes = gsub(/\}/, "}")
+            depth += opens - closes
+            if (depth <= 0) exit
+        }
+    ' "$file"
+}
+
 require_file "$BUILD_FILE"
 require_file "$PLAY_MANIFEST"
 require_file "$NOTICE_FILE"
+require_file "$ABOUT_KT"
+require_file "$ONBOARDING_KT"
 require_file "$PLAY_RES/values/strings.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home_comp.xml"
@@ -112,6 +136,32 @@ if ! grep -Fq 'new com.android.build.api.variant.ResValue("DotWel Launcher"' "$B
 fi
 if ! grep -Fq 'channel == "play"' "$BUILD_FILE"; then
     violate 'build.gradle has no Play channel gate around the app-name override'
+fi
+
+# Resource merge precedence: flavorDimensions lists "app" (lawn) before
+# "channel" (play), so a resource in the single-flavor "play" source set loses
+# to the same-named lawn resource. The Play overlay must be wired to the
+# lawnWithQuickstepPlay multi-flavor source set, which outranks every single
+# flavor. Without this, About renders the inherited Lawnchair icon and HOME
+# renders the inherited welcome text even though play/res holds the right files.
+play_combo_block=$(extract_gradle_block lawnWithQuickstepPlay "$BUILD_FILE")
+if ! printf '%s\n' "$play_combo_block" |
+    grep -Eq 'res\.srcDirs[[:space:]]*=.*["'"'"']play/res["'"'"']'; then
+    violate 'build.gradle lawnWithQuickstepPlay source set does not own play/res; Play resources lose to the higher-priority lawn flavor'
+fi
+play_flavor_block=$(extract_gradle_block play "$BUILD_FILE")
+if printf '%s\n' "$play_flavor_block" |
+    grep -Eq 'res\.srcDirs[[:space:]]*=.*["'"'"']play/res["'"'"']'; then
+    violate 'build.gradle play flavor owns play/res; single-flavor resources lose to lawn, wire it to lawnWithQuickstepPlay instead'
+fi
+
+# Actual consumers. If these references change, the Play overlay no longer
+# reaches the screen even when the files above are perfect.
+if ! grep -Fq 'R.drawable.ic_launcher_home_comp' "$ABOUT_KT"; then
+    violate 'About screen no longer consumes R.drawable.ic_launcher_home_comp; Play About icon override is unused'
+fi
+if ! grep -Fq 'R.string.onboarding_welcome' "$ONBOARDING_KT"; then
+    violate 'OnboardingProvider no longer consumes R.string.onboarding_welcome; Play HOME welcome override is unused'
 fi
 
 if ! grep -Fq 'android:icon="@mipmap/ic_launcher_home"' "$PLAY_MANIFEST"; then

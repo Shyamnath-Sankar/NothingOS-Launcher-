@@ -34,6 +34,27 @@ write_fixture() {
     root=$1
 
     write_file "$root/build.gradle" <<'EOF'
+android {
+    flavorDimensions += ["app", "recents", "channel"]
+    productFlavors {
+        lawn {
+            dimension "app"
+        }
+        withQuickstep {
+            dimension "recents"
+        }
+        play {
+            dimension "channel"
+            manifest.srcFile "play/AndroidManifest.xml"
+        }
+    }
+    sourceSets {
+        lawnWithQuickstepPlay {
+            manifest.srcFile "play/AndroidManifest.xml"
+            res.srcDirs = ["play/res"]
+        }
+    }
+}
 androidComponents {
     onVariants(selector().all()) { variant ->
         def channel = variant.productFlavors.last().second
@@ -45,6 +66,18 @@ androidComponents {
         }
     }
 }
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/about/About.kt" <<'EOF'
+package app.lawnchair.ui.preferences.about
+
+val aboutIcon = R.drawable.ic_launcher_home_comp
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/smartspace/provider/OnboardingProvider.kt" <<'EOF'
+package app.lawnchair.smartspace.provider
+
+val welcome = R.string.onboarding_welcome
 EOF
 
     write_file "$root/play/AndroidManifest.xml" <<'EOF'
@@ -254,6 +287,65 @@ missing_notice="$TMP_DIR/missing-notice"
 cp -R "$clean" "$missing_notice"
 rm "$missing_notice/NOTICE.md"
 expect_fail_contains 'missing NOTICE fails' "$missing_notice" 'NOTICE.md'
+
+play_res_loses="$TMP_DIR/play-res-loses"
+cp -R "$clean" "$play_res_loses"
+write_file "$play_res_loses/build.gradle" <<'EOF'
+android {
+    flavorDimensions += ["app", "recents", "channel"]
+    productFlavors {
+        lawn {
+            dimension "app"
+        }
+        withQuickstep {
+            dimension "recents"
+        }
+        play {
+            dimension "channel"
+            manifest.srcFile "play/AndroidManifest.xml"
+            res.srcDirs = ["play/res"]
+        }
+    }
+    sourceSets {
+        lawnWithQuickstepPlay {
+            manifest.srcFile "play/AndroidManifest.xml"
+        }
+    }
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        def channel = variant.productFlavors.last().second
+        if (channel == "play") {
+            variant.resValues.put(
+                variant.makeResValueKey("string", "derived_app_name"),
+                new com.android.build.api.variant.ResValue("DotWel Launcher", "Play display label")
+            )
+        }
+    }
+}
+EOF
+expect_fail_contains 'play res in the single flavor fails precedence' \
+    "$play_res_loses" 'does not own play/res'
+
+unused_about_icon="$TMP_DIR/unused-about-icon"
+cp -R "$clean" "$unused_about_icon"
+write_file "$unused_about_icon/lawnchair/src/app/lawnchair/ui/preferences/about/About.kt" <<'EOF'
+package app.lawnchair.ui.preferences.about
+
+val aboutIcon = R.drawable.ic_launcher
+EOF
+expect_fail_contains 'About icon consumer drift fails' \
+    "$unused_about_icon" 'ic_launcher_home_comp'
+
+unused_welcome="$TMP_DIR/unused-welcome"
+cp -R "$clean" "$unused_welcome"
+write_file "$unused_welcome/lawnchair/src/app/lawnchair/smartspace/provider/OnboardingProvider.kt" <<'EOF'
+package app.lawnchair.smartspace.provider
+
+val welcome = R.string.smartspace_onboarding
+EOF
+expect_fail_contains 'HOME welcome consumer drift fails' \
+    "$unused_welcome" 'onboarding_welcome'
 
 if command -v python3 >/dev/null 2>&1; then
     malformed="$TMP_DIR/malformed"
