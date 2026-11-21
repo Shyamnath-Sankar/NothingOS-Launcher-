@@ -46,10 +46,17 @@ if [ ! -d "$INTERMEDIATES" ]; then
 fi
 
 candidates=$(
-    for dir in merged_manifest merged_manifests; do
+    # AGP emits an intermediate MainManifest and a final Manifest. Prefer the
+    # final output; use the older singular directory only when final is absent.
+    for dir in merged_manifests merged_manifest; do
         [ -d "$INTERMEDIATES/$dir" ] || continue
-        find "$INTERMEDIATES/$dir" -type f -name AndroidManifest.xml 2>/dev/null
-    done | grep -F 'lawnWithQuickstepPlayDebug' | sort -u || true
+        matches=$(find "$INTERMEDIATES/$dir" -type f -name AndroidManifest.xml 2>/dev/null |
+            grep -F '/lawnWithQuickstepPlayDebug/' | sort -u || true)
+        if [ -n "$matches" ]; then
+            printf '%s\n' "$matches"
+            break
+        fi
+    done
 )
 count=$(printf '%s\n' "$candidates" | sed '/^$/d' | wc -l | tr -d ' ')
 
