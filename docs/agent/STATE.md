@@ -10,8 +10,8 @@ when no task input is given, and continues from "next".
   widget picker search/list (not HOME). Read-only: no feature, styling, preference write or direct
   picker activity.
 - branch: `agent/p10-grid-widget-smoke`
-- head: `4b98e45` (`docs(agent): document grid and widget picker smoke`) on base `main`
-  `55a25a2`; harness commit `7b9f966`.
+- head: `d9a8b71` (`docs(agent): record P10a grid and widget smoke`) on base `main` `55a25a2`;
+  harness commit `7b9f966`, docs commit `4b98e45`. The STATE record commit follows this head.
 - pr: **none yet** — main owns PR creation/CI approval for this branch. PR13 is merged and is the
   fallback.
 
@@ -499,7 +499,7 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `4b98e45`. PR13 is
+- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `d9a8b71`. PR13 is
   merged into `main` (`55a25a2`) and remains the fallback.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
@@ -524,7 +524,7 @@ when no task input is given, and continues from "next".
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `4b98e45`.
+  API 37 emulator run are unverified until CI runs on `d9a8b71`.
 - No PR exists yet for `agent/p10-grid-widget-smoke`; a maintainer must create/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
