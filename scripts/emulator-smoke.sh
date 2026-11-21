@@ -102,7 +102,7 @@ find_aapt() {
             return 0
         fi
     done
-    for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk"; do
+    for sdk in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
         [ -n "$sdk" ] || continue
         [ -d "$sdk/build-tools" ] || continue
         for tool in aapt2 aapt; do
