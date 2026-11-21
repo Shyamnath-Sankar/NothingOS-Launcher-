@@ -62,9 +62,10 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Push to existing PR #9 and wait for real CI. The next run must confirm
-  `processLawnWithQuickstepPlayDebugMainManifest` and the API 37 emulator smoke pass; do not claim
-  them green before the run log exists.
+- A maintainer must approve the pending PR workflow runs. Every follow-up CI run since the repair
+  (CI38 onward, actor `github-actions[bot]`) is `action_required`, so none have executed. After
+  approval, confirm `processLawnWithQuickstepPlayDebugMainManifest` and the API 37 emulator smoke
+  pass; do not claim them green before the run log exists.
 - Inspect the new smoke artifacts: `screenshot.png` (unchanged HOME evidence), `app-info.png` +
   `app-info.xml`, and `about.png` + `about.xml` or `about-pending.txt`.
 - Coordinator screenshot review using `docs/agent/p2c-icon-brand-visuals.md`: launcher/app-info
@@ -85,7 +86,8 @@ when no task input is given, and continues from "next".
 - P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
   grant verifies the system role, not the prompt.
 - P2c manifest gate: CI37 run `44900708538` failed the Play debug manifest merge on `android:icon`;
-  repaired this run, but real CI has not re-run it yet.
+  repaired this run, but the follow-up CI runs (38-41) are `action_required` and have not executed.
+  A maintainer approval is required before this gate can be called green.
 - P2c visual gate: screenshot review pending; static guards do not prove what a device renders.
 - About-screen smoke evidence: may be documented as pending if the deep link or UIAutomator
   hierarchy is unavailable; it is not treated as a brand pass without the captured UI.
