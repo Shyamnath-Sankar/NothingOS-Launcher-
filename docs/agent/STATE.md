@@ -8,8 +8,9 @@ when no task input is given, and continues from "next".
   HOME/drawer QSB were verified. This run adds the native `RoleManager` consent path through the
   existing settings warning. It is source-guarded and smoke-scripted; CI runtime capture is pending.
 - branch: `agent/p8-home-role-consent`
-- head: feature `7f5a6c9`, guard `567203f`, smoke `38348e7`, docs `b8446c3`/`74e73bc`; this STATE
-  pointer commit is the branch tip. Base `main` at `a446b11`, the PR11 merge.
+- head: feature `7f5a6c9`, guard `567203f`, smoke `38348e7`/`81d30c4`, docs
+  `b8446c3`/`74e73bc`; this STATE pointer commit is the branch tip. Base `main` at `a446b11`, the
+  PR11 merge.
 - pr: **PR12 pending** (not opened by this agent):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p8-home-role-consent
 
