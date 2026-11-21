@@ -32,6 +32,8 @@ import app.lawnchair.ui.preferences.navigation.Search
 import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.util.ProvideLifecycleState
 import app.lawnchair.util.repeatOnAttached
+import app.nothingui.home.NothingUiHomeChrome
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.DeviceProfile
 import com.android.launcher3.R
@@ -90,16 +92,30 @@ class LawnQsbLayout(context: Context, attrs: AttributeSet?) : FrameLayout(contex
                             showLens = lensIntent != null,
                         )
 
-                        val style = buildQsbStyle(
-                            context = LocalContext.current,
-                            themed = themed,
-                            backgroundColor = getHotseatBackgroundColor(context, themed),
-                            backgroundAlpha = prefs.hotseatQsbAlpha.observeAsState().value,
-                            cornerRadius = prefs.hotseatQsbCornerRadius.observeAsState().value,
-                            // Use light color as strokeColor is a static color that doesn't use darkColor
-                            strokeColor = prefs2.strokeColorStyle.asState().value.colorPreferenceEntry.lightColor.invoke(context),
-                            strokeWidth = prefs.hotseatQsbStrokeWidth.observeAsState().value,
-                        )
+                        val style = if (NothingUiFeature.homeEnabled) {
+                            // Play home chrome: a neutral monochrome pill with a hairline
+                            // outline instead of the inherited accent-styled search bar.
+                            buildQsbStyle(
+                                context = context,
+                                themed = true,
+                                backgroundColor = NothingUiHomeChrome.surfaceColor(context),
+                                backgroundAlpha = 100,
+                                cornerRadius = 1f,
+                                strokeColor = NothingUiHomeChrome.outlineColor(context),
+                                strokeWidth = context.resources.displayMetrics.density,
+                            )
+                        } else {
+                            buildQsbStyle(
+                                context = LocalContext.current,
+                                themed = themed,
+                                backgroundColor = getHotseatBackgroundColor(context, themed),
+                                backgroundAlpha = prefs.hotseatQsbAlpha.observeAsState().value,
+                                cornerRadius = prefs.hotseatQsbCornerRadius.observeAsState().value,
+                                // Use light color as strokeColor is a static color that doesn't use darkColor
+                                strokeColor = prefs2.strokeColorStyle.asState().value.colorPreferenceEntry.lightColor.invoke(context),
+                                strokeWidth = prefs.hotseatQsbStrokeWidth.observeAsState().value,
+                            )
+                        }
 
                         val actions = QsbActions(
                             onQsbClick = {
