@@ -3,16 +3,48 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P3a (theme foundation only). The theme tokens, Doto font bundle, Play-only flag,
-  sample screen and token tests are implemented. The home surface, grid, drawer, widgets, wallpaper
-  and settings are not restyled in this run.
-- branch: agent/p3a-theme-foundation-only-star (cut from `main` at the PR9 merge `02ac058`).
-- pr: not created in this environment (no authenticated `gh`). Branch is pushed; open it at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/p3a-theme-foundation-only-star?expand=1
-  or let the workflow open it. PR9 is merged at `02ac058`.
+- current_phase: P3a (theme foundation only) — repair and visual-evidence slice. The CI53
+  `nothingui-theme-guard` false positive is fixed, a regression suite now covers it, and a
+  DEBUG+Play-only diagnostic route plus emulator-smoke capture for the dark/light sample is in
+  place. No Gradle build or emulator run happened in this environment; PR10 CI and screenshot
+  review are pending.
+- branch: agent/p3a-theme-foundation-only-star
+- pr: #10 (existing PR for this branch; resume it, do not open a duplicate):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/10
+  PR9 is merged to `main` at `02ac058`.
 
 ## done
 
+- This run (P3a repair, root cause reproduced): `scripts/nothingui-theme-guard.sh` scanned the
+  full path from `find`, so CI's checkout parent `.../NothingOS-Launcher-/...` matched the
+  `nothing` token and the guard falsely reported a Nothing font asset. Running the guard with the
+  absolute repo path reproduced the CI53 failure; running it with `.` did not. The scan now
+  lowercases and checks font basenames only, so a legitimate parent path cannot trip it.
+- This run (regression): added `scripts/nothingui-theme-guard-test.sh` and wired it into
+  `scripts/verify-play-build.sh`. Its clean fixture lives under a parent named
+  `NothingOS-Launcher`; separate fixtures add real forbidden basenames (`ndot_regular.ttf`,
+  `NothingSans.ttf`, `nfont_display.ttf`) and prove a changed font without an updated attribution
+  hash and a missing OFL file still fail. The existing magic/provenance/licence checks are intact.
+- This run (diagnostic route): `PreferenceActivity` now accepts the explicit
+  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra only when `BuildConfig.DEBUG` and
+  `NothingUiFeature.themeEnabled` are both true. `dark`/`light` render
+  `NothingUiThemeSampleScreen`; every other case renders the normal settings surface. The
+  diagnostic branch also skips the settings-opened preference write, and no manifest component,
+  permission or workflow changed.
+- This run (screenshots): `scripts/emulator-smoke.sh` now launches the sample after the existing
+  About checks with `-f 0x18000000` so the new extra gets a fresh task instead of reusing the About
+  instance. It asserts `DOTWEL` in `theme-sample-dark.xml` / `theme-sample-light.xml`, captures
+  `theme-sample-dark.png` / `theme-sample-light.png`, then returns HOME. No emulator was available
+  here, so the PNGs are not produced yet; CI must produce and review them.
+- This run (guard): the theme guard now also fails if the diagnostic extra is present without both
+  `!BuildConfig.DEBUG` and `!NothingUiFeature.themeEnabled`; the regression suite covers a missing
+  debug gate.
+- This run, verification actually run (no Gradle, no emulator):
+  `nothingui-theme-guard.sh "$PWD"` OK; `nothingui-theme-guard-test.sh` 7/7;
+  `play-brand-guard.sh` OK; `play-brand-guard-test.sh` all pass; `play-identity-guard.sh` OK;
+  `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. The absolute-path guard run is the direct regression for CI53.
 - P2c rebrand verified by the coordinator: CI51 run `44903885094` on head `e6ea08b` was green with
   4 actual Gradle tests plus the API 37 install, HOME, role and crash checks. The coordinator
   inspected the artifacts and confirmed HOME reads `Welcome to DotWel Launcher` and About/app-info
@@ -40,7 +72,7 @@ when no task input is given, and continues from "next".
 - P3a: added `scripts/nothingui-theme-guard.sh` and wired it into `scripts/verify-play-build.sh`.
   It checks the font magic bytes (not HTML), OFL text, attribution hashes, the default/Play/github/
   nightly flag wiring, the `NothingUiFeature` gate, sans body wiring, and the sample/preview.
-- Verification actually run this run (no Gradle, no emulator): `nothingui-theme-guard.sh .` OK;
+- Prior P3a run verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh .` OK;
   `play-brand-guard.sh .` OK; `play-identity-guard.sh .` OK; `manifest-guard-test.sh` all pass;
   `play-identity-guard-test.sh` all pass; `play-brand-guard-test.sh` all pass;
   `verify-play-build-test.sh` all pass; `sh -n` clean on edited scripts; `git diff --check` clean;
@@ -50,6 +82,15 @@ when no task input is given, and continues from "next".
 
 ## next
 
+- PR10 CI must be approved and run. Confirm:
+  - `verify-play-build` passes with the theme guard no longer treating the checkout parent as a
+    font asset;
+  - the unit-test XML contains all 7 `NothingUiTokenTest` tests, and the workflow's existing
+    4-predicate `LockedProfilePredicateTest` assertion still passes;
+  - `api37-emulator-evidence` contains `theme-sample-dark.xml` + `.png` and
+    `theme-sample-light.xml` + `.png`, each XML exposing `DOTWEL`.
+- Visually review the dark/light PNGs for the monochrome palette, Doto display/numeric text, sans
+  body text, spacing and the red accent. Static guards cannot prove the rendering.
 - P3b (home/grid), the next slice:
   - derive a 4×6 `DeviceProfile` override from `WindowMetrics` (Android 17 large-screen rule), with
     no `resources.displayMetrics` math;
@@ -61,22 +102,22 @@ when no task input is given, and continues from "next".
 - P4 (drawer) follows P3b: restyle the inherited all-apps surface, keep A–Z and search, and verify
   profile filtering.
 - Pending gates before P3a can be called shipped:
-  - CI on this branch must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
-    unit tests (including `NothingUiTokenTest`), `verify-play-build.sh` (including the new theme
-    guard), and the API 37 emulator smoke. None of those Gradle/emulator runs happened here.
-  - A visual review of the sample/preview and a non-Play control build are still pending.
+  - CI on PR10 must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
+    (including `NothingUiTokenTest`), `verify-play-build.sh` (including the theme guard), and the
+    API 37 emulator smoke. None of those Gradle/emulator runs happened here.
+  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed.
+  - A non-Play control build is still pending.
   - P1 private-space runtime UI (drawer/search/recents) is still unverified.
   - P2 in-app `RoleManager.ROLE_HOME` onboarding prompt is still unverified; the emulator `cmd
     role` grant is only a stand-in.
-  - The non-Play runtime control build has not been installed/launched; only its static wiring is
-    guarded.
 
 ## blockers
 
-- P3a CI evidence: no Gradle build or emulator run was allowed in this environment, so the branch
-  is statically verified only. Do not call the theme green until the branch CI run exists.
-- PR creation: `gh` is unauthenticated here, so the branch was pushed without opening a PR. A
-  maintainer or the workflow must create it and approve the pending runs.
+- P3a CI/visual evidence: no Gradle build or emulator run was allowed in this environment, so the
+  branch is statically verified only. The dark/light screenshots are not produced yet; do not call
+  P3a green or claim a rendered preview until PR10 CI uploads the artifacts.
+- PR10 approval: `gh` is unauthenticated here, so the pushed commits need a maintainer to approve
+  and run the PR workflow.
 - P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
   recents). A private space needs a secure lock screen and explicit provisioning; do not
   auto-create it.
@@ -92,8 +133,19 @@ when no task input is given, and continues from "next".
 - Public Play listing name: OPEN, release blocker, do not guess or claim clearance.
 - Free models/services only. Cache heavy installs in workflows.
 
-## rulings this run
+## rulings (this run and prior P3a)
 
+- P3a repair: the forbidden-font check inspects lowercased basenames only. Cost if wrong: a
+  forbidden font hidden inside a directory name would not be caught, but fonts live flat in
+  `lawnchair/res/font` and the guard still checks the whole file list there.
+- P3a repair: the diagnostic route reuses the existing exported `PreferenceActivity` and an
+  explicit extra instead of adding a component. Cost if wrong: the extra is discoverable in debug
+  Play builds, but it is inert outside `BuildConfig.DEBUG` + Play and has no release exposure.
+- P3a repair: the smoke starts the sample with
+  `FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_MULTIPLE_TASK` (`0x18000000`) so the extra is delivered
+  to a fresh instance. Cost if wrong: the sample task is separate from the HOME task and is
+  auto-removed from recents; if `am` ignores the flag on a future API the smoke fails rather than
+  silently reusing About.
 - P3a: the Play-only gate is a `BuildConfig` boolean (default false, true in the `play` flavor)
   rather than a resource or a source-set split. Cost if wrong: the shared theme code still compiles
   for github/nightly and the guard must keep asserting the flag; the font bytes add ~281 KB to
@@ -128,6 +180,10 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3a repair/visual-evidence slice: reproduced and fixed the CI53 guard false positive
+  (full-path vs basename scan), added the `NothingOS-Launcher`/ndot regression suite, added the
+  DEBUG+Play diagnostic sample route, and extended the API 37 smoke to capture dark/light sample
+  XML+PNG and return HOME. Static checks green; PR10 CI and screenshot review pending.
 - 2026-11-21: P3a foundation implemented and pushed on
   `agent/p3a-theme-foundation-only-star`: palette/spacing/motion/typography, Doto OFL assets,
   Play-only `BuildConfig` gate, sample screen and previews, pure token tests, and a static theme
