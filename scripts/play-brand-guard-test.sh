@@ -49,11 +49,13 @@ EOF
 
     write_file "$root/play/AndroidManifest.xml" <<'EOF'
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:icon="@mipmap/ic_launcher_home"
         android:roundIcon="@mipmap/ic_launcher_home_round"
-        android:label="@string/play_app_name" />
+        android:label="@string/play_app_name"
+        tools:replace="android:label,android:icon" />
 </manifest>
 EOF
 
@@ -221,6 +223,21 @@ write_file "$wrong_manifest_icon/play/AndroidManifest.xml" <<'EOF'
 </manifest>
 EOF
 expect_fail_contains 'non-adaptive manifest icon fails' "$wrong_manifest_icon" '@mipmap/ic_launcher_home'
+
+missing_icon_replace="$TMP_DIR/missing-icon-replace"
+cp -R "$clean" "$missing_icon_replace"
+write_file "$missing_icon_replace/play/AndroidManifest.xml" <<'EOF'
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application
+        android:icon="@mipmap/ic_launcher_home"
+        android:roundIcon="@mipmap/ic_launcher_home_round"
+        android:label="@string/play_app_name"
+        tools:replace="android:label" />
+</manifest>
+EOF
+expect_fail_contains 'missing android:icon tools:replace directive fails' \
+    "$missing_icon_replace" 'tools:replace does not include android:icon'
 
 red_monochrome="$TMP_DIR/red-monochrome"
 cp -R "$clean" "$red_monochrome"

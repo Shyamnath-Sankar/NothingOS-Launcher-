@@ -123,6 +123,9 @@ fi
 if ! grep -Fq 'android:label="@string/play_app_name"' "$PLAY_MANIFEST"; then
     violate 'Play manifest label does not reference play_app_name'
 fi
+if ! grep -Eq 'tools:replace="[^"]*android:icon([",]|$)' "$PLAY_MANIFEST"; then
+    violate 'Play manifest tools:replace does not include android:icon; the base @drawable icon conflicts during manifest merge'
+fi
 
 for adaptive in \
     "$PLAY_RES/mipmap-anydpi-v26/ic_launcher_home.xml" \
