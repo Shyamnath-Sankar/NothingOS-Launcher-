@@ -3,19 +3,56 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P9 — Play settings cleanup (inherited announcement cards)**. PR12 is merged into
-  `main` (`5da711d`) after fully green CI102 (`10244953269478`, 11m49); actual HOME/drawer/Settings
-  foreground, role-consent Cancel and the APK102 fallback were verified. This tiny slice gates the
-  inherited upstream announcement cards off in the Play settings dashboard, keeps them for non-Play,
-  adds brand-guard negatives, and makes the real settings smoke assert no inherited announcement
-  cards before tapping the default-launcher warning. No other UI/theme change.
-- branch: `agent/newtinybranchagent-p9-settings`
-- head: `ad05a12` (`fix(play): hide inherited announcement cards in settings`) on base `main`
-  `5da711d`.
-- pr: **none yet** — main owns PR creation/CI approval for this branch. PR12 (#12) is merged and is
-  the fallback.
+- current_phase: **P10a — real grid settings and widget-picker smoke**. On top of merged PR13
+  (`55a25a2`), the emulator smoke now opens the existing Home screen grid preferences through the
+  existing deep link, captures the real preview/controls with a still-disabled Apply, then
+  long-presses the measured empty HOME workspace, taps Widgets by its bounds and requires the native
+  widget picker search/list (not HOME). Read-only: no feature, styling, preference write or direct
+  picker activity.
+- branch: `agent/p10-grid-widget-smoke`
+- head: `4b98e45` (`docs(agent): document grid and widget picker smoke`) on base `main`
+  `55a25a2`; harness commit `7b9f966`.
+- pr: **none yet** — main owns PR creation/CI approval for this branch. PR13 is merged and is the
+  fallback.
 
-## done (this run — P9 Play settings announcement cleanup)
+## done (this run — P10a real grid settings and widget-picker smoke)
+
+- **Grid, read-only and real:** `capture_grid_settings` starts the existing
+  `PreferenceActivity` with `lawnchair://settings/home-screen-grid` (the real
+  `HomeScreenGrid.deepLink`), polls UIAutomator for the `Home screen grid` title, a
+  `LauncherPreviewView`/`LauncherPreviewLayout`, `Columns`/`Rows`/`Dock icons`, at least three
+  accessibility `SeekBar` nodes and `Apply`, and requires `Apply` to remain disabled. It captures
+  `grid-settings.xml/.png`, never taps a control or writes a preference, then presses HOME and
+  re-verifies the actual HOME clock/date.
+- **Widgets, real long-press and native picker:** `capture_widgets_picker` derives an empty central
+  point from the actual HOME hierarchy (header bottom from `search_container_workspace`, dock top
+  from the lowest labelled row, with 4% margins), uses a genuine
+  `input swipe x y x y 1000`, captures the real `OptionsPopupView`/`DeepShortcutView` popup, taps
+  `Widgets` via its measured clickable bounds, and requires the native picker: the Compose
+  `widgetpicker:id/widgets_catalog` plus search/tab labels, or the inherited
+  `widgets_search_bar`/`search_bar_container` plus `primary_widgets_list_view`/
+  `search_widgets_list_view`. The picker hierarchy must differ from the pre-long-press HOME. It
+  captures `home-popup.xml/.png` and `widgets-picker.xml/.png`, returns HOME and re-verifies it.
+  Bounded to three attempts; no `am start` for the picker, no fake view, no DB/pref write.
+- **Pure helpers and regression:** `emulator-smoke-lib.sh` adds `ui_header_bottom`,
+  `ui_point_is_free`, `home_longpress_target`, `grid_settings_is_ready`,
+  `grid_apply_is_unchanged`, `home_popup_is_ready` and `widget_picker_is_ready`.
+  `emulator-smoke-test.sh` adds positive fixtures, negatives for loose English-only text, a missing
+  preview, fewer than three sliders, an enabled Apply, an item-specific popup and a picker without
+  search/list; it also asserts the exact deep link, existing activity, no Apply tap, no pref writes,
+  real gesture, measured Widgets tap, picker-not-HOME, bounded attempts and the preserved role
+  consent/1500 ms/four-attempt/Settings-foreground checks. `PREFERENCES_ACTIVITY` names the existing
+  settings activity explicitly; `THEME_SAMPLE_ACTIVITY` remains an alias.
+- **Docs:** `docs/agent/emulator-verification.md` records the two phases, native markers and
+  artifact names.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass;
+  `emulator-smoke-drawer-test.sh` all pass; `verify-play-build-test.sh` all pass;
+  `verify-play-build.sh` runs the shell suites and repo guards OK, then stops at the expected
+  missing `build/intermediates` because no APK was built here; `sh -n` clean on all edited scripts;
+  `git diff --check` clean. CI must still build, unit-test and run the API 37 smoke; the actual
+  preview/picker accessibility markers remain device-verification unknowns until that run.
+
+## done (previous run — P9 Play settings announcement cleanup)
 
 - **Root cause, read not guessed:** `PreferencesDashboard` called `AnnouncementPreference()`
   unconditionally. That component renders whatever the inherited live-information endpoint
@@ -444,59 +481,60 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/play-brand-guard.sh "$PWD"` -> OK; `play-brand-guard-test.sh` all pass,
-  including the new ungated-announcement, removed-announcement, fabricated-DotWel-news and
-  Play-announcement-resource negatives.
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the announcement helper,
-  markers, case-insensitivity and the clean-screenshot/assert-before-tap ordering.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the new grid/popup/picker
+  positive fixtures and the loose-English, missing-preview, two-slider, enabled-Apply,
+  item-specific-popup and picker-without-list negatives.
 - This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass; the genuine 1500 ms / 4-attempt
   drawer assertions are unchanged.
-- This run: `verify-play-build-test.sh` -> all pass. The repo-level identity, theme, home, home-role,
-  icon and drawer-trace guards all print OK, and their fixture suites all pass.
+- This run: `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh scripts/verify-play-build.sh` -> both smoke suites and the repo-level identity,
+  brand, theme, home, home-role, icon and drawer-trace guards pass, then it stops at the expected
+  missing `build/intermediates` because no Gradle/APK run was performed here.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
-- Prior run: the drawer-trace guard and both smoke suites passed the 1500 ms pacing and input
-  summary; `DefaultHomeRolePolicy` TDD harness passed after the pure policy was added.
+- Prior run: `play-brand-guard.sh` and its suite passed the P9 announcement gate; the announcement
+  smoke markers and ordering passed.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
-  branch is statically verified only; the Play announcement gate and clean settings pixels are
-  scripted but unverified on device.
+  branch is statically verified only; the real preview/picker accessibility markers are scripted
+  but unverified on device.
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/newtinybranchagent-p9-settings` at head `ad05a12`.
-  PR12 (#12) is merged into `main` (`5da711d`) and remains the fallback.
+- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `4b98e45`. PR13 is
+  merged into `main` (`55a25a2`) and remains the fallback.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
-  unit tests, `verify-play-build.sh` (the brand guard now includes the Play announcement gate), both
-  smoke suites and the API 37 emulator smoke.
-- Inspect the runtime artifacts after the run:
-  - `role-consent-settings.xml` / `.png`: the settings warning is visible and the screenshot is
-    clean. There must be no `Lawnchair`, `sneak peek`, `important announcement` or `announcement`
-    text from the inherited cards. If the upstream card wording changes, update the smoke markers
-    from the captured XML rather than weakening the assertion.
-  - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control.
-  - `role-consent-before.txt` / `role-consent-after.txt`: our package is not a holder and the lists
-    are unchanged after cancel.
-  - `activities-role-consent-cancel.txt`: the settings activity (or launcher) is foreground after
-    cancel, not a granted role.
-  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-N.txt`: start `540 1616` and duration 1500.
-  - `appdrawer-attempt-N.xml` / `.png`: the first ready drawer differs from HOME and exposes the
-    search input or app-list container.
-- If the API 37 system image uses a different cancel label, change `ui_cancel_bounds` from the
-  captured XML. Do not guess a new coordinate or lower the assertion.
-- **Next separate slice (do not start in this run): verify the real grid and widgets.** No other UI
-  or theme feature change belongs to this cleanup.
+  unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
+- Inspect the new runtime artifacts after the run:
+  - `grid-settings.xml` / `.png`: the real Home screen grid screen with the preview,
+    `Columns`/`Rows`/`Dock icons`, three `SeekBar` controls and a disabled `Apply`. If Compose
+    exposes the sliders under a different class, update `grid_settings_is_ready` from the captured
+    XML; do not drop the control count.
+  - `grid-settings.txt` and `grid-settings-launch.txt`: the deep link launched `Status: ok` and no
+    grid change was applied.
+  - `home-before-widgets-attempt-N.xml` / `.png`: the actual HOME before the long press.
+  - `home-popup.xml` / `.png`: the real `OptionsPopupView` with `Widgets` and a home-level option.
+  - `widgets-picker.xml` / `.png`: the native picker search/list and not the pre-long-press HOME.
+  - `widgets-longpress-log.txt`: the measured long-press point, duration 1000 and any bounded retry.
+- If the API 37 system image exposes the preview or picker under different classes/resource ids,
+  update the markers from the captured XML. Do not replace them with loose English-only checks.
+- If the API 37 system image uses a different role-consent cancel label, change `ui_cancel_bounds`
+  from the captured XML. Do not guess a new coordinate or lower the assertion.
 - P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
   onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `ad05a12`.
-- No PR exists yet for `agent/newtinybranchagent-p9-settings`; a maintainer must create/approve it.
+  API 37 emulator run are unverified until CI runs on `4b98e45`.
+- No PR exists yet for `agent/p10-grid-widget-smoke`; a maintainer must create/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
-- The announcement assertion is worded for the current inherited cards. If the live-information
-  endpoint changes that wording, the smoke fails closed and the captured XML must drive the marker
-  update; do not replace the assertion with a weaker check.
+- The grid readiness assumes Compose sliders expose `android.widget.SeekBar` and that the preview
+  class appears in the UIAutomator dump. The captured `grid-settings-attempt-N.xml` will show the
+  actual classes if either marker needs adjustment; the smoke fails closed rather than weakening
+  the control count.
+- The picker readiness assumes one of the two known native picker markers. If the API 37 image
+  exposes a different marker, the captured `widgets-picker-attempt-N-P.xml` must drive the update;
+  do not accept a closed HOME with incidental English text.
 
 ## decisions locked
 
