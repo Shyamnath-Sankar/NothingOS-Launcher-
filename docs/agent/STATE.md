@@ -3,16 +3,53 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — Play icon renderer wiring**. The saved `NothingUiIconPolicy` is now used
-  by the real icon provider and theme manager. Play HOME/drawer icons get the neutral monochrome
-  fallback; explicit themed-icons-off, icon-pack and per-app choices stay respected; cache
-  freshness distinguishes native/fallback/off. Non-Play keeps the inherited controller path.
+- current_phase: **P3b — neutral Play icon and QSB pixels**. CI93 run `44944409947` on `9076be5`
+  was green (assembly, unit tests, emulator drawer/Settings/HOME), but real HOME/drawer pixels still
+  showed the icon fallback and QSB search glyph on the inherited wallpaper-derived blue/lavender
+  accent. The root cause (the process-wide `ThemedIconDrawable.COLORS_LOADER`) is fixed this run on
+  `9fc5a33`; CI and pixel re-review are pending. P3b is not complete.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `d1fbc12` (renderer wiring + guard; base `main` at `0df97ff`)
+- head: `9fc5a33` (neutral icon/QSB fix; prior renderer wiring `9076be5`; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — Play icon renderer wiring)
+## done (this run — neutral Play icons and QSB)
+
+- **Root cause, not guessed:** the Play policy only changed *which* renderer ran. `MonoIconThemeController`
+  and `MonoThemedBitmap` still defaulted to `ThemedIconDrawable.getColors`, and
+  `LawnchairProcessInitializer` sets the process-wide `COLORS_LOADER` to the wallpaper-derived
+  `Accent1`/`Accent2` swatches. That is why the actual icons and the themed QSB glyph stayed
+  blue/lavender after CI93.
+- **Neutral palette:** added `NothingUiIconColors` using the original `NothingUiPalette.Ink`/`White`
+  pair in `[background, foreground]` order, with the inherited transparent-background preference
+  preserved. No wallpaper color is read on the Play path.
+- **Inherited loader:** the Play branch of `LawnchairProcessInitializer` now returns the neutral pair,
+  so every `ThemedIconDrawable.getColors` consumer (including themed clock icons) is neutral in
+  Play. Non-Play keeps the exact inherited accent loader.
+- **Controller and cache:** `NothingUiIconThemeController` passes the neutral provider to the native
+  renderer and the generated fallback; `LawnchairThemeManager` uses the neutral pair in the Play
+  freshness key while keeping `ThemedIconDrawable.getColors` for non-Play.
+- **QSB:** `QsbIconUtil.setThemedIconResource` uses `NothingUiHomeChrome.textColor` for themed
+  layers and the single-tint path only behind `NothingUiFeature.homeEnabled`. Non-Play keeps
+  `QsbIconTint*`/`ColorAccent`. Search actions, accessibility, workspace, wallpaper and the red
+  header accent are unchanged.
+- **Style:** `NothingUiIconThemeController.policyFor` now puts `NothingUiIconPolicy.resolve(` on the
+  same line as `=` with 8-space arguments, fixing the only CI93 spotless/ktlint violation.
+- **Tests/guards:** added `NothingUiIconColorsTest` (black/white pairs, neutral channels, contrast,
+  stable order). Extended `nothingui-icon-render-guard.sh` and its fixture suite from 13/13 to
+  15/15 with the neutral palette, controller provider, Play/non-Play cache keys, QSB gate and
+  Play/non-Play loader checks.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-icon-render-guard.sh "$PWD"`
+  OK; `nothingui-icon-render-guard-test.sh` 15/15; `nothingui-home-guard.sh` OK and suite passes;
+  `nothingui-theme-guard.sh` OK and suite passes; `play-brand-guard-test.sh`,
+  `play-identity-guard-test.sh`, `manifest-guard-test.sh` and `verify-play-build-test.sh` all pass;
+  `sh -n` clean on both edited scripts; `git diff --check` clean. No Android build or emulator run
+  happened here; CI must produce the HOME/drawer pixels for review.
+- **Scope reminder:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing,
+  release, smoke-harness or asset change. The untracked local `w/` scratch directory was left
+  uncommitted.
+
+## done (previous run — Play icon renderer wiring)
 
 - **Root cause, not guessed:** the Play defaults lived only in `BoolPref` (`themed_icons` and
   `pref_forceIconMonochrome` default true), while the inherited renderer read the raw preference
@@ -286,11 +323,14 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator approves CI on PR #11 for head `039a41d`. Do not open a duplicate PR.
-- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
-  tests unchanged; `verify-play-build.sh` including the home guard (13/13), the drawer-trace
-  guard (6/6), `emulator-smoke-test.sh` (61 checks) and `emulator-smoke-drawer-test.sh`
-  (38 checks); and the API 37 emulator smoke.
+- Coordinator approves CI on PR #11 for head `9fc5a33`. Do not open a duplicate PR.
+- CI must show: `spotlessCheck` (the CI93 `policyFor` violation is fixed); `assembleLawnWithQuickstepPlayDebug`;
+  the Play unit tests including `NothingUiIconColorsTest`; `verify-play-build.sh` including the home
+  guard, the icon-render guard (15/15), the drawer-trace guard, `emulator-smoke-test.sh` and
+  `emulator-smoke-drawer-test.sh`; and the API 37 emulator smoke.
+- **Required pixel review:** the HOME/drawer PNGs must now show black/white icon plates and a
+  neutral (black/white) QSB search glyph, not the inherited blue/lavender accent. The header red
+  accent must stay red. Do not claim visual sign-off from the source guards alone.
 - Read the new runtime evidence after the first swipe:
   - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured hotseat
     gutter (`540 1616 540 96` on the 1080x1920 actual HOME), not the old `540 1183 ...`; the
@@ -313,9 +353,9 @@ when no task input is given, and continues from "next".
   - `activities-app-launch.txt`: only `topResumedActivity`/`mResumedActivity` lines are used; the
     resumed package must be exactly `com.android.settings/`;
   - `settings-launched.xml` / `.png` and `home-after-app-launch.xml` / `.png`.
-- Visual review is still outstanding: **colored icons and the blue QSB need pixel repair; the
-  header fits the pinned row but is not visually ready.** Do not claim finished visuals from source
-  guards alone.
+- The neutral icon/QSB fix is source-guarded only here. CI93 pixels were blue/lavender; the new
+  head `9fc5a33` must be re-inspected. The header fits the pinned row but is not otherwise visually
+  signed off.
 - P4 (drawer restyle) follows P3b; the inherited drawer/search/drag/widgets engine must stay.
 - Pending gates: private-space runtime UI, the in-app `RoleManager` prompt, and a non-Play runtime
   control build remain unverified.
@@ -324,8 +364,9 @@ when no task input is given, and continues from "next".
 
 - No local Gradle build or emulator run is allowed here, so CI and pixels are unverified.
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
-- P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
-  is not visually ready.
+- P3b visuals: the neutral icon/QSB fix on `9fc5a33` is statically verified only; CI93's blue/
+  lavender pixels require re-review on the new head. The header fits but is not otherwise visually
+  signed off.
 - P3b drawer smoke: CI84 (`44933644538`, artifact `14719700048`) proved the route works but the old
   gesture only reached `0.3760783` progress. CI87 (`44935461427`, artifact `14719887963`) then
   showed the fixture had invented a bottom QSB id, so the real y=91 header was used and the target
@@ -432,6 +473,14 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Neutral Play icon/QSB fix on `agent/p3b-actual-home-visual-slice-n` (`9fc5a33`).
+  CI93 (`44944409947`) on `9076be5` was green, but the inspected HOME/drawer pixels kept the
+  wallpaper-derived blue/lavender tint on the icon fallback and the QSB glyph. Root cause was the
+  inherited process-wide `ThemedIconDrawable.COLORS_LOADER`, not the policy. Added
+  `NothingUiIconColors`, gated the loader to the neutral black/white pair in Play (non-Play
+  unchanged), passed the provider through the controller and fallback, kept the Play freshness key
+  neutral, neutralized themed QSB layers behind the Play gate, and fixed the CI93 `policyFor`
+  style. Icon-render guard now 15/15 with `NothingUiIconColorsTest`. CI/pixel review pending.
 - 2026-11-21: Actual-home fixture fix on `agent/p3b-actual-home-visual-slice-n` (`039a41d`).
   CI87 (`44935461427`, artifact `14719887963`) still traced `0.366` progress target Normal. The
   actual HOME XML puts `search_container_workspace` on the y=91 HEADER, not the bottom QSB, so
