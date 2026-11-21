@@ -302,8 +302,8 @@ android {
         }
 
         test {
-            java.srcDirs = ['src/test/java']
-            kotlin.directories.addAll('src/test/java')
+            java.srcDirs = ['tests/unit/java']
+            kotlin.directories.addAll('tests/unit/java')
         }
 
         lawn {
@@ -518,7 +518,7 @@ dependencies {
 // The CI unit-test job invokes testLawnWithQuickstepPlayDebugUnitTest directly. Gradle exits 0
 // with NO-SOURCE when a source set is empty, so fail closed if the locked-profile test stops
 // being part of that task's test source set.
-def lockedProfileTestFile = file('src/test/java/app/lawnchair/search/algorithms/LockedProfilePredicateTest.kt')
+def lockedProfileTestFile = file('tests/unit/java/app/lawnchair/search/algorithms/LockedProfilePredicateTest.kt')
 tasks.register('verifyLockedProfileTestWiring') {
     doLast {
         if (!lockedProfileTestFile.isFile()) {
