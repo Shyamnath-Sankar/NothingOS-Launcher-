@@ -44,15 +44,21 @@ a view.
 
 - **Home screen grid.** It opens the existing `PreferenceActivity` with the existing
   `lawnchair://settings/home-screen-grid` deep link, then polls the real UIAutomator hierarchy for
-  the `Home screen grid` title, the preview (`LauncherPreviewView`/`LauncherPreviewLayout`), the
-  `Columns`, `Rows` and `Dock icons` labels, at least three accessibility `SeekBar` controls and the
-  `Apply` button. It captures `grid-settings.xml`/`.png` and requires `Apply` to still be disabled,
-  proving no grid change was staged. It never taps a control or Apply. It then presses HOME and
-  re-verifies the actual HOME clock/date.
+  the `Home screen grid` title, the `Columns`, `Rows` and `Dock icons` labels, at least three
+  accessibility `SeekBar` controls and `Apply`. The preview is validated from the actual hierarchy
+  shape: a `/workspace` ViewGroup inside the preview `AndroidViewHolder`/`ViewGroup`, above every
+  slider, strictly smaller than the window root and containing a `hotseat`/`search_container_workspace`
+  node. It does not require a `LauncherPreviewView`/`LauncherPreviewLayout` class. It captures
+  `grid-settings.xml`/`.png` and requires `Apply` to be the greyed, non-clickable label inside a
+  non-clickable `android.widget.Button` (the inherited screen keeps the accessibility `enabled` flag
+  true); a clickable `Apply` or a missing containing button fails, proving no grid change was staged.
+  It never taps a control or Apply. If readiness never succeeds it captures the last failed attempt's
+  PNG before failing. It then presses HOME and re-verifies the actual HOME clock/date.
 - **HOME long-press and Widgets.** It measures the empty central workspace from the actual HOME
   hierarchy: the header bottom comes from the workspace search container and the dock top from the
   lowest labelled row, so the long-press point stays below the header and above the dock icons and
-  bottom QSB. A real `input swipe x y x y 1000` long-press opens the real
+  bottom QSB. If every measured candidate is occupied it fails rather than long-pressing an occupied
+  centre. A real `input swipe x y x y 1000` long-press opens the real
   `OptionsPopupView`/`DeepShortcutView` popup. The smoke captures `home-popup.xml`/`.png`, taps the
   `Widgets` item by its measured clickable bounds, and polls for the native picker. It accepts either
   the refactored Compose picker (`com.android.launcher3.widgetpicker:id/widgets_catalog` plus a
@@ -66,6 +72,7 @@ Evidence for these phases:
 ```text
 grid-settings-launch.txt
 grid-settings-attempt-N.xml
+grid-settings-attempt-N.png
 grid-settings.xml
 grid-settings.png
 grid-settings.txt

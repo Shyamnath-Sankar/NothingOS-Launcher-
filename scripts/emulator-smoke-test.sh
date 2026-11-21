@@ -331,6 +331,10 @@ assert_false 'an unrelated label does not make the drawer ready' \
     drawer_is_ready "$unrelated_xml"
 
 # --- grid settings fixtures -------------------------------------------------
+# Shape copied from the actual grid-settings-attempt-6 dump: the preview is an
+# AndroidViewHolder/ViewGroup holding the workspace id, the hotseat and the
+# search container. Apply is a separate non-clickable TextView inside a
+# non-clickable Button, with a visually greyed (but accessibility-enabled) state.
 
 grid_xml="$TMP_DIR/grid-settings.xml"
 cat > "$grid_xml" <<'EOF'
@@ -338,28 +342,52 @@ cat > "$grid_xml" <<'EOF'
 <hierarchy rotation="0">
   <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
     <node index="0" text="Home screen grid" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,80][500,140]" />
-    <node index="1" text="" class="app.lawnchair.views.LauncherPreviewView" content-desc="" clickable="false" bounds="[40,180][1040,900]" />
+    <node index="1" text="" class="androidx.recyclerview.widget.RecyclerView" content-desc="" clickable="false" bounds="[0,160][1080,950]">
+      <node index="0" text="" class="android.view.ViewGroup" content-desc="" clickable="false" bounds="[375,294][706,883]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="android.view.ViewGroup" content-desc="" clickable="false" bounds="[375,313][706,844]">
+          <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.view.ViewGroup" content-desc="" clickable="false" bounds="[375,313][706,360]" />
+          <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.view.ViewGroup" content-desc="" clickable="false" bounds="[375,700][706,844]" />
+        </node>
+      </node>
+    </node>
     <node index="2" text="Columns" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,980][300,1040]" />
     <node index="3" text="4" class="android.widget.TextView" content-desc="" clickable="false" bounds="[900,980][1040,1040]" />
     <node index="4" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1050][1040,1100]" />
     <node index="5" text="Rows" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,1120][300,1180]" />
-    <node index="6" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1190][1040,1240]" />
-    <node index="7" text="Dock icons" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,1260][300,1320]" />
-    <node index="8" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1330][1040,1380]" />
-    <node index="9" text="Apply" class="android.widget.Button" content-desc="" clickable="true" enabled="false" bounds="[40,1700][1040,1800]" />
+    <node index="6" text="6" class="android.widget.TextView" content-desc="" clickable="false" bounds="[900,1120][1040,1180]" />
+    <node index="7" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1190][1040,1240]" />
+    <node index="8" text="Dock icons" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,1260][300,1320]" />
+    <node index="9" text="4" class="android.widget.TextView" content-desc="" clickable="false" bounds="[900,1260][1040,1320]" />
+    <node index="10" text="" class="android.widget.SeekBar" content-desc="" clickable="true" enabled="true" bounds="[40,1330][1040,1380]" />
+    <node index="11" text="" class="android.view.View" content-desc="" clickable="false" enabled="true" bounds="[42,1621][1038,1758]">
+      <node index="0" text="" class="android.widget.Button" content-desc="" clickable="false" enabled="true" bounds="[42,1637][1038,1742]" />
+      <node index="1" text="Apply" class="android.widget.TextView" content-desc="" clickable="false" enabled="true" bounds="[488,1663][592,1716]" />
+    </node>
   </node>
 </hierarchy>
 EOF
-assert_true 'the real grid settings expose the preview, labels, three sliders and Apply' \
+assert_true 'the real grid settings expose the workspace preview, labels, three sliders and Apply' \
     grid_settings_is_ready "$grid_xml"
-assert_true 'the grid settings Apply is still disabled, so no change is staged' \
+assert_true 'the grid settings Apply is a non-clickable label inside a non-clickable Button' \
     grid_apply_is_unchanged "$grid_xml"
 
 grid_no_preview="$TMP_DIR/grid-no-preview.xml"
-sed 's/class="app.lawnchair.views.LauncherPreviewView"/class="android.view.View"/' \
+sed '/resource-id="com.launchernos.dotwellabs.debug:id\/workspace"/d' \
     "$grid_xml" > "$grid_no_preview"
-assert_false 'a grid settings page without the real preview is rejected' \
+assert_false 'a grid settings page without the workspace preview is rejected' \
     grid_settings_is_ready "$grid_no_preview"
+
+grid_preview_below_controls="$TMP_DIR/grid-preview-below-controls.xml"
+sed '/resource-id="com.launchernos.dotwellabs.debug:id\/workspace"/s/\[375,313\]\[706,844\]/[375,313][706,1300]/' \
+    "$grid_xml" > "$grid_preview_below_controls"
+assert_false 'a preview workspace that is not above the controls is rejected' \
+    grid_settings_is_ready "$grid_preview_below_controls"
+
+grid_preview_no_hotseat="$TMP_DIR/grid-preview-no-hotseat.xml"
+sed '/resource-id="com.launchernos.dotwellabs.debug:id\/hotseat"/d; /resource-id="com.launchernos.dotwellabs.debug:id\/search_container_workspace"/d' \
+    "$grid_xml" > "$grid_preview_no_hotseat"
+assert_false 'a preview workspace without its hotseat/search container is rejected' \
+    grid_settings_is_ready "$grid_preview_no_hotseat"
 
 grid_no_columns="$TMP_DIR/grid-no-columns.xml"
 sed '/text="Columns"/d' "$grid_xml" > "$grid_no_columns"
@@ -372,11 +400,16 @@ sed '0,/class="android.widget.SeekBar"/s//class="android.view.View"/' \
 assert_false 'a grid settings page with fewer than three sliders is rejected' \
     grid_settings_is_ready "$grid_two_sliders"
 
-grid_apply_enabled="$TMP_DIR/grid-apply-enabled.xml"
-sed '/text="Apply"/s/enabled="false"/enabled="true"/' \
-    "$grid_xml" > "$grid_apply_enabled"
-assert_false 'an enabled Apply is rejected because it means a grid change is staged' \
-    grid_apply_is_unchanged "$grid_apply_enabled"
+grid_apply_clickable="$TMP_DIR/grid-apply-clickable.xml"
+sed '/text="Apply"/s/clickable="false"/clickable="true"/' \
+    "$grid_xml" > "$grid_apply_clickable"
+assert_false 'a clickable Apply is rejected because it means a grid change can be applied' \
+    grid_apply_is_unchanged "$grid_apply_clickable"
+
+grid_apply_no_button="$TMP_DIR/grid-apply-no-button.xml"
+sed '/class="android.widget.Button"/d' "$grid_xml" > "$grid_apply_no_button"
+assert_false 'an Apply label without its containing non-clickable Button is rejected' \
+    grid_apply_is_unchanged "$grid_apply_no_button"
 
 grid_apply_missing="$TMP_DIR/grid-apply-missing.xml"
 sed '/text="Apply"/d' "$grid_xml" > "$grid_apply_missing"
@@ -504,6 +537,17 @@ assert_false 'a labelled clickable item at the centre is not free' \
 assert_eq 'the HOME long-press walks away from an occupied centre' \
     '540 927' \
     "$(home_longpress_target "$occupied_home_xml")"
+
+blocked_home_xml="$TMP_DIR/blocked-home.xml"
+awk '
+    /<node index="6"/ && !done {
+        print "    <node index=\"7\" text=\"Widget\" class=\"android.widget.TextView\" content-desc=\"\" clickable=\"true\" bounds=\"[0,370][1080,1299]\" />"
+        done = 1
+    }
+    { print }
+' "$actual_home_xml" > "$blocked_home_xml"
+assert_false 'a HOME whose whole long-press band is occupied has no unsafe fallback' \
+    home_longpress_target "$blocked_home_xml"
 
 empty_xml="$TMP_DIR/empty.xml"
 printf '<hierarchy rotation="0"></hierarchy>\n' > "$empty_xml"
@@ -637,6 +681,8 @@ assert_true 'the grid capture asserts the real grid readiness helper' \
     grep -Fq 'grid_settings_is_ready' "$grid_body"
 assert_true 'the grid capture proves Apply is still disabled' \
     grep -Fq 'grid_apply_is_unchanged' "$grid_body"
+assert_true 'the grid capture keeps the last failed readiness screenshot before failing' \
+    grep -Fq 'grid-settings-attempt-$_cgs_last.png' "$grid_body"
 assert_false 'the grid capture never taps a control or Apply' \
     grep -Fq 'tap_center_of_bounds' "$grid_body"
 assert_false 'the grid capture never writes a preference' \

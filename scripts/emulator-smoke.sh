@@ -662,8 +662,11 @@ capture_grid_settings() {
         fi
         _cgs_attempt=$((_cgs_attempt + 1))
     done
-    [ "$_cgs_ready" -eq 1 ] ||
+    if [ "$_cgs_ready" -ne 1 ]; then
+        _cgs_last=$((_cgs_attempt - 1))
+        capture_screenshot_to "grid-settings-attempt-$_cgs_last.png"
         fail "Home screen grid settings did not expose the preview, Columns/Rows/Dock icons and Apply"
+    fi
     capture_screenshot_to grid-settings.png
     [ -s "$ARTIFACTS/grid-settings.png" ] ||
         fail "Home screen grid settings screenshot capture failed"
