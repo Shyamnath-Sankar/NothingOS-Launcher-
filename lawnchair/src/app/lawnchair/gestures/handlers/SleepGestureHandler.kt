@@ -26,6 +26,7 @@ import android.content.Intent
 import android.os.Build
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.preferences2.PreferenceManager2
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.requireSystemService
 import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.R
@@ -39,8 +40,13 @@ class SleepGestureHandler(context: Context) : GestureHandler(context) {
         val pref = PreferenceManager2.getInstance(context).sleepMode.get().first()
         val method = when (pref) {
             SleepMode.AUTO -> methods.first { it.isSupported() }
+
             SleepMode.ROOT -> methods.filterIsInstance<SleepMethodRoot>().first()
-            SleepMode.ACCESSIBILITY -> methods.filterIsInstance<SleepMethodPieAccessibility>().first()
+
+            SleepMode.ACCESSIBILITY ->
+                methods.filterIsInstance<SleepMethodPieAccessibility>().firstOrNull()
+                    ?: methods.first { it.isSupported() }
+
             SleepMode.DEVICE_ADMIN -> methods.filterIsInstance<SleepMethodDeviceAdmin>().first()
         }
 
@@ -52,11 +58,13 @@ class SleepGestureHandler(context: Context) : GestureHandler(context) {
         method.sleep(launcher)
     }
 
-    private val methods = listOf(
-        SleepMethodRoot(context),
-        SleepMethodPieAccessibility(context),
-        SleepMethodDeviceAdmin(context),
-    )
+    private val methods = buildList<SleepMethod> {
+        add(SleepMethodRoot(context))
+        if (!isPlayStoreFlavor()) {
+            add(SleepMethodPieAccessibility(context))
+        }
+        add(SleepMethodDeviceAdmin(context))
+    }
 
     sealed class SleepMethod(protected val context: Context) {
         abstract suspend fun isSupported(): Boolean

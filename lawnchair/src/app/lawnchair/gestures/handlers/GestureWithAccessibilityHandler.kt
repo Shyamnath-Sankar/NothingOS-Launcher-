@@ -19,12 +19,18 @@ import androidx.compose.ui.unit.dp
 import app.lawnchair.LawnchairLauncher
 import app.lawnchair.lawnchairApp
 import app.lawnchair.ui.ModalBottomSheetContent
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.views.ComposeBottomSheet
 import com.android.launcher3.R
 
 object GestureWithAccessibilityHandler {
 
     fun onTrigger(launcher: LawnchairLauncher, stringAction: Int, action: Int) {
+        // Play builds do not declare the accessibility service (AGENTS.md
+        // section 7). Never send the user to a settings screen that cannot
+        // enable it; the related gesture options are hidden in Play too.
+        if (isPlayStoreFlavor()) return
+
         val app = launcher.lawnchairApp
         if (!app.isAccessibilityServiceBound()) {
             val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)

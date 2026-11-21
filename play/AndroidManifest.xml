@@ -112,5 +112,22 @@
         <receiver
             android:name="app.lawnchair.smartspace.SmartspaceAppWidgetProvider"
             tools:node="remove" />
+
+        <!--
+          Play compliance: no AccessibilityService in v1 (AGENTS.md section 7).
+          The class stays compiled for the shared source set, but it is never
+          declared, so it cannot be enabled or bound in the Play build.
+        -->
+        <service
+            android:name="app.lawnchair.LawnchairAccessibilityService"
+            tools:node="remove" />
+
+        <!--
+          Play compliance: remove the inherited bug-report foreground-sync
+          service (AGENTS.md section 7).
+        -->
+        <service
+            android:name="app.lawnchair.bugreport.UploaderService"
+            tools:node="remove" />
     </application>
 </manifest>

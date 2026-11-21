@@ -37,6 +37,7 @@ import app.lawnchair.ui.ModalBottomSheetContent
 import app.lawnchair.ui.preferences.components.layout.PreferenceDivider
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.util.LocalBottomSheetHandler
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import com.android.launcher3.util.ComponentKey
 import com.android.launcher3.util.MSDLPlayerWrapper
 import com.google.android.msdl.data.model.MSDLToken
@@ -64,7 +65,10 @@ fun GestureHandlerPreference(
     }
 
     val newOptions =
-        filterGestureHandlerOptions(deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value)
+        filterGestureHandlerOptions(
+            deckLayoutEnabled = prefs2.deckLayout.getAdapter().state.value,
+            accessibilityEnabled = !isPlayStoreFlavor(),
+        )
 
     PreferenceTemplate(
         title = { Text(text = label) },

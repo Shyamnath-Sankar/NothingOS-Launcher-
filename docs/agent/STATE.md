@@ -3,11 +3,25 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P1a (Play-safe manifest) — complete; P1b next
-- branch: agent/p1a-play-safe-manifest-first-s
+- current_phase: P1b (accessibility + foreground-sync removal) — complete; P1c next
+- branch: agent/p1b-second-slice-of-p1-remove
 - pr: pending (agent-dev workflow opens it after this run)
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p1b-second-slice-of-p1-remove
 
 ## done
+- P1b: `play/AndroidManifest.xml` now removes `app.lawnchair.LawnchairAccessibilityService`
+  and the bug-report foreground-sync service `app.lawnchair.bugreport.UploaderService` with
+  `tools:node="remove"`. The classes stay compiled for the shared source set, but the Play build
+  never declares them. github/nightly keep both.
+- P1b settings entry points: Play (`BuildConfig.FLAVOR_channel == "play"`, via the existing
+  `isPlayStoreFlavor()`) hides the accessibility-backed gesture options (`Recents`,
+  `OpenNotifications`, `OpenQuickSettings`), removes `SleepMode.ACCESSIBILITY` from the sleep-mode
+  list, drops `SleepMethodPieAccessibility` from `SleepGestureHandler`, and makes
+  `GestureWithAccessibilityHandler` a no-op so it never opens a dead system accessibility screen.
+- `scripts/manifest-guard-test.sh` now also asserts the Play overlay declares the two
+  `tools:node="remove"` services. Test run: `sh scripts/manifest-guard-test.sh` → all 25 tests pass.
+- Commits: d394373 (manifest + overlay test), 166b9b6 (settings gating).
+- Gradle was not run (per task); CI on the PR builds `assembleLawnWithQuickstepPlayDebug`.
 - P1a: `play/AndroidManifest.xml` removes the AGENTS.md §7 non-core permissions and the Google
   QSB / Smartspacer components with `tools:node="remove"`.
 - Wired as the `play` flavor manifest and as the `lawnWithQuickstepPlay` variant manifest. The
@@ -20,15 +34,15 @@ when no task input is given, and continues from "next".
 - Gradle was not run (per task); CI on the PR builds `assembleLawnWithQuickstepPlayDebug`.
 
 ## next
-- P1b: remove `app.lawnchair.LawnchairAccessibilityService` and the feed / foreground-sync
-  components (`app.lawnchair.bugreport.UploaderService`) from the Play variant, plus their
-  settings entry points. Then run the guard against the merged manifest.
 - P1c: `ACCESS_HIDDEN_PROFILES` + private-space containers; locked profiles never surface in
   drawer, search or recents.
-- P9: wire `scripts/manifest-guard.sh` into CI (workflows were intentionally not touched in P1a).
+- P9: wire `scripts/manifest-guard.sh` into CI (workflows were intentionally not touched in P1a/P1b).
+- Follow-up (not in P1b scope): the bug-report receiver/provider still exist in Play while
+  `UploaderService` is gone, so the crash-notification "Upload" action can leave a stuck
+  notification. Either gate the upload action off in Play or remove the whole bug-report subsystem.
 
 ## blockers
-- None. The guard currently reports the P1b entries on the Play manifest by design.
+- None.
 
 ## decisions locked
 - applicationId for the Play rebrand: com.launchernos.dotwellabs (approved by the owner 2026-11-21).
@@ -45,5 +59,14 @@ when no task input is given, and continues from "next".
 - The guard checks the full §7 list (accessibility + feed/foreground-sync) even though P1a does not
   remove those yet. Ruling: make the guard fail until P1b lands. Cost if wrong: the guard is red
   on Play until P1b, which is the intended signal.
+- P1b settings gating uses the existing `isPlayStoreFlavor()` (`BuildConfig.FLAVOR_channel`) rather
+  than a `play/res` boolean. Reason: flavor resource priority follows dimension order, so a
+  `play`-flavor resource would lose to `lawnchair/res` (`lawn` dimension); a variant-only resource
+  would also miss `lawnPlay`. Cost if wrong: if a future build adds a non-`play` channel that still
+  lacks the service, its settings would show dead accessibility options.
+- P1b hides `Recents`, `OpenNotifications` and `OpenQuickSettings` in Play, not just the explicit
+  "Accessibility service" sleep option, because all three either require or fall back to the
+  removed service and would otherwise prompt for a service that cannot be enabled. Cost if wrong:
+  Play loses the reflection-based notification/Quick Settings gesture shortcut.
 ## log
-- 2026-11-21: agent-dev loop verified
+- 2026-11-21: P1b complete (accessibility + bug-report foreground service removed from Play)

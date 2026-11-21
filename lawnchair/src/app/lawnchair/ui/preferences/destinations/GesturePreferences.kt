@@ -11,6 +11,7 @@ import app.lawnchair.ui.preferences.components.GestureHandlerPreference
 import app.lawnchair.ui.preferences.components.controls.ListPreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import com.android.launcher3.R
 
 @Composable
@@ -56,7 +57,7 @@ fun GesturePreferences(
         PreferenceGroup(heading = stringResource(id = R.string.sleep_mode_label)) {
             ListPreference(
                 adapter = prefs.sleepMode.getAdapter(),
-                entries = SleepMode.entries(),
+                entries = SleepMode.entries(includeAccessibility = !isPlayStoreFlavor()),
                 label = stringResource(id = R.string.sleep_mode_label),
             )
         }

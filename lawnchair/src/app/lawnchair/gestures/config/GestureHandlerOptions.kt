@@ -21,9 +21,22 @@ private val optionsDisabledInDeckLayout = setOf(
     GestureHandlerOption.OpenAppSearch,
 )
 
-fun filterGestureHandlerOptions(deckLayoutEnabled: Boolean): List<GestureHandlerOption> {
-    if (!deckLayoutEnabled) return gestureHandlerOptions
-    return gestureHandlerOptions.filterNot { it in optionsDisabledInDeckLayout }
+// These handlers either require the accessibility service or fall back to it.
+// Play builds do not declare the service (AGENTS.md section 7), so surfacing
+// them there would only lead to a settings screen that cannot enable anything.
+private val accessibilityOptions = setOf(
+    GestureHandlerOption.Recents,
+    GestureHandlerOption.OpenNotifications,
+    GestureHandlerOption.OpenQuickSettings,
+)
+
+fun filterGestureHandlerOptions(
+    deckLayoutEnabled: Boolean,
+    accessibilityEnabled: Boolean = true,
+): List<GestureHandlerOption> {
+    return gestureHandlerOptions
+        .filter { accessibilityEnabled || it !in accessibilityOptions }
+        .filter { !deckLayoutEnabled || it !in optionsDisabledInDeckLayout }
 }
 
 suspend fun GestureHandlerOption.buildConfigFrom(context: Context): GestureHandlerConfig? {
