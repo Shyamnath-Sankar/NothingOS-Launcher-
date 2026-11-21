@@ -120,6 +120,10 @@ grep -Fq 'R.font.doto_bold' "$HEADER_VIEW" ||
     fail "the home header clock does not use the bundled Doto font"
 grep -Fq 'R.font.doto_regular' "$HEADER_VIEW" ||
     fail "the home header date does not use the bundled Doto font"
+grep -Fq 'CLOCK_TEXT_SP = 30f' "$HEADER_VIEW" ||
+    fail "the home header clock is not sized to the single pinned row"
+grep -Fq 'DATE_TEXT_SP = 10f' "$HEADER_VIEW" ||
+    fail "the home header date is not sized to the single pinned row"
 grep -Fq 'NothingUiPalette.AccentRed' "$HEADER_VIEW" ||
     fail "the home header is missing the restrained red accent"
 grep -Fq 'ACTION_TIME_TICK' "$HEADER_VIEW" ||
@@ -140,6 +144,24 @@ grep -Fq 'BoolPref("pref_forceIconMonochrome", NothingUiFeature.homeEnabled' "$P
     fail "monochrome icon fallback is not defaulted through the Play home gate"
 grep -Fq '!NothingUiFeature.homeEnabled' "$LAUNCHER_FILE" ||
     fail "the legacy themed-icon migration is not gated off for the Play home"
+
+# Chrome surface and ink must be an explicit, coherent pair from the original
+# palette. Inherited wallpaper text is often white and the inherited floating
+# surface is pale, which could render white-on-white.
+if grep -Fq 'getColorBackgroundFloating' "$CHROME_FILE" ||
+    grep -Fq 'workspaceTextColor' "$CHROME_FILE"; then
+    fail "the chrome still pairs inherited floating/wallpaper colors (white-on-white risk)"
+fi
+grep -Fq 'NothingUiPalette.Paper' "$CHROME_FILE" ||
+    fail "the chrome surface/ink pair does not use the original palette"
+grep -Fq 'NothingUiPalette.Ink' "$CHROME_FILE" ||
+    fail "the chrome surface/ink pair does not use the original ink"
+grep -Fq 'R.attr.isMainColorDark' "$CHROME_FILE" ||
+    fail "the chrome pair does not retain the inherited light/dark theme choice"
+grep -Fq 'NothingUiHomeChrome.surfaceColor' "$HEADER_VIEW" ||
+    fail "the home header does not share the chrome surface pair"
+grep -Fq 'NothingUiHomeChrome.textColor' "$HEADER_VIEW" ||
+    fail "the home header does not share the chrome ink pair"
 
 # Search chrome and page dots must only recolor behind the Play gate.
 grep -Fq 'NothingUiFeature.homeEnabled' "$QSB_FILE" ||

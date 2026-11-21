@@ -39,7 +39,6 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.ColorUtils
 import app.nothingui.theme.NothingUiPalette
 import com.android.launcher3.R
-import com.android.launcher3.util.Themes
 import java.util.Calendar
 import java.util.Locale
 
@@ -71,16 +70,16 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
 
     init {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
-        setPadding(dp(12), dp(8), dp(12), dp(8))
+        setPadding(dp(10), dp(2), dp(10), dp(2))
 
         val card = FrameLayout(context).apply {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(28).toFloat()
+                cornerRadius = dp(22).toFloat()
                 setColor(cardColor())
                 setStroke(dp(1), outlineColor())
             }
-            setPadding(dp(20), dp(14), dp(20), dp(14))
+            setPadding(dp(14), dp(6), dp(14), dp(6))
         }
 
         val content = LinearLayout(context).apply {
@@ -95,8 +94,8 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
 
         dateView.apply {
             setTextColor(textColor())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
-            letterSpacing = 0.28f
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, DATE_TEXT_SP)
+            letterSpacing = 0.24f
             typeface = dotoRegular()
             includeFontPadding = false
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
@@ -115,7 +114,7 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
         }
         topRow.addView(
             accentView,
-            LinearLayout.LayoutParams(dp(6), dp(6)).apply { marginStart = dp(8) },
+            LinearLayout.LayoutParams(dp(5), dp(5)).apply { marginStart = dp(6) },
         )
 
         content.addView(
@@ -128,7 +127,7 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
 
         clockView.apply {
             setTextColor(textColor())
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 40f)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, CLOCK_TEXT_SP)
             letterSpacing = -0.02f
             typeface = dotoBold()
             includeFontPadding = false
@@ -139,13 +138,13 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-            ).apply { topMargin = dp(2) },
+            ),
         )
 
         dotsView.dotColor = textColor()
         content.addView(
             dotsView,
-            LinearLayout.LayoutParams(dp(56), dp(8)).apply { topMargin = dp(6) },
+            LinearLayout.LayoutParams(dp(48), dp(5)).apply { topMargin = dp(2) },
         )
 
         card.addView(
@@ -212,31 +211,12 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
     }
 
     private fun cardColor(): Int {
-        val color = if (isWorkspaceDarkText()) {
-            NothingUiPalette.Paper.toArgb()
-        } else {
-            NothingUiPalette.Gray900.toArgb()
-        }
-        return ColorUtils.setAlphaComponent(color, CARD_ALPHA)
+        return ColorUtils.setAlphaComponent(NothingUiHomeChrome.surfaceColor(context), CARD_ALPHA)
     }
 
-    private fun textColor(): Int {
-        return if (isWorkspaceDarkText()) {
-            NothingUiPalette.Ink.toArgb()
-        } else {
-            NothingUiPalette.Paper.toArgb()
-        }
-    }
+    private fun textColor(): Int = NothingUiHomeChrome.textColor(context)
 
-    private fun outlineColor(): Int {
-        return ColorUtils.setAlphaComponent(textColor(), OUTLINE_ALPHA)
-    }
-
-    private fun isWorkspaceDarkText(): Boolean {
-        return runCatching {
-            Themes.getAttrBoolean(context, R.attr.isWorkspaceDarkText)
-        }.getOrDefault(false)
-    }
+    private fun outlineColor(): Int = NothingUiHomeChrome.outlineColor(context)
 
     private fun dotoRegular(): Typeface {
         return ResourcesCompat.getFont(context, R.font.doto_regular) ?: Typeface.SANS_SERIF
@@ -278,6 +258,7 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
 
     private companion object {
         const val CARD_ALPHA = 242
-        const val OUTLINE_ALPHA = 46
+        const val CLOCK_TEXT_SP = 30f
+        const val DATE_TEXT_SP = 10f
     }
 }

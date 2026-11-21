@@ -78,6 +78,10 @@ class NothingUiHomeHeaderView {
     val tickAction = "ACTION_TIME_TICK"
     val label = "contentDescription"
     val clock = "DateFormat.is24HourFormat"
+    val surface = NothingUiHomeChrome.surfaceColor(context)
+    val ink = NothingUiHomeChrome.textColor(context)
+    const val CLOCK_TEXT_SP = 30f
+    const val DATE_TEXT_SP = 10f
 }
 EOF
 
@@ -93,9 +97,23 @@ EOF
     write_file "$root/lawnchair/src/app/nothingui/home/NothingUiHomeChrome.kt" <<'EOF'
 package app.nothingui.home
 
+import app.nothingui.theme.NothingUiPalette
+import com.android.launcher3.R
+import com.android.launcher3.util.Themes
+
 object NothingUiHomeChrome {
-    fun surfaceColor() = 0
-    fun pageIndicatorColor() = 0
+    fun isLightSurface(context: Context) =
+        Themes.getAttrBoolean(context, R.attr.isMainColorDark)
+
+    fun surfaceColor(context: Context) =
+        if (isLightSurface(context)) NothingUiPalette.Paper else NothingUiPalette.Gray900
+
+    fun textColor(context: Context) =
+        if (isLightSurface(context)) NothingUiPalette.Ink else NothingUiPalette.Paper
+
+    fun outlineColor(context: Context) = textColor(context)
+
+    fun pageIndicatorColor(context: Context) = textColor(context)
 }
 EOF
 
@@ -405,6 +423,24 @@ class Workspace {
 EOF
 expect_fail_contains 'hard-wiring the header into Workspace fails' \
     "$workspace_hardwired" 'Workspace.java directly references the NothingUI header'
+
+chrome_inherited="$TMP_DIR/chrome-inherited"
+cp -R "$clean" "$chrome_inherited"
+write_file "$chrome_inherited/lawnchair/src/app/nothingui/home/NothingUiHomeChrome.kt" <<'EOF'
+package app.nothingui.home
+
+import com.android.launcher3.R
+import com.android.launcher3.util.Themes
+
+object NothingUiHomeChrome {
+    fun surfaceColor(context: Context) = Themes.getColorBackgroundFloating(context)
+    fun textColor(context: Context) = Themes.getAttrColor(context, R.attr.workspaceTextColor)
+    fun outlineColor(context: Context) = textColor(context)
+    fun pageIndicatorColor(context: Context) = textColor(context)
+}
+EOF
+expect_fail_contains 'chrome pairing inherited floating/wallpaper colors fails' \
+    "$chrome_inherited" 'white-on-white risk'
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

@@ -17,21 +17,49 @@
 package app.nothingui.home
 
 import android.content.Context
+import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
+import app.nothingui.theme.NothingUiPalette
 import com.android.launcher3.R
 import com.android.launcher3.util.Themes
 
 /**
  * Monochrome chrome colors for the Play home surface.
  *
- * These reuse the inherited workspace theme attributes so light/dark and wallpaper-derived
- * contrast keep working. They are only consulted behind [app.nothingui.theme.NothingUiFeature.homeEnabled].
+ * Surface and ink are selected as an explicit, high-contrast pair from the original NothingUI
+ * palette, driven by the inherited user light/dark theme (`isMainColorDark`). This deliberately
+ * avoids pairing the inherited wallpaper-derived text color (often white) with the pale floating
+ * surface color, which could render white-on-white. The user's light/dark choice still selects
+ * the pair, matching the inherited day/night QSB icon and page-dot tints.
+ *
+ * Only consulted behind [app.nothingui.theme.NothingUiFeature.homeEnabled].
  */
 object NothingUiHomeChrome {
 
-    fun surfaceColor(context: Context): Int = Themes.getColorBackgroundFloating(context)
+    fun isLightSurface(context: Context): Boolean {
+        val darkTheme = runCatching {
+            Themes.getAttrBoolean(context, R.attr.isMainColorDark)
+        }.getOrDefault(false)
+        return !darkTheme
+    }
 
-    fun textColor(context: Context): Int = Themes.getAttrColor(context, R.attr.workspaceTextColor)
+    fun surfaceColor(context: Context): Int {
+        val color = if (isLightSurface(context)) {
+            NothingUiPalette.Paper
+        } else {
+            NothingUiPalette.Gray900
+        }
+        return color.toArgb()
+    }
+
+    fun textColor(context: Context): Int {
+        val color = if (isLightSurface(context)) {
+            NothingUiPalette.Ink
+        } else {
+            NothingUiPalette.Paper
+        }
+        return color.toArgb()
+    }
 
     fun outlineColor(context: Context): Int = ColorUtils.setAlphaComponent(textColor(context), OUTLINE_ALPHA)
 
