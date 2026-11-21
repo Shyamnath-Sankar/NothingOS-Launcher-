@@ -93,8 +93,12 @@ Hard rules live in `AGENTS.md` §7. Summary of what this spec commits to:
 ## 7. Identity and branding
 
 - Internal label and code paths: "NothingUI".
+- Play display label: **DotWel Launcher** (single l), owner-confirmed 2026-11-21. Applies to the
+  Play app and launcher-activity labels only; github/nightly keep the inherited Lawnchair branding.
+  This is a display label, not a claim of trademark/name clearance.
 - Play listing name, icon, screenshots and keywords must not contain "Nothing" until clearance.
-  Describe as "minimalist monochrome, dot-matrix inspired".
+  Describe as "minimalist monochrome, dot-matrix inspired". The public Play listing name remains
+  OPEN (see §9).
 - Keep Apache `NOTICE` and file headers for all forked code.
 
 ## 8. Verification
