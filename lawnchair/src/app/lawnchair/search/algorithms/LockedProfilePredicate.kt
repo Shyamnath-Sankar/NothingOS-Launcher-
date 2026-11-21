@@ -25,4 +25,4 @@ import com.android.launcher3.model.data.ItemInfoWithIcon
  * apps. Keep this predicate pure so it can be covered by a plain JVM unit test.
  */
 internal fun isLockedProfile(runtimeStatusFlags: Int): Boolean =
-    runtimeStatusFlags and ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER != 0
+    (runtimeStatusFlags and ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER) != 0
