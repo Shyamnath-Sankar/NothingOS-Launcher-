@@ -60,8 +60,11 @@ if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
     sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
 fi
 
-# Debug-only app-drawer gesture trace and its per-swipe smoke capture.
-sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
+# Debug-only app-drawer gesture trace and its per-swipe smoke capture (skipped
+# for minimal fixtures).
+if [ -f "$ROOT/src/com/android/launcher3/touch/DotwelDrawerTrace.java" ]; then
+    sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
+fi
 
 # 2. Locate the merged manifest for the Play debug variant.
 INTERMEDIATES="$ROOT/build/intermediates"
