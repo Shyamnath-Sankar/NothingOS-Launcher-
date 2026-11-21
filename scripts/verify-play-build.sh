@@ -1,7 +1,7 @@
 #!/bin/sh
 # Verify the assembled Play debug build.
 #
-# 1. Runs the existing identity/manifest guard fixture suites (no Gradle needed).
+# 1. Runs the existing identity/manifest/brand/theme guard fixture suites (no Gradle needed).
 # 2. Locates the Gradle-merged lawnWithQuickstepPlayDebug manifest produced by
 #    assembleLawnWithQuickstepPlayDebug, failing closed when it is missing or
 #    ambiguous.
