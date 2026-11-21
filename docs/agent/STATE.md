@@ -37,7 +37,8 @@ when no task input is given, and continues from "next".
   `role-consent-settings.xml/.png` and `role-consent.xml/.png`, taps the platform Cancel control,
   and requires the role holder list to be unchanged. It then grants the role for the existing
   HOME/drawer/Settings assertions, which are untouched. `emulator-smoke-test.sh` is 69 checks;
-  `emulator-smoke-drawer-test.sh` remains 38.
+  `emulator-smoke-drawer-test.sh` remains 38. `docs/agent/emulator-verification.md` describes the
+  new consent phase.
 - **Verification actually run (no Gradle, no emulator):** `DefaultHomeRolePolicy` TDD harness RED
   then GREEN; `nothingui-home-role-guard.sh` OK; its suite 7/7; `emulator-smoke-test.sh` 69; drawer
   suite 38; `verify-play-build-test.sh` 11; brand 14, identity 8, manifest 31, theme 9, home 13,
