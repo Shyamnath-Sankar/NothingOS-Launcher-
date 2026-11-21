@@ -45,6 +45,12 @@ check permission 'com\.kieronquinn\.app\.smartspacer\.permission\.ACCESS_SMARTSP
 check component 'app\.lawnchair\.smartspace\.SmartspaceAppWidgetProvider'
 check component 'app\.lawnchair\.smartspace\.SmartspacePreferencesShortcut'
 
+# Accessibility and feed / foreground-sync components (AGENTS.md section 7).
+# Removed from the Play variant in P1b; the guard flags them until then.
+check component 'app\.lawnchair\.LawnchairAccessibilityService'
+check component 'app\.lawnchair\.bugreport\.UploaderService'
+check component 'app\.lawnchair\.feed\.[A-Za-z0-9_.]+'
+
 if [ "$violations" -ne 0 ]; then
     printf 'manifest-guard: FAIL: %s still contains %d forbidden entry/entries.\n' \
         "$manifest" "$violations" >&2

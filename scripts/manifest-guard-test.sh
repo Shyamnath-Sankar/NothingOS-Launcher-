@@ -84,7 +84,10 @@ done
 
 for component in \
     app.lawnchair.smartspace.SmartspaceAppWidgetProvider \
-    app.lawnchair.smartspace.SmartspacePreferencesShortcut
+    app.lawnchair.smartspace.SmartspacePreferencesShortcut \
+    app.lawnchair.LawnchairAccessibilityService \
+    app.lawnchair.bugreport.UploaderService \
+    app.lawnchair.feed.FeedService
 do
     manifest="$TMP_DIR/component.xml"
     write_manifest "<application><receiver android:name=\"$component\" /></application>" "$manifest"
