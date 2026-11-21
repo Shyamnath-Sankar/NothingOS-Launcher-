@@ -196,6 +196,15 @@ while [ "$attempt" -le 4 ]; do
     attempt=$((attempt + 1))
 done
 
+short_swipes=$(awk -F'[ =,]' '
+    /^attempt=.* start=/ && ($5 - $8) <= 960 { print }
+' "$ARTIFACTS/appdrawer-swipe-log.txt")
+if [ -z "$short_swipes" ]; then
+    pass 'every attempt swipes more than half of the 1920 px display'
+else
+    fail "an attempt swiped half the display or less: $short_swipes"
+fi
+
 if grep -Fq 'emulator-smoke: FAIL: app drawer did not expose' "$TMP_DIR/runner.err"; then
     pass 'the terminal failure names the exhausted drawer loop'
 else
