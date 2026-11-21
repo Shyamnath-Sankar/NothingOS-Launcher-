@@ -197,32 +197,9 @@ jobs:
           git push -u origin "${{ steps.pick.outputs.branch }}" || true
           rm -f .git/info/exclude
 
-      - name: Open or update the PR
-        if: always()
-        id: pr
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          BR="${{ steps.pick.outputs.branch }}"
-          git fetch origin "$BR" || true
-          gh auth status || true
-          EXISTING=$(gh pr list --head "$BR" --json number --jq '.[0].number' || true)
-          if [ -z "$EXISTING" ]; then
-            if [ "$(git rev-parse origin/$BR 2>/dev/null)" != "$(git rev-parse origin/main)" ]; then
-              URL=$(gh pr create --base main --head "$BR" \
-                --title "agent: $(head -c 60 w/task.txt)" \
-                --body "Task: $(cat w/task.txt)
-
-          Built by agent-dev (OpenCode + DeepSeek free + Superpowers). CI on this PR builds the debug APK.
-          Rate limit this run: ${{ steps.agent.outputs.ratelimit }}." | tail -1)
-              echo "pr_url=$URL" >> "$GITHUB_OUTPUT"
-            else
-              echo "pr_url=" >> "$GITHUB_OUTPUT"
-              echo "No changes on branch; skipping PR."
-            fi
-          else
-            echo "pr_url=$(gh pr view "$EXISTING" --json url --jq .url)" >> "$GITHUB_OUTPUT"
-          fi
+      # PRs are opened by the supervising agent with user OAuth, not by this workflow:
+      # branches/PRs created by GITHUB_TOKEN do not trigger CI (GitHub recursion guard),
+      # and the whole point of the PR is the pull_request APK build.
 
       - name: Upload agent logs
         if: always()
@@ -241,5 +218,4 @@ jobs:
             echo "- Branch: \`${{ steps.pick.outputs.branch }}\`"
             echo "- Superpowers: ${{ steps.verify.outputs.superpowers }}"
             echo "- Rate limit: ${{ steps.agent.outputs.ratelimit }}"
-            echo "- PR: ${{ steps.pr.outputs.pr_url }}"
           } >> "$GITHUB_STEP_SUMMARY"
