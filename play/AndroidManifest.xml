@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Play-channel manifest overlay for NothingUI.
+
+  Removes every non-core permission and component listed in AGENTS.md section 7
+  for the Play variant. github/nightly keep the inherited feature set.
+
+  This file is wired as both the play product-flavor manifest and the
+  lawnWithQuickstepPlay variant manifest. The variant manifest has the highest
+  merge priority, which is required for tools:node="remove" to remove entries
+  declared by the higher-priority lawn/withQuickstep flavor manifests.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Play compliance: non-core permissions (AGENTS.md section 7). -->
+    <uses-permission
+        android:name="android.permission.READ_CONTACTS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_IMAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VIDEO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_MEDIA_AUDIO"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.READ_HISTORY_BOOKMARKS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.INTERACT_ACROSS_USERS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.INTERACT_ACROSS_USERS_FULL"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.MANAGE_USERS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FORCE_STOP_PACKAGES"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.STATUS_BAR_SERVICE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.SUSPEND_APPS"
+        tools:node="remove" />
+    <uses-permission
+        android:name="com.google.android.apps.nexuslauncher.permission.QSB"
+        tools:node="remove" />
+    <uses-permission
+        android:name="com.kieronquinn.app.smartspacer.permission.ACCESS_SMARTSPACER"
+        tools:node="remove" />
+
+    <!-- Keep the overrideLibrary marker needed by the Smartspacer SDK dependency. -->
+    <uses-sdk tools:overrideLibrary="com.kieronquinn.app.smartspacer.sdk.client" />
+
+    <application
+        android:name="app.lawnchair.LawnchairApp"
+        android:backupAgent="com.android.launcher3.LauncherBackupAgent"
+        android:fullBackupOnly="true"
+        android:fullBackupContent="@xml/backupscheme"
+        android:hardwareAccelerated="true"
+        android:icon="@drawable/ic_launcher_home"
+        android:label="@string/derived_app_name"
+        android:theme="@style/AppTheme"
+        android:largeHeap="@bool/config_largeHeap"
+        android:restoreAnyVersion="true"
+        android:supportsRtl="true">
+
+        <!-- Launcher activity, inherited from quickstep/AndroidManifest-launcher.xml. -->
+        <activity
+            android:name="app.lawnchair.LawnchairLauncher"
+            android:launchMode="singleTask"
+            android:clearTaskOnLaunch="true"
+            android:stateNotNeeded="true"
+            android:windowSoftInputMode="adjustPan"
+            android:screenOrientation="unspecified"
+            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:resizeableActivity="true"
+            android:resumeWhilePausing="true"
+            android:taskAffinity=""
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="android.intent.action.SHOW_WORK_APPS" />
+                <action android:name="android.intent.action.ALL_APPS" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.MONKEY" />
+                <category android:name="android.intent.category.LAUNCHER_APP" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data
+                android:name="com.android.launcher3.grid.control"
+                android:value="${applicationId}.grid_control" />
+        </activity>
+
+        <!-- Play compliance: third-party QSB / Smartspacer components. -->
+        <activity
+            android:name="app.lawnchair.smartspace.SmartspacePreferencesShortcut"
+            tools:node="remove" />
+        <receiver
+            android:name="app.lawnchair.smartspace.SmartspaceAppWidgetProvider"
+            tools:node="remove" />
+    </application>
+</manifest>
