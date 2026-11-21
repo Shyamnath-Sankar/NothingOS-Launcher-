@@ -79,6 +79,14 @@ esac
 MOCK
 chmod +x "$MOCK_BIN/adb"
 
+# The orchestration's retry delays are real; the regression only needs the
+# control flow, so keep it fast without changing the production script.
+cat > "$MOCK_BIN/sleep" <<'MOCK'
+#!/bin/sh
+exit 0
+MOCK
+chmod +x "$MOCK_BIN/sleep"
+
 RUNNER="$TMP_DIR/run-open-drawer.sh"
 cat > "$RUNNER" <<'RUNNER'
 #!/bin/sh
