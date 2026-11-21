@@ -187,12 +187,13 @@ assert_eq 'a high dock still keeps the swipe above it' \
 assert_false 'an invalid display width cannot produce a swipe target' \
     drawer_swipe_target 0 1920 1400
 
-# The actual CI87 HOME: root 1080x1920, a workspace HEADER search container at
-# [22,91][1058,294], and a hotseat whose icons end at y=1568. UIAutomator does
-# not expose the bottom QSB; the PNG puts its visual top at 1640. The old code
-# treated the header (y=91) as the QSB top, so it fell back to start 1183 and
-# the runtime trace only reached 0.366 progress. The gutter is derived from the
-# measured icon band, not from the header.
+# The actual CI87/CI97 HOME: root 1080x1920, a workspace HEADER search container
+# at [22,91][1058,294], a hotseat whose icons end at y=1568, and the three
+# bottom QSB "Search" nodes at y=1626..1794, y=1642..1778 and y=1679..1742.
+# Those bottom nodes have no resource-id, so the old ui_dock_bottom treated the
+# deepest one (1794) as the dock bottom and produced start 1898 instead of the
+# intended 1616. The dock band must be measured from the same icon row as
+# ui_dock_top, never from the bottom Search nodes.
 actual_home_xml="$TMP_DIR/actual-home.xml"
 cat > "$actual_home_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -207,32 +208,39 @@ cat > "$actual_home_xml" <<'EOF'
       <node index="2" text="Contacts" class="android.widget.TextView" content-desc="" clickable="true" bounds="[540,1375][799,1568]" />
       <node index="3" text="WebView Browser Tester" class="android.widget.TextView" content-desc="" clickable="true" bounds="[799,1375][1058,1568]" />
     </node>
+    <node index="4" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1626][1080,1794]" />
+    <node index="5" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1642][1080,1778]" />
+    <node index="6" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1679][1080,1742]" />
   </node>
 </hierarchy>
 EOF
+assert_eq 'the actual HOME fixture includes all three id-less bottom Search nodes' \
+    '3' \
+    "$(grep 'content-desc="Search"' "$actual_home_xml" | grep -vc 'resource-id=')"
 actual_root=$(ui_root_bounds "$actual_home_xml")
+actual_dock_top=$(ui_dock_top "$actual_home_xml" "$actual_root")
+actual_dock_bottom=$(ui_dock_bottom "$actual_home_xml" "$actual_root")
 assert_eq 'the actual HOME dock top is measured from the hierarchy' \
-    '1375' \
-    "$(ui_dock_top "$actual_home_xml" "$actual_root")"
+    '1375' "$actual_dock_top"
 assert_eq 'the actual HOME dock bottom comes from the hotseat icon band' \
-    '1568' \
-    "$(ui_dock_bottom "$actual_home_xml" "$actual_root")"
+    '1568' "$actual_dock_bottom"
+actual_qsb_top=$(ui_qsb_top "$actual_home_xml" "$actual_dock_bottom")
 assert_eq 'the workspace header is rejected as the bottom QSB' \
-    '' \
-    "$(ui_qsb_top "$actual_home_xml" 1568)"
+    '' "$actual_qsb_top"
 assert_eq 'a QSB cannot be derived without a measured dock bottom' \
     '' \
     "$(ui_qsb_top "$actual_home_xml")"
-actual_target=$(drawer_swipe_target 1080 1920 1375 1568 '')
+actual_target=$(drawer_swipe_target \
+    1080 1920 "$actual_dock_top" "$actual_dock_bottom" "$actual_qsb_top")
 assert_eq 'the actual 1080x1920 HOME swipes from the measured gutter to the top' \
     '540 1616 540 96' "$actual_target"
 actual_start=$(printf '%s\n' "$actual_target" | awk '{ print $2 }')
 actual_end=$(printf '%s\n' "$actual_target" | awk '{ print $4 }')
 actual_travel=$((actual_start - actual_end))
-if [ "$actual_start" -gt 1568 ] && [ "$actual_start" -lt 1640 ]; then
-    pass 'the actual swipe starts below the icons and above the visual QSB'
+if [ "$actual_start" -gt 1568 ] && [ "$actual_start" -lt 1626 ]; then
+    pass 'the actual swipe starts below the icons and above the bottom Search nodes'
 else
-    fail "the actual swipe start $actual_start is not in the 1568..1640 gutter"
+    fail "the actual swipe start $actual_start is not in the 1568..1626 gutter"
 fi
 if [ "$actual_travel" -gt 1500 ]; then
     pass 'the actual swipe travels more than 1500 px'
@@ -241,6 +249,8 @@ else
 fi
 assert_false 'the actual HOME swipe does not use the old 1183 px fallback' \
     test "$actual_start" = 1183
+assert_false 'the actual HOME swipe does not start at the Search-node-derived 1898' \
+    test "$actual_start" = 1898
 assert_true 'the actual 1080x1920 swipe covers more than half the display' \
     drawer_swipe_is_long_enough 1920 "$actual_start" "$actual_end"
 assert_eq 'the actual 1080x1920 swipe covers 79.2 percent of the display' \
