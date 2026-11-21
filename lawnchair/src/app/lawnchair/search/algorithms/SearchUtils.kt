@@ -5,7 +5,6 @@ import android.content.pm.ShortcutInfo
 import app.lawnchair.launcher
 import app.lawnchair.ui.preferences.components.HiddenAppsInSearch
 import com.android.launcher3.model.data.AppInfo
-import com.android.launcher3.model.data.ItemInfoWithIcon
 import com.android.launcher3.popup.PopupPopulator
 import com.android.launcher3.search.StringMatcherUtility
 import com.android.launcher3.shortcuts.ShortcutRequest
@@ -54,9 +53,7 @@ object SearchUtils {
 }
 
 fun Sequence<AppInfo>.filterLockedProfiles(): Sequence<AppInfo> {
-    return filter {
-        (it.runtimeStatusFlags and ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER) == 0
-    }
+    return filter { !isLockedProfile(it.runtimeStatusFlags) }
 }
 
 fun Sequence<AppInfo>.filterHiddenApps(
