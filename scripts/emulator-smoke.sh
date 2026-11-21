@@ -12,6 +12,11 @@
 #     launcher is the resumed/default home
 #   - captures a screenshot, logcat, dumpsys and aapt evidence under an
 #     artifact directory, and fails on install/launch/crash problems
+#   - dumps the HOME UIAutomator hierarchy and, when the smartspace onboarding
+#     card is visible, requires the rendered welcome text to be "DotWel
+#     Launcher" with no "Lawnchair" text; otherwise records a pending note
+#   - captures the app-info screen and the About screen (UI XML + screenshot);
+#     the About screenshot is the launcher-icon evidence, reviewed visually
 #
 # It does NOT validate locked private-space behaviour. That needs a provisioned
 # private space with a secure lock screen; see scripts/private-space-check.sh.
@@ -180,9 +185,43 @@ capture_about() {
     if [ -s "$ARTIFACTS/about.png" ]; then
         printf 'About screen captured: "About" title and "%s" text are visible.\n' \
             "$EXPECTED_LABEL" > "$ARTIFACTS/about.txt"
+        printf 'Icon evidence: about.png. The launcher icon is reviewed visually; this script does not pixel-assert it.\n' \
+            >> "$ARTIFACTS/about.txt"
     else
         printf 'About screen pending: UI hierarchy matched but screenshot capture failed.\n' \
             > "$ARTIFACTS/about-pending.txt"
+    fi
+}
+
+# The smartspace onboarding card reads onboarding_welcome. A clean install has
+# HOME_BOUNCE_SEEN unset, so the card is expected. Assert the rendered text when
+# the card is present; if it has not rendered, record pending rather than claim
+# a brand pass that the evidence does not support.
+verify_home_welcome() {
+    attempt=1
+    while [ "$attempt" -le 3 ]; do
+        if capture_ui_xml home.xml; then
+            if grep -Fqi 'welcome' "$ARTIFACTS/home.xml"; then
+                if grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/home.xml" &&
+                    ! grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
+                    printf 'HOME welcome: "%s" is visible and no Lawnchair text is present.\n' \
+                        "$EXPECTED_LABEL" > "$ARTIFACTS/home-welcome.txt"
+                    return 0
+                fi
+                printf 'HOME welcome: card is visible but the brand is wrong.\n' \
+                    > "$ARTIFACTS/home-welcome.txt"
+                fail "HOME welcome UI does not say $EXPECTED_LABEL"
+            fi
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    if [ -s "$ARTIFACTS/home.xml" ]; then
+        printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
+            > "$ARTIFACTS/home-welcome-pending.txt"
+    else
+        printf 'HOME welcome pending: UIAutomator could not dump the HOME hierarchy.\n' \
+            > "$ARTIFACTS/home-welcome-pending.txt"
     fi
 }
 
@@ -384,6 +423,8 @@ home_resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activit
 
 capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
+
+verify_home_welcome
 
 capture_app_info
 return_home app-info
