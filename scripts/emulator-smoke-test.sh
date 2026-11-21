@@ -399,6 +399,31 @@ assert_true 'the smoke proves the role holder list is unchanged after cancel' \
     grep -Fq 'role-consent-after.sorted' "$consent_body"
 assert_false 'the consent capture does not grant the role itself' \
     grep -Fq 'add-role-holder' "$consent_body"
+
+announcement_body="$TMP_DIR/ui_assert_no_inherited_announcements.sh"
+sed -n '/^ui_assert_no_inherited_announcements() (/,/^)/p' "$SMOKE" > "$announcement_body"
+assert_true 'the settings smoke checks the captured hierarchy for inherited announcements' \
+    grep -Fq 'ui_assert_no_inherited_announcements' "$consent_body"
+assert_true 'the announcement check looks for the inherited Lawnchair card' \
+    grep -Fq "'Lawnchair'" "$announcement_body"
+assert_true 'the announcement check looks for the sneak peek card' \
+    grep -Fq "'sneak peek'" "$announcement_body"
+assert_true 'the announcement check looks for the important announcement cards' \
+    grep -Fq "'important announcement'" "$announcement_body"
+assert_true 'the announcement check is case-insensitive' \
+    grep -Fq 'grep -Fqi' "$announcement_body"
+announcement_check_line=$(grep -n 'ui_assert_no_inherited_announcements' "$consent_body" | sed -n '1s/:.*//p')
+settings_screenshot_line=$(grep -n 'capture_screenshot_to role-consent-settings.png' "$consent_body" | sed -n '1s/:.*//p')
+warning_tap_line=$(grep -n 'tap_center_of_bounds "$_vdhc_warning"' "$consent_body" | sed -n '1s/:.*//p')
+if [ -n "$announcement_check_line" ] && [ -n "$settings_screenshot_line" ] &&
+    [ -n "$warning_tap_line" ] &&
+    [ "$settings_screenshot_line" -lt "$announcement_check_line" ] &&
+    [ "$announcement_check_line" -lt "$warning_tap_line" ]; then
+    pass 'the clean settings screenshot and announcement check run before the warning tap'
+else
+    fail 'the clean settings screenshot and announcement check run before the warning tap'
+fi
+
 consent_call_line=$(grep -n '^verify_default_home_consent$' "$SMOKE" | sed -n '1s/:.*//p')
 grant_line=$(grep -n 'add-role-holder' "$SMOKE" | sed -n '1s/:.*//p')
 if [ -n "$consent_call_line" ] && [ -n "$grant_line" ] &&

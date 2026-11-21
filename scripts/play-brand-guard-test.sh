@@ -92,7 +92,22 @@ EOF
     write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt" <<'EOF'
 package app.lawnchair.ui.preferences.destinations
 
+import app.lawnchair.ui.preferences.components.AnnouncementPreference
+import app.lawnchair.ui.util.isPlayStoreFlavor
+
+fun dashboard() {
+    if (!isPlayStoreFlavor()) {
+        AnnouncementPreference()
+    }
+}
+
 val tip = R.string.set_default_launcher_tip
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/components/AnnouncementPreference.kt" <<'EOF'
+package app.lawnchair.ui.preferences.components
+
+fun AnnouncementPreference() {}
 EOF
 
     write_file "$root/play/AndroidManifest.xml" <<'EOF'
@@ -292,6 +307,55 @@ val tip = R.string.smartspace_onboarding
 EOF
 expect_fail_contains 'default-launcher hint consumer drift fails' \
     "$unused_tip" 'Play default-launcher hint override is unused'
+
+ungated_announcement="$TMP_DIR/ungated-announcement"
+cp -R "$clean" "$ungated_announcement"
+write_file "$ungated_announcement/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt" <<'EOF'
+package app.lawnchair.ui.preferences.destinations
+
+import app.lawnchair.ui.preferences.components.AnnouncementPreference
+import app.lawnchair.ui.util.isPlayStoreFlavor
+
+fun dashboard() {
+    AnnouncementPreference()
+}
+
+val tip = R.string.set_default_launcher_tip
+EOF
+expect_fail_contains 'an ungated Play announcement card fails' \
+    "$ungated_announcement" 'without a !isPlayStoreFlavor() gate'
+
+removed_announcement="$TMP_DIR/removed-announcement"
+cp -R "$clean" "$removed_announcement"
+write_file "$removed_announcement/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt" <<'EOF'
+package app.lawnchair.ui.preferences.destinations
+
+import app.lawnchair.ui.util.isPlayStoreFlavor
+
+val tip = R.string.set_default_launcher_tip
+EOF
+expect_fail_contains 'removing the non-Play announcement cards fails' \
+    "$removed_announcement" 'the non-Play announcements were removed'
+
+dotwel_announcement="$TMP_DIR/dotwel-announcement"
+cp -R "$clean" "$dotwel_announcement"
+write_file "$dotwel_announcement/lawnchair/src/app/lawnchair/ui/preferences/components/AnnouncementPreference.kt" <<'EOF'
+package app.lawnchair.ui.preferences.components
+
+val fakeNews = "DotWel Launcher news"
+EOF
+expect_fail_contains 'fabricating DotWel news fails' \
+    "$dotwel_announcement" 'do not fabricate DotWel news'
+
+play_announcement="$TMP_DIR/play-announcement"
+cp -R "$clean" "$play_announcement"
+write_file "$play_announcement/play/res/values/announcements.xml" <<'EOF'
+<resources>
+    <string name="play_announcement">DotWel Launcher news</string>
+</resources>
+EOF
+expect_fail_contains 'Play-only announcement resources fail' \
+    "$play_announcement" 'Play resources define announcement/news content'
 
 missing_locale="$TMP_DIR/missing-locale"
 cp -R "$clean" "$missing_locale"

@@ -31,6 +31,7 @@ NOTICE_FILE="$ROOT/NOTICE.md"
 ABOUT_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/about/About.kt"
 ONBOARDING_KT="$ROOT/lawnchair/src/app/lawnchair/smartspace/provider/OnboardingProvider.kt"
 DASHBOARD_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt"
+ANNOUNCEMENT_KT="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/components/AnnouncementPreference.kt"
 
 violations=0
 
@@ -80,6 +81,7 @@ require_file "$NOTICE_FILE"
 require_file "$ABOUT_KT"
 require_file "$ONBOARDING_KT"
 require_file "$DASHBOARD_KT"
+require_file "$ANNOUNCEMENT_KT"
 require_file "$PLAY_RES/values/strings.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home.xml"
 require_file "$PLAY_RES/drawable/ic_launcher_home_comp.xml"
@@ -203,6 +205,34 @@ if ! grep -Fq 'R.string.onboarding_welcome' "$ONBOARDING_KT"; then
 fi
 if ! grep -Fq 'R.string.set_default_launcher_tip' "$DASHBOARD_KT"; then
     violate 'PreferencesDashboard no longer consumes R.string.set_default_launcher_tip; Play default-launcher hint override is unused'
+fi
+
+# Play must not render the inherited Lawnchair live-information announcement
+# cards. Keep the inherited call for non-Play only, and never fabricate DotWel
+# news to replace them.
+if ! grep -Fq 'import app.lawnchair.ui.util.isPlayStoreFlavor' "$DASHBOARD_KT"; then
+    violate 'PreferencesDashboard no longer imports isPlayStoreFlavor; the Play announcement gate cannot be verified'
+fi
+announcement_count=$(grep -c 'AnnouncementPreference()' "$DASHBOARD_KT" || true)
+if [ "$announcement_count" -ne 1 ]; then
+    violate "PreferencesDashboard has $announcement_count AnnouncementPreference() calls, expected exactly one gated non-Play call"
+fi
+announcement_line=$(grep -n 'AnnouncementPreference()' "$DASHBOARD_KT" | sed -n '1s/:.*//p')
+if [ -n "$announcement_line" ]; then
+    announcement_gate_line=$((announcement_line - 8))
+    [ "$announcement_gate_line" -ge 1 ] || announcement_gate_line=1
+    if ! sed -n "${announcement_gate_line},$((announcement_line - 1))p" "$DASHBOARD_KT" |
+        grep -Fq 'if (!isPlayStoreFlavor())'; then
+        violate 'PreferencesDashboard renders AnnouncementPreference() without a !isPlayStoreFlavor() gate'
+    fi
+else
+    violate 'PreferencesDashboard no longer renders AnnouncementPreference(); the non-Play announcements were removed'
+fi
+if grep -Fq 'DotWel' "$ANNOUNCEMENT_KT"; then
+    violate 'AnnouncementPreference.kt contains a DotWel brand; do not fabricate DotWel news'
+fi
+if grep -rqiE 'announcement|sneak peek|live information' "$PLAY_RES"; then
+    violate 'Play resources define announcement/news content; do not fabricate DotWel news'
 fi
 
 if ! grep -Fq 'android:icon="@mipmap/ic_launcher_home"' "$PLAY_MANIFEST"; then
