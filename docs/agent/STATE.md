@@ -3,36 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (smoke repair only)**. This run fixed the
-  emulator-smoke false positive and added a focused regression. No visual change was made. Colored
-  icons and the blue QSB are still pending pixel repair, and the header fits the pinned row but is
-  **not visually ready**. P3b is not visually done.
+- current_phase: **P3b — actual HOME visual slice (drawer-readiness smoke repair only)**. CI68
+  (`44921875638`) was compile/style/unit green but the API 37 smoke failed at the drawer step
+  (`appdrawer` did not expose a search label): the coordinator's `appdrawer.xml` was identical to
+  `home.xml`. Root cause was the swipe start at 75% height, inside the dock/Phone hit region, so the
+  all-apps transition never began. This run makes `open_app_drawer` bounded and state-based. No app
+  visual change was made. Colored icons and the blue QSB are still pending pixel repair, and the
+  header fits the pinned row but is **not visually ready**. P3b is not visually done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `84a0493` (base `main` at `0df97ff`)
+- head: `522516b` (base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — P3b smoke repair)
+## done (this run — P3b drawer-readiness smoke repair)
 
-- **Root cause of the false positive:** `exercise_app_drawer` grepped the entire
-  `activities-app-launch.txt` dump for `com.android.settings/`. Task history also names that
-  package, so a historical Settings record passed while `topResumedActivity` was still the
-  launcher (CI66 run `44916179774`). The Settings result tap also used the first `text="Settings"`
-  node, which can be a header rather than the app.
-- **Fix:** new pure helpers in `scripts/emulator-smoke-lib.sh`:
-  `resumed_component` reads only `topResumedActivity`/`mResumedActivity`;
-  `foreground_is` requires the exact `com.android.settings/` package boundary (so
-  `com.android.settings.intelligence` cannot match); `ui_clickable_label_bounds` prefers a
-  clickable Settings node or its nearest clickable ancestor over an earlier bare label.
-- `scripts/emulator-smoke.sh` now polls `wait_for_foreground` (bounded 10 s) after the real drawer
-  search tap, captures `settings-launched.xml` + `.png`, then returns HOME, asserts the launcher is
-  foreground, and captures `home-after-app-launch.xml` + `.png`. There is no `am start` shortcut to
-  Settings. All other checks are unchanged.
-- **Focused regression:** `scripts/emulator-smoke-test.sh` covers the historical-Settings dump,
-  exact package boundary, the `mResumedActivity` fallback, clickable-vs-header node choice,
-  content-desc matching, and static assertions that the drawer flow taps the result and never
-  launches Settings directly. It is wired into `scripts/verify-play-build.sh`. The existing guard
-  suites and the 16 existing unit tests were not modified.
+- **CI68 failure read correctly:** run `44921875638` on PR #11 was green for compile/style/unit but
+  the API 37 smoke failed at `appdrawer` with no search label. The coordinator downloaded the actual
+  `home.xml` and `appdrawer.xml`; both were identical HOME (clock `4:10`, dock Phone/Messaging/
+  Contacts/WebView/Browser/Tester), so the swipe did not transition and the Settings launch phase
+  was never reached. The emulator's `ColorBuffer74` log noise was not assumed to be infra, and no
+  assertion was lowered.
+- **Root cause:** `open_app_drawer` swiped from `height * 3 / 4` (~1440 on 1920) to `height / 4`.
+  The dock occupies roughly 1375–1568, so the gesture started on the Phone icon instead of the
+  workspace and was consumed by the dock.
+- **Fix:** `open_app_drawer` now runs up to 4 bounded, state-based attempts. Each attempt waits for
+  the launcher to be the idle resumed foreground, captures `appdrawer-attempt-N-before.xml` +
+  `.png`, computes the target from the live HOME hierarchy, swipes, then polls for the real drawer
+  search input or app-list container. Every attempt also writes `appdrawer-attempt-N.xml` + `.png`
+  and an `appdrawer-swipe-log.txt` line plus `appdrawer-swipe-N.txt`.
+- **Geometry:** the swipe target uses the UIAutomator root bounds (so current insets/root bounds
+  apply), finds the dock top from the lowest labelled row, and starts in the empty workspace above
+  it (e.g. 1920 px display / 1400 px dock top -> start y 1208, end y 384). `wm size` is only a
+  measured fallback when the hierarchy is unavailable. The old 75% dock hit point is gone.
+- **Readiness:** `drawer_is_ready` accepts an actual search input (`/input`, `EditText`,
+  `AllAppsSearchInput`, `search_container_all_apps`) or app-list container (`apps_list_view`,
+  `SearchContainerView`); a closed HOME is not ready. The pre-search `Settings` label assertion was
+  removed because Settings may be off the first screen; the real search-result assertion remains.
+- **Mandatory flow preserved:** the drawer is still opened by a real swipe, search is still typed
+  into the real input, the clickable Settings result is still tapped, and the exact
+  `com.android.settings/` foreground poll is still required (bounded 15 s). There is still no
+  `am start` shortcut to Settings. Clock/date, app-info, About, theme-sample, and crash checks are
+  unchanged.
+- **Regression:** `scripts/emulator-smoke-test.sh` is now 31/31, adding pure fixtures for root
+  bounds, dock-top detection, the measured swipe target (including the old 75% case and fallback),
+  drawer readiness, and static assertions that each attempt is bounded, captures evidence, and no
+  longer uses the 75% start.
 - Pending visuals are untouched: **colored icons and the blue QSB still need pixel repair; the
   header fits the pinned row but is not visually ready.** Private-space runtime UI, the in-app
   `RoleManager.ROLE_HOME` prompt and the non-Play runtime control remain pending. No Gradle,
@@ -73,19 +88,18 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
-- This run: `sh scripts/nothingui-home-guard-test.sh` -> all passed (existing suite unchanged);
-  `nothingui-theme-guard-test.sh` -> all passed; `play-brand-guard-test.sh`,
-  `play-identity-guard-test.sh`, `manifest-guard-test.sh`, `verify-play-build-test.sh` -> all pass.
+- This run: `sh scripts/emulator-smoke-test.sh` -> 31/31 passed (14 existing + 17 new
+  geometry/readiness/static cases).
+- This run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed;
+  `nothingui-theme-guard-test.sh` -> 9/9; `play-brand-guard-test.sh`,
+  `play-identity-guard-test.sh`, `manifest-guard-test.sh` -> all pass.
 - This run: `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh`,
   `emulator-smoke-test.sh`; `git diff --check` clean.
-- Prior run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`
-- Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed, including the new
-  inherited-floating/wallpaper negative.
-- Prior run: `sh scripts/nothingui-theme-guard.sh "$PWD"` -> OK; `nothingui-theme-guard-test.sh` -> 9/9.
-- Prior run: `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
+- Prior run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
+- Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13; `nothingui-theme-guard-test.sh` ->
+  9/9; `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
   `verify-play-build-test.sh` -> all pass.
-- Prior run: `sh -n` clean on the edited smoke and home-guard scripts; `git diff --check` clean.
+- Prior run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`.
 - Prior run: `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the
   Android-dependent header/chrome/QSB files produced only expected unresolved-Android-reference
   cascades, no syntax errors.
@@ -94,17 +108,21 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `84a0493` diff and approves CI on PR #11. Do not open a duplicate PR.
+- Coordinator reviews the `522516b` diff and approves CI on PR #11. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
   tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
-  `verify-play-build.sh` including `emulator-smoke-test.sh` (14/14) and the home guard (13/13);
+  `verify-play-build.sh` including `emulator-smoke-test.sh` (31/31) and the home guard (13/13);
   and the API 37 emulator smoke.
-- Review the new smoke artifacts before claiming the repair:
+- Review the new drawer artifacts before claiming the repair:
+  - `appdrawer-swipe-log.txt` and `appdrawer-swipe-N.txt`: the start y must be above the measured
+    dock top, not the old 75% point;
+  - `appdrawer-attempt-N-before.xml` / `.png`: HOME before each swipe;
+  - `appdrawer-attempt-N.xml` / `.png`: the state after each bounded wait;
+  - `appdrawer.xml` / `appdrawer.png`: the first ready drawer, which must differ from HOME and
+    expose the search input or app-list container;
   - `activities-app-launch.txt`: only `topResumedActivity`/`mResumedActivity` lines are used; the
-    resumed package must be exactly `com.android.settings/`.
-  - `settings-launched.xml` / `settings-launched.png`: captured while Settings is foreground.
-  - `home-after-app-launch.xml` / `home-after-app-launch.png`: captured after HOME, with the
-    launcher foreground.
+    resumed package must be exactly `com.android.settings/`;
+  - `settings-launched.xml` / `.png` and `home-after-app-launch.xml` / `.png`.
 - Visual review is still outstanding: **colored icons and the blue QSB need pixel repair; the
   header fits the pinned row but is not visually ready.** Do not claim finished visuals from source
   guards alone.
@@ -118,6 +136,9 @@ when no task input is given, and continues from "next".
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
 - P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
   is not visually ready.
+- P3b drawer smoke: the new geometry is statically verified only. CI68's `ColorBuffer74` log noise
+  is not accepted as an infra excuse; the next API 37 run must show a real drawer transition or
+  fail with the new per-attempt evidence.
 
 ## decisions locked
 
@@ -128,6 +149,16 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P3b drawer-readiness repair: derive the swipe target from the live HOME hierarchy (root bounds +
+  lowest labelled row) rather than a fixed display fraction. Cost if wrong: the hierarchy adds one
+  uiautomator dump per attempt, but the gesture can no longer land on the dock; if no labelled row
+  is found the measured `wm size` fallback uses 55% height, still above a 71%-height dock.
+- P3b drawer-readiness repair: require an actual drawer search input or app-list container before
+  proceeding. Cost if wrong: a future drawer that exposes neither id will fail rather than silently
+  testing HOME, which is the intended fail-closed behavior.
+- P3b drawer-readiness repair: drop the pre-search `Settings` label assertion but keep the real
+  search-result assertion and the exact foreground poll. Cost if wrong: a drawer that opens without
+  Settings on the first screen still proceeds to search, which is the behavior the task needs.
 - P3b smoke repair: the app-launch assertion reads only the live
   `topResumedActivity`/`mResumedActivity` fields and matches the exact package boundary; task
   history is never treated as foreground. Cost if wrong: a dump that omits both fields fails the
@@ -194,6 +225,15 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3b drawer-readiness repair on `agent/p3b-actual-home-visual-slice-n` (`522516b`).
+  CI68 (`44921875638`) was compile/style/unit green but the API 37 smoke failed because
+  `appdrawer.xml` was identical to `home.xml`; the 75%-height swipe started inside the dock/Phone
+  hit region. `open_app_drawer` now uses up to 4 bounded state-based attempts, waits for launcher
+  idle, derives the target from live root bounds + dock top, captures before/after XML+PNG and a
+  swipe log per attempt, and requires a real drawer input/container. The real swipe -> search ->
+  Settings tap -> exact foreground flow is unchanged. `emulator-smoke-test.sh` is 31/31. Static
+  checks only; CI and pixels pending. Colored icons + blue QSB still need pixel repair; header fits
+  but is not visually ready.
 - 2026-11-21: P3b smoke repair on `agent/p3b-actual-home-visual-slice-n` (`84a0493`). The app-launch
   false positive came from grepping the whole dumpsys dump; only the live resumed fields now count,
   polled with a bounded wait. The drawer taps the clickable Settings result instead of the first
