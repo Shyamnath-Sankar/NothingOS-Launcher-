@@ -16,16 +16,23 @@
 
 package app.nothingui.icons
 
+import android.annotation.TargetApi
 import android.content.Context
+import android.graphics.Rect
 import android.graphics.drawable.AdaptiveIconDrawable
+import android.os.Build
 import app.lawnchair.data.iconoverride.IconOverrideRepository
 import app.lawnchair.preferences.PreferenceManager
 import com.android.launcher3.icons.BaseIconFactory
+import com.android.launcher3.icons.BaseIconFactory.MODE_ALPHA
 import com.android.launcher3.icons.BitmapInfo
+import com.android.launcher3.icons.IconNormalizer.ICON_VISIBLE_AREA_FACTOR
 import com.android.launcher3.icons.IconThemeController
+import com.android.launcher3.icons.MonochromeIconFactory
 import com.android.launcher3.icons.SourceHint
 import com.android.launcher3.icons.ThemedBitmap
 import com.android.launcher3.icons.mono.MonoIconThemeController
+import com.android.launcher3.icons.mono.MonoThemedBitmap
 import com.android.launcher3.util.ComponentKey
 
 /**
@@ -37,12 +44,12 @@ import com.android.launcher3.util.ComponentKey
  * [SourceHint] component key, so custom selections are left untouched while everything else gets
  * the neutral monochrome treatment.
  */
+@TargetApi(Build.VERSION_CODES.TIRAMISU)
 class NothingUiIconThemeController(
     private val prefs: PreferenceManager,
     private val overrideRepo: IconOverrideRepository,
 ) : IconThemeController {
-    private val forced = MonoIconThemeController(shouldForceThemeIcon = true)
-    private val normal = MonoIconThemeController(shouldForceThemeIcon = false)
+    private val normal = MonoIconThemeController()
 
     override val themeID = "nothingui-theme"
 
@@ -59,8 +66,29 @@ class NothingUiIconThemeController(
             customIconSelected = isCustomIcon(key),
         )
 
-    private fun controllerFor(policy: NothingUiIconPolicy): MonoIconThemeController =
-        if (policy.forceMonochromeFallback) forced else normal
+    /**
+     * Builds the grayscale/threshold fallback with the inherited [MonochromeIconFactory].
+     *
+     * The inherited forced controller reads the raw preference with a false default, so it cannot
+     * see the Play default until the value is persisted. Generating the fallback from the already
+     * resolved policy keeps fresh Play installs monochrome without a startup write.
+     */
+    private fun createForcedThemedBitmap(
+        icon: AdaptiveIconDrawable,
+        info: BitmapInfo,
+        factory: BaseIconFactory,
+        sourceHint: SourceHint?,
+    ): ThemedBitmap? {
+        if (icon.monochrome != null || sourceHint?.isFileDrawable == true) {
+            return normal.createThemedBitmap(icon, info, factory, sourceHint)
+        }
+        val shapePath = factory.getShapePath(icon, Rect(0, 0, info.icon.width, info.icon.height))
+        val monoDrawable = MonochromeIconFactory(info.icon.width).wrap(icon, shapePath)
+        return MonoThemedBitmap(
+            factory.createIconBitmap(monoDrawable, ICON_VISIBLE_AREA_FACTOR, MODE_ALPHA),
+            factory.whiteShadowLayer,
+        )
+    }
 
     override fun createThemedBitmap(
         icon: AdaptiveIconDrawable,
@@ -71,7 +99,11 @@ class NothingUiIconThemeController(
         val key = sourceHint?.key
         val policy = policyFor(key)
         if (!policy.useThemedIcons || isCustomIcon(key)) return null
-        return controllerFor(policy).createThemedBitmap(icon, info, factory, sourceHint)
+        return if (policy.forceMonochromeFallback) {
+            createForcedThemedBitmap(icon, info, factory, sourceHint)
+        } else {
+            normal.createThemedBitmap(icon, info, factory, sourceHint)
+        }
     }
 
     override fun decode(
@@ -84,7 +116,7 @@ class NothingUiIconThemeController(
         if (!policy.useThemedIcons || isCustomIcon(sourceHint.key)) {
             return ThemedBitmap.NOT_SUPPORTED
         }
-        return controllerFor(policy).decode(data, info, factory, sourceHint)
+        return normal.decode(data, info, factory, sourceHint)
     }
 
     override fun createThemedAdaptiveIcon(
@@ -94,6 +126,6 @@ class NothingUiIconThemeController(
     ): AdaptiveIconDrawable? {
         val policy = policyFor(key = null)
         if (!policy.useThemedIcons || isCustomIcon(key = null)) return originalIcon
-        return controllerFor(policy).createThemedAdaptiveIcon(context, originalIcon, info)
+        return normal.createThemedAdaptiveIcon(context, originalIcon, info)
     }
 }
