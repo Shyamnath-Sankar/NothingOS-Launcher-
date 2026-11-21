@@ -29,7 +29,8 @@ jobs:
       # preinstalled SDK. Accept licenses and let AGP download what it needs.
       - uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: latest
+          # 'tools' was removed from current SDK repositories; install platform-tools only.
+          packages: 'platform-tools'
 
       - name: Install required SDK packages
         run: |
@@ -61,7 +62,8 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: latest
+          # 'tools' was removed from current SDK repositories; install platform-tools only.
+          packages: 'platform-tools'
 
       - run: ./gradlew spotlessCheck --stacktrace
 
@@ -81,7 +83,8 @@ jobs:
 
       - uses: android-actions/setup-android@v3
         with:
-          cmdline-tools-version: latest
+          # 'tools' was removed from current SDK repositories; install platform-tools only.
+          packages: 'platform-tools'
 
       - name: Run unit tests
         run: ./gradlew testLawnWithQuickstepPlayDebugUnitTest --stacktrace
