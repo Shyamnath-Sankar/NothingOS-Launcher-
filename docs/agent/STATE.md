@@ -3,19 +3,46 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (micro compile fix only)**. CI81 run
-  `44932685973` on head `f2377c5` failed javac because the new drawer diagnostics used the invalid
-  enum field `.name` instead of the call `name()`/`toString()`. This run replaces only those
-  diagnostic formatters, adds a guard against the invalid access, and leaves the debug Play trace
-  and per-attempt artifact intact. No app behavior, gesture routing, animation, visual, manifest,
-  permission, SDK, applicationId, signing or workflow change. Runtime drawer evidence is still
-  pending; P3b is not done.
+- current_phase: **P3b — actual HOME visual slice (smoke gesture fix only)**. CI84 run
+  `44933644538` artifact `14719700048` proved the route works: DOWN accepted, dragStart
+  Normal→AllApps, dragEnd velocity 0 / fling false / displacement `-722.0703` / progress
+  `0.3760783` / target Normal. The old test swipe (start 1183, end 384, ~799 px of the 1920 range)
+  was too short to commit at zero velocity and correctly snapped back. This run changes only the
+  measurement-driven smoke gesture and its pure geometry tests, not app gesture logic or the
+  success threshold.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `a5161ef` (compile fix; base `main` at `0df97ff`)
+- head: `4ebc2b5` (gesture fix; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — micro compile fix only)
+## done (this run — smoke gesture length only)
+
+- **Root cause read from the actual CI84 trace, not guessed:** the old measured target started at
+  y 1183 and ended at y 384 (799 px on a 1920 shift range). The runtime trace showed only
+  `-722.0703` displacement and `0.3760783` progress at zero velocity, below the 0.4 phone
+  NORMAL→ALL_APPS success threshold, so the launcher snapped back to Normal exactly as designed.
+- **Fix in the harness only:** `drawer_swipe_target` now accepts the measured dock icon bottom and
+  QSB top. When both are present it starts in the empty gutter between them (actual HOME: dock
+  bottom 1568, QSB top 1640 → start 1604) and ends at 5 percent of the display (96 on 1920), a
+  1508 px / 78.5 percent travel. Without those measurements it keeps the safe above-dock start.
+  The x stays at the horizontal centre because the start row is below every dock icon.
+- **New pure helpers:** `ui_dock_bottom` (excludes the QSB and anything at/below its top),
+  `ui_qsb_top` (matches the `search_container_workspace` id suffix), `drawer_swipe_is_long_enough`
+  (strictly more than half the display height), and `drawer_swipe_travel_fraction`.
+- **Orchestration:** `drawer_target_for_dump` measures `ui_dock_top`, `ui_qsb_top` and
+  `ui_dock_bottom` from the same pre-swipe HOME XML and passes all three to the geometry. The
+  four bounded attempts, before/after XML+PNG, swipe log and per-attempt debug trace are unchanged.
+- **Regressions actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` passes with new
+  actual-1080x1920 geometry (`540 1604 540 96`, 0.7854), old-799-px reject (0.4161) and CI84
+  trace reject (0.3760); `emulator-smoke-drawer-test.sh` passes and now also requires every mock
+  attempt to swipe more than half the 1920 px display. Drawer-trace guard 6/6, home guard 13/13,
+  theme guard 9/9, brand/identity/manifest suites pass, repo-level identity/brand/theme/home/trace
+  guards OK, `sh -n` clean, `git diff --check` clean.
+- **Scope reminder:** no app gesture logic, threshold, animation, manifest, permission, SDK,
+  applicationId, signing, release or workflow change. The debug Play `DotwelDrawerTrace` stays
+  until the longer gesture is verified in CI. Colored icons and the blue QSB remain pending.
+
+## done (previous run — micro compile fix only)
 
 - `Launcher.java` now logs `DisplayController.getNavigationMode(this).name()` (NavigationMode is a
   Java enum), not the invalid `.name` field.
@@ -190,16 +217,19 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator approves CI on PR #11 for the compile-fix head. Do not open a duplicate PR. The
-  javac failure must be gone before any runtime claim.
+- Coordinator approves CI on PR #11 for head `4ebc2b5`. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing Play unit
   tests unchanged; `verify-play-build.sh` including the home guard (13/13), the drawer-trace
-  guard (6/6), `emulator-smoke-test.sh` (34/34) and `emulator-smoke-drawer-test.sh`; and the API 37
-  emulator smoke.
-- Read the new runtime evidence after each swipe:
-  - `appdrawer-trace-N.txt`: the selected controller classes/navigation mode, ACTION_DOWN/UP
-    interception decisions, and `onDragStart`/`onDragEnd` displacement, velocity and target state;
-  - use that trace to decide the next smallest gesture-routing fix; do not guess.
+  guard (6/6), `emulator-smoke-test.sh` (now 48 checks) and `emulator-smoke-drawer-test.sh`
+  (now 45 checks); and the API 37 emulator smoke.
+- Read the new runtime evidence after the first swipe:
+  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured dock/QSB
+    gutter (`540 1604 540 96` on the 1080x1920 HOME), not the old `540 1183 540 384`;
+  - `appdrawer-trace-1.txt`: `dragEnd` must show a displacement well above 768 px and progress
+    above 0.4 at velocity 0, with target AllApps; if the gutter start is not accepted, the trace
+    will show the DOWN/UP decision and the next smallest fix must follow that evidence.
+  - `appdrawer-attempt-1.xml` / `.png`: the first ready drawer, which must differ from HOME and
+    expose the search input or app-list container.
 - Confirm CI70's hang is gone: the API 37 smoke must finish the drawer phase instead of running past
   22m. The bounded retry must produce at most four `appdrawer-attempt-*` sets; if readiness fails,
   the run must exit nonzero with the retained evidence, not loop.
@@ -226,10 +256,10 @@ when no task input is given, and continues from "next".
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
 - P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
   is not visually ready.
-- P3b drawer smoke: CI70 was canceled after 22m because the retry counter was clobbered by helper
-  globals. The fix and its mock-adb regression are pushed on `50176d8`, but a new API 37 run must
-  still prove the real device transition (or fail with per-attempt evidence). CI68's
-  `ColorBuffer74` log noise is not accepted as an infra excuse.
+- P3b drawer smoke: CI84 (`44933644538`, artifact `14719700048`) proved the route works but the old
+  gesture only reached `0.3760783` progress. The longer measured dock/QSB-gutter gesture is pushed
+  on `4ebc2b5`; a new API 37 run must show `dragEnd` target AllApps and a ready drawer. If the
+  gutter start is rejected, the trace artifacts will identify the exact DOWN/UP decision.
 
 ## decisions locked
 
@@ -319,6 +349,18 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Smoke gesture length fix only on `agent/p3b-actual-home-visual-slice-n`
+  (`96e2f7b`, `4ebc2b5`). CI84 (`44933644538`, artifact `14719700048`) showed the route works
+  (DOWN accepted, Normal→AllApps) but the old test swipe covered only 799 px of the 1920 shift
+  range, so `dragEnd` at velocity 0 recorded progress `0.3760783` and correctly returned Normal.
+  The harness now measures the dock icon bottom and QSB top from the same HOME XML and starts in
+  the empty gutter between them, ending at 5 percent of the display (actual 1080x1920:
+  `540 1604 540 96`, 1508 px / 0.7854). Added pure `ui_dock_bottom`, `ui_qsb_top`,
+  `drawer_swipe_is_long_enough` and `drawer_swipe_travel_fraction`, plus regressions that reject
+  the old 0.4161 geometry and the CI84 0.3760 trace. The mock-adb drawer test now requires every
+  attempt to exceed half the display. App gesture logic, thresholds, visuals, manifest,
+  permissions, SDK, applicationId, signing and workflows are unchanged. Local shell suites pass;
+  the longer gesture still needs a new API 37 smoke run to produce the AllApps `dragEnd` trace.
 - 2026-11-21: Micro compile fix only on `agent/p3b-actual-home-visual-slice-n`. CI81
   (`44932685973`) on `f2377c5` failed javac on the new diagnostics: `NavigationMode` is a Java
   enum, so `getNavigationMode(this).name` became `.name()`, and `LauncherState` has no `name`
