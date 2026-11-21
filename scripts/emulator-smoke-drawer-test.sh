@@ -72,6 +72,9 @@ case "$*" in
     "logcat -d -v threadtime")
         printf 'mock logcat\n'
         ;;
+    "logcat -d -s DotwelDrawerTrace")
+        printf 'mock drawer trace\n'
+        ;;
     *)
         exit 0
         ;;
@@ -181,6 +184,8 @@ while [ "$attempt" -le 4 ]; do
         "$ARTIFACTS/appdrawer-attempt-$attempt.xml"
     assert_file "attempt $attempt records its post-swipe PNG" \
         "$ARTIFACTS/appdrawer-attempt-$attempt.png"
+    assert_file "attempt $attempt records the debug drawer trace" \
+        "$ARTIFACTS/appdrawer-trace-$attempt.txt"
     assert_exists "attempt $attempt records its swipe command" \
         "$ARTIFACTS/appdrawer-swipe-$attempt.txt"
     if grep -Fq "attempt=$attempt " "$ARTIFACTS/appdrawer-swipe-log.txt"; then

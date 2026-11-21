@@ -107,6 +107,14 @@ capture_screenshot_to() (
     ADB_TIMEOUT=20 adb_cmd exec-out screencap -p > "$ARTIFACTS/$target" 2>/dev/null || true
 )
 
+# Bounded debug-only gesture trace. Captured after every swipe attempt even when
+# the drawer never becomes ready, so a no-op swipe still leaves evidence.
+capture_drawer_trace() (
+    attempt=$1
+    ADB_TIMEOUT=30 adb_cmd logcat -d -s DotwelDrawerTrace \
+        > "$ARTIFACTS/appdrawer-trace-$attempt.txt" 2>/dev/null || true
+)
+
 capture_ui_xml() (
     name=$1
     remote="/sdcard/$name"
@@ -415,6 +423,7 @@ open_app_drawer() {
         capture_screenshot_to "appdrawer-attempt-$attempt.png"
         [ -s "$ARTIFACTS/appdrawer-attempt-$attempt.png" ] ||
             fail "app drawer attempt $attempt screenshot capture failed"
+        capture_drawer_trace "$attempt"
         if [ "$ready" -eq 1 ]; then
             cp "$ARTIFACTS/appdrawer-attempt-$attempt.xml" "$ARTIFACTS/appdrawer.xml"
             cp "$ARTIFACTS/appdrawer-attempt-$attempt.png" "$ARTIFACTS/appdrawer.png"

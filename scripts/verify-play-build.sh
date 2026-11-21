@@ -38,6 +38,7 @@ sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-drawer-test.sh"
 
@@ -58,6 +59,9 @@ fi
 if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
     sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
 fi
+
+# Debug-only app-drawer gesture trace and its per-swipe smoke capture.
+sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
 
 # 2. Locate the merged manifest for the Play debug variant.
 INTERMEDIATES="$ROOT/build/intermediates"
