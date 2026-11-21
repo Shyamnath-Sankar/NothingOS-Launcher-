@@ -404,7 +404,8 @@ open_app_drawer() {
         while [ "$poll" -le 6 ]; do
             sleep 1
             if capture_ui_xml "appdrawer-attempt-$attempt.xml" &&
-                drawer_is_ready "$ARTIFACTS/appdrawer-attempt-$attempt.xml"; then
+                drawer_is_ready "$ARTIFACTS/appdrawer-attempt-$attempt.xml" \
+                    "$ARTIFACTS/appdrawer-attempt-$attempt-before.xml"; then
                 ready=1
                 break
             fi

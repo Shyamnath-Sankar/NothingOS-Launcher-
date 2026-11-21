@@ -136,12 +136,21 @@ drawer_swipe_target() {
 
 # Succeed only when the UIAutomator dump shows an actual app-drawer search
 # input or app-list container. The launcher inflates these while HOME is
-# visible too, so their mere presence in source is not enough: UIAutomator only
-# reports the currently rendered subtree. HOME without the drawer exposes
-# neither the search input nor the app list.
+# visible too, so their mere presence in source is not enough. When a
+# reference HOME dump is supplied, the drawer must also differ from it and the
+# live HOME clock/date header must be gone; this rejects a closed HOME whose
+# offscreen drawer subtree was still dumped.
 drawer_is_ready() {
     xml=$1
+    reference=${2:-}
     [ -s "$xml" ] || return 1
+    if [ -n "$reference" ] && cmp -s "$reference" "$xml"; then
+        return 1
+    fi
+    if grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$xml" &&
+        grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$xml"; then
+        return 1
+    fi
     if grep -Eq 'resource-id="[^"]*/(input|search_container_all_apps)"' "$xml" ||
         grep -Fq 'android.widget.EditText' "$xml" ||
         grep -Fq 'AllAppsSearchInput' "$xml"; then
