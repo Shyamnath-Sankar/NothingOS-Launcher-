@@ -160,6 +160,7 @@ android {
         buildConfigField "String", "MAJOR_VERSION", "\"${majorVersion}\""
         buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
         buildConfigField "boolean", "ENABLE_AUTO_INSTALLS_LAYOUT", "false"
+        buildConfigField "boolean", "NOTHINGUI_THEME_ENABLED", "false"
 
         manifestPlaceholders.quickstepMinSdk = quickstepMinSdk
         manifestPlaceholders.quickstepMaxSdk = quickstepMaxSdk
@@ -280,6 +281,7 @@ android {
             applicationId "com.launchernos.dotwellabs"
             dimension "channel"
             isDefault true
+            buildConfigField "boolean", "NOTHINGUI_THEME_ENABLED", "true"
         }
 
         configureEach {
