@@ -20,8 +20,7 @@ package app.nothingui.settings
  * Pure decision for the user-initiated default-home consent flow.
  *
  * Kept free of Android framework types so the API-level and role-state rules can
- * be unit-tested on the JVM. Starting the system consent screen happens only in
- * [DefaultHomeRoleConsent].
+ * be unit-tested on the JVM.
  */
 object DefaultHomeRolePolicy {
 
