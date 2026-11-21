@@ -3,18 +3,58 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 — Play-only user-initiated HOME role consent (tiny slice)**. PR11 is merged
-  and CI95 (`44946373901`) was fully green in 11m40; the actual black/white icons and black
-  HOME/drawer QSB were verified. This run adds the native `RoleManager` consent path through the
-  existing settings warning. It is source-guarded and smoke-scripted; CI runtime capture is pending.
+- current_phase: **P8 — Play-only HOME role consent / smoke harness repair**. CI97
+  (`44949228055`) was compile/style/unit green and the real native `ROLE_HOME` consent dialog was
+  captured and cancelled with the role holder list unchanged. The later drawer phase then failed all
+  four attempts. The actual HOME XML has three id-less bottom `Search` nodes at y=1626..1794;
+  `ui_dock_bottom` took the deepest as the dock bottom (1794) and produced start 1898. This run
+  fixes the dock-row parser and the Play default-launcher hint; a CI rerun is pending.
 - branch: `agent/p8-home-role-consent`
-- head: feature `7f5a6c9`, guard `567203f`, smoke `38348e7`/`81d30c4`, docs
-  `b8446c3`/`74e73bc`; this STATE pointer commit is the branch tip. Base `main` at `a446b11`, the
-  PR11 merge.
-- pr: **PR12 pending** (not opened by this agent):
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p8-home-role-consent
+- head: `e40fc3b` (dock-row fix) + `f83603d` (Play hint) on base `8dd0b33`; base `main` `a446b11`.
+- pr: #12: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/12
 
-## done (this run — P8 Play-only HOME role consent)
+## done (this run — dock-row parser and Play default-launcher hint)
+
+- **Root cause from the CI97 actual XML, not guessed:** the dock icons (Phone, Messaging, Contacts,
+  WebView Browser Tester) share y=1375..1568. The bottom QSB is three `content-desc="Search"` nodes
+  with no resource-id at y=1626..1794, y=1642..1778 and y=1679..1742. The old `ui_dock_bottom`
+  selected the deepest labelled node below 55% height, so it returned 1794; `drawer_swipe_target`
+  then started at `1794 + (1794 - 1375) / 4 = 1898` instead of 1616. The old synthetic fixture
+  omitted those bottom nodes, so it could not catch this.
+- **Parser fix:** `ui_dock_bottom` now finds the same lowest labelled row as `ui_dock_top` and takes
+  the maximum bottom only from nodes within a 2%-of-height row tolerance. The bottom `Search` nodes
+  are excluded even without resource-ids; the existing `search_container_workspace` and `qsb_top`
+  exclusions remain. The dock band is therefore 1375..1568 on the actual HOME.
+- **Regression:** `scripts/emulator-smoke-test.sh` now uses the full actual hierarchy including all
+  three id-less bottom `Search` nodes and derives the target from the parsed dock top/bottom/QSB
+  instead of hardcoded values. It asserts dock bottom 1568, start 1616 in the 1568..1626 gutter,
+  no 1183 fallback, no 1898 start, >1500 px travel and 0.7917 fraction. Before the parser fix the
+  same test failed with dock bottom 1794 and target 1898, proving the regression is real.
+  `scripts/emulator-smoke-drawer-test.sh` now uses the same actual hierarchy and requires every
+  attempt to start in 1568..1626 and travel more than 1500 px.
+- **No gesture/threshold change:** the swipe duration stays at 500 ms. CI97 sampled progress
+  .229/.182/.293/.152 at zero release velocity because the start was on the bottom `Search` nodes,
+  not because the MOVE sample count was proven low. App gesture logic, the 0.4 success threshold,
+  readiness, the genuine swipe/search/Settings-foreground/HOME assertions and the bounded four
+  attempts are unchanged; no blind retry or longer duration was added.
+- **Play hint:** `play/res/values/strings.xml` now overrides `set_default_launcher_tip` with
+  `DotWel Launcher` (single l). `lawnWithQuickstepPlay` already owns `play/res` and outranks the
+  single `lawn` flavor, so the combined-variant resource priority is unchanged. The non-Play
+  `lawnchair/res/values/strings.xml` text keeps `Lawnchair`, and `NOTICE.md` attribution is
+  untouched. `play-brand-guard.sh` now requires the Play hint, rejects `Lawnchair` in it, requires
+  the non-Play base to keep `Lawnchair`, and requires `PreferencesDashboard.kt` to still consume
+  `R.string.set_default_launcher_tip`. Its fixture suite adds missing-Play-hint, Lawnchair-Play-hint,
+  rebranded-non-Play-base and consumer-drift negatives.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass;
+  `emulator-smoke-drawer-test.sh` all pass; `play-brand-guard.sh "$PWD"` OK; its fixture suite all
+  pass; `nothingui-home-role-guard-test.sh` all pass; `verify-play-build-test.sh` all pass;
+  `sh -n` clean on every edited script; `git diff --check` clean. The Android build, unit tests and
+  API 37 emulator run are left to CI.
+- **Scope reminder:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing,
+  release, paid-service, app gesture or threshold change. The untracked local `w/` scratch directory
+  was left uncommitted.
+
+## done (previous run — P8 Play-only HOME role consent)
 
 - **Play-only UI entry:** `PreferencesSetDefaultLauncherWarning` now calls
   `DefaultHomeRoleConsent.requestRole(context)` only when `isPlayStoreFlavor()` is true. If the
@@ -337,7 +377,17 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `DefaultHomeRolePolicy` TDD harness failed first with unresolved references, then passed
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the full actual HOME with the
+  three id-less bottom `Search` nodes, dock bottom 1568, start 1616 in the 1568..1626 gutter and no
+  1898. The same test failed before the parser fix with dock bottom 1794 and target 1898.
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass, every mock attempt starts in
+  1568..1626 and travels more than 1500 px.
+- This run: `sh scripts/play-brand-guard.sh "$PWD"` -> OK; `sh scripts/play-brand-guard-test.sh` ->
+  all pass, including the Play hint and non-Play inherited-text negatives.
+- This run: `sh scripts/nothingui-home-role-guard-test.sh` -> all pass;
+  `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh -n` clean on every edited script; `git diff --check` clean.
+- Prior run: `DefaultHomeRolePolicy` TDD harness failed first with unresolved references, then passed
   after the pure policy was added (`DefaultHomeRolePolicy: OK`).
 - This run: `sh scripts/nothingui-home-role-guard.sh "$PWD"` -> `nothingui-home-role-guard: OK`;
   `sh scripts/nothingui-home-role-guard-test.sh` -> 7/7.
@@ -352,23 +402,31 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Open **PR12** for `agent/p8-home-role-consent` (the agent cannot open/approve it; `gh` is
-  unauthenticated). Do not resume merged PR11.
-- CI must be green: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
-  including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the new role guard (7/7),
-  and the API 37 emulator smoke.
-- Inspect the new runtime artifacts after the first run:
-  - `role-consent-settings.xml` / `.png`: the existing warning is visible and is the node tapped;
-  - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control;
+- Run/approve **PR12** for `agent/p8-home-role-consent` at head `f83603d` (branch `agent/p8-home-role-consent`).
+  Do not resume merged PR11.
+- CI must be green on the new head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
+  unit tests including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the role guard
+  and the brand guard, and the API 37 emulator smoke.
+- Inspect the new runtime artifacts after the first rerun:
+  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-N.txt`: the start must be `540 1616` (inside the
+    measured 1568..1626 gutter), not `540 1898`; the duration remains 500.
+  - `appdrawer-trace-N.txt`: `dragEnd` must show the AllApps target and progress above 0.4 at zero
+    release velocity. If it still snaps back, use the trace decision, not a blind retry.
+  - `appdrawer-attempt-N.xml` / `.png`: the first ready drawer must differ from HOME and expose the
+    search input or app-list container.
+  - `role-consent-settings.xml` / `.png`: the settings warning is visible, is the node tapped, and
+    now says `DotWel Launcher`, not `Lawnchair`.
+  - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control.
   - `role-consent-before.txt` / `role-consent-after.txt`: our package is not a holder and the lists
-    are unchanged after cancel;
+    are unchanged after cancel.
   - `activities-role-consent-cancel.txt`: the settings activity (or launcher) is foreground after
     cancel, not a granted role.
 - If the API 37 system image uses a different cancel label, change `ui_cancel_bounds` from the
   captured XML. Do not guess a new coordinate or lower the assertion.
 - **Correction:** CI93 (`44944409947`) on `9076be5` had assembly, unit tests and emulator pass but a
   style failure; it was not fully green. CI95 (`44946373901`) was fully green in 11m40 and its actual
-  pixels were verified black/white icons and black HOME/drawer QSB.
+  pixels were verified black/white icons and black HOME/drawer QSB. Keep it as the merged-main
+  fallback.
 - P8 remains open beyond this slice: appearance controls, backup/restore wiring and any broader
   onboarding. Do not start those in this run.
 - Pending gates: private-space runtime UI and a non-Play runtime control build remain unverified.
@@ -376,9 +434,10 @@ when no task input is given, and continues from "next".
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  real role consent dialog are unverified until PR12 CI runs.
-- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must open PR12 and run
-  the workflow.
+  API 37 emulator run are unverified until PR12 CI runs on the new head.
+- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must approve/run PR12.
+- CI97's drawer failure is fixed in source but not yet re-run; the next CI must show the `540 1616`
+  start and an AllApps `dragEnd`, or the trace must identify the next exact decision.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
 
@@ -480,6 +539,21 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Dock-row parser and Play hint repair on `agent/p8-home-role-consent` (`e40fc3b`,
+  `f83603d`). CI97 (`44949228055`) passed compile/style/unit and captured/cancelled the real native
+  `ROLE_HOME` dialog with an unchanged role holder list, but the drawer phase failed four attempts.
+  The actual HOME XML has three id-less bottom `Search` nodes at y=1626..1794; the old
+  `ui_dock_bottom` returned 1794 and `drawer_swipe_target` started at 1898 instead of 1616.
+  `ui_dock_bottom` now takes the bottom only from the same icon row as `ui_dock_top`, so id-less
+  bottom Search nodes are excluded. The actual-hierarchy regression now includes all three nodes,
+  derives the target from parsed values and asserts dock bottom 1568, start 1616 in the 1568..1626
+  gutter, no 1898 and >1500 px travel; the old parser fails it with 1794/1898. The mock-adb drawer
+  test uses the same hierarchy. Duration stays 500 ms because CI97's low progress came from the
+  1898 start, not proven sampling loss; no gesture/threshold change. Also added the Play-only
+  `set_default_launcher_tip` "DotWel Launcher" override in `play/res` (non-Play keeps Lawnchair),
+  with brand-guard checks for the Play text, non-Play inherited text and the dashboard consumer.
+  Local smoke, drawer, brand, role and verify suites pass; `sh -n` and `git diff --check` clean.
+  No workflow, Gradle, SDK, manifest, permission, applicationId, signing or paid-service change.
 - 2026-11-21: P8 Play-only HOME role consent slice on `agent/p8-home-role-consent` (`7f5a6c9`,
   `567203f`, `38348e7`). The existing settings warning now requests `RoleManager.ROLE_HOME` only on
   Play, through a pure API/role-state policy and a native consent helper; non-Play keeps the inherited
