@@ -13,10 +13,12 @@ when no task input is given, and continues from "next".
 
 ## done
 
-- This run (P2c visual repair): inspected CI42 artifacts for run `44901579949` on `293f96e`.
-  Observed defects, not hypotheses: `app-info.png` shows the correct original dot-grid icon and
-  `DotWel Launcher` label; the About screen shows the correct `DotWel Launcher` title but the OLD
-  colored Lawnchair icon; the HOME screenshot still says `Welcome to Lawnchair`.
+- This run (P2c visual repair): the dispatch reported an inspection of CI42 artifacts for run
+  `44901579949` on `293f96e`; this environment has no artifact download access (no `gh` auth), so
+  these are recorded as reported findings, not a re-inspection. Observed defects, not hypotheses:
+  `app-info.png` shows the correct original dot-grid icon and `DotWel Launcher` label; the About
+  screen shows the correct `DotWel Launcher` title but the OLD colored Lawnchair icon; the HOME
+  screenshot still says `Welcome to Lawnchair`.
 - This run (root cause, verified from AGP docs and the source tree): `flavorDimensions` is
   `["app", "recents", "channel"]`, so the `lawn` flavor (`lawnchair/res`) outranks the `play` flavor
   (`play/res`) for same-name resources. `R.string.onboarding_welcome` (HOME smartspace card) and
