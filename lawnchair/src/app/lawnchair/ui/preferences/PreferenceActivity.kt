@@ -29,6 +29,10 @@ import app.lawnchair.smartspace.provider.OnboardingProvider
 import app.lawnchair.ui.preferences.navigation.PreferenceRoute
 import app.lawnchair.ui.theme.EdgeToEdge
 import app.lawnchair.ui.theme.LawnchairTheme
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
+import app.nothingui.theme.NothingUiThemeSampleScreen
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherPrefs
 import com.google.accompanist.adaptive.calculateDisplayFeatures
 import kotlinx.serialization.json.Json
@@ -46,29 +50,54 @@ class PreferenceActivity : ComponentActivity() {
                 null // Fallback to default if deserialization fails
             }
         }
+        val themeSampleMode = resolveThemeSampleMode(intent)
 
         setContent {
-            LawnchairTheme {
-                EdgeToEdge()
-                Preferences(
-                    windowSizeClass = calculateWindowSizeClass(this),
-                    displayFeatures = calculateDisplayFeatures(this),
-                    startDestination = initialRoute,
-                    intent = intent,
+            if (themeSampleMode == null) {
+                LawnchairTheme {
+                    EdgeToEdge()
+                    Preferences(
+                        windowSizeClass = calculateWindowSizeClass(this),
+                        displayFeatures = calculateDisplayFeatures(this),
+                        startDestination = initialRoute,
+                        intent = intent,
+                    )
+                }
+            } else {
+                NothingUiTheme(darkTheme = themeSampleMode == THEME_SAMPLE_DARK) {
+                    EdgeToEdge()
+                    NothingUiThemeSampleScreen()
+                }
+            }
+        }
+        if (themeSampleMode == null) {
+            LauncherPrefs.getPrefs(this).edit {
+                putBoolean(
+                    OnboardingProvider.PREF_HAS_OPENED_SETTINGS,
+                    true,
                 )
             }
         }
-        LauncherPrefs.getPrefs(this).edit {
-            putBoolean(
-                OnboardingProvider.PREF_HAS_OPENED_SETTINGS,
-                true,
-            )
+    }
+
+    // Diagnostic-only surface for capturing real dark/light theme samples on a
+    // device. It requires an explicit extra, a debug build and the Play-only theme
+    // gate, so release and non-Play builds keep the normal settings surface.
+    private fun resolveThemeSampleMode(intent: Intent): String? {
+        if (!BuildConfig.DEBUG || !NothingUiFeature.themeEnabled) return null
+        return when (intent.getStringExtra(EXTRA_THEME_SAMPLE)?.lowercase()) {
+            THEME_SAMPLE_DARK -> THEME_SAMPLE_DARK
+            THEME_SAMPLE_LIGHT -> THEME_SAMPLE_LIGHT
+            else -> null
         }
     }
 
     companion object {
 
         private const val EXTRA_DESTINATION_ROUTE = "app.lawnchair.ui.preferences.DESTINATION_ROUTE"
+        private const val EXTRA_THEME_SAMPLE = "app.lawnchair.ui.preferences.THEME_SAMPLE"
+        private const val THEME_SAMPLE_DARK = "dark"
+        private const val THEME_SAMPLE_LIGHT = "light"
 
         @JvmStatic
         fun createIntent(context: Context, destination: PreferenceRoute): Intent {
