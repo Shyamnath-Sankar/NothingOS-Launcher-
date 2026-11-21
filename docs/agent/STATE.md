@@ -45,3 +45,5 @@ when no task input is given, and continues from "next".
 - The guard checks the full §7 list (accessibility + feed/foreground-sync) even though P1a does not
   remove those yet. Ruling: make the guard fail until P1b lands. Cost if wrong: the guard is red
   on Play until P1b, which is the intended signal.
+## log
+- 2026-11-21: agent-dev loop verified
