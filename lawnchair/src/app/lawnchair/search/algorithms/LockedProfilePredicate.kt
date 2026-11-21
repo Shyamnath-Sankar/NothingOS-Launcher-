@@ -24,5 +24,4 @@ import com.android.launcher3.model.data.ItemInfoWithIcon
  * Private-space and quiet work profiles set [ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER] on their
  * apps. Keep this predicate pure so it can be covered by a plain JVM unit test.
  */
-internal fun isLockedProfile(runtimeStatusFlags: Int): Boolean =
-    (runtimeStatusFlags and ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER) != 0
+internal fun isLockedProfile(runtimeStatusFlags: Int): Boolean = (runtimeStatusFlags and ItemInfoWithIcon.FLAG_DISABLED_QUIET_USER) != 0
