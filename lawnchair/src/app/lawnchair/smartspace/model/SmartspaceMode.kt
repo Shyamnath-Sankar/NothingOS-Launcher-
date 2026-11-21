@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.annotation.LayoutRes
 import androidx.annotation.StringRes
 import app.lawnchair.util.isPackageInstalledAndEnabled
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.R
 
 sealed class SmartspaceMode(
@@ -35,7 +36,11 @@ sealed class SmartspaceMode(
 
 object LawnchairSmartspace : SmartspaceMode(
     nameResourceId = R.string.smartspace_mode_lawnchair,
-    layoutResourceId = R.layout.smartspace_container,
+    layoutResourceId = if (NothingUiFeature.homeEnabled) {
+        R.layout.nothingui_home_header
+    } else {
+        R.layout.smartspace_container
+    },
 ) {
     override fun toString() = "lawnchair"
     override fun isAvailable(context: Context): Boolean = true

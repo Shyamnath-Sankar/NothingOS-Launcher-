@@ -3,159 +3,377 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P3a (theme foundation only) — system-bar contrast repair for the DEBUG+Play theme
-  sample. CI62 run `44909523145` on `e359a9a` was green (actual JUnit XML: 7 token + 4 predicate
-  tests, 0 skipped), but coordinator inspection of the real `theme-sample-dark`/`theme-sample-light`
-  PNGs found the dark sample keeping dark status/nav icons on the dark surface. Root cause is fixed
-  this run; CI and pixel re-review on the new head are pending. P3a is not complete.
-- branch: agent/p3a-theme-foundation-only-star
-- pr: #10 (existing PR for this branch; resume it, do not open a duplicate):
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/10
-  PR9 is merged to `main` at `02ac058`.
+- current_phase: **P3b — neutral Play icon and QSB pixels**. CI93 run `44944409947` on `9076be5`
+  was green (assembly, unit tests, emulator drawer/Settings/HOME), but real HOME/drawer pixels still
+  showed the icon fallback and QSB search glyph on the inherited wallpaper-derived blue/lavender
+  accent. The root cause (the process-wide `ThemedIconDrawable.COLORS_LOADER`) is fixed this run on
+  `9fc5a33`; CI and pixel re-review are pending. P3b is not complete.
+- branch: `agent/p3b-actual-home-visual-slice-n`
+- head: `9fc5a33` (neutral icon/QSB fix; prior renderer wiring `9076be5`; base `main` at `0df97ff`)
+- pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done
+## done (this run — neutral Play icons and QSB)
 
-- This run (P3a system-bar repair, root cause): `PreferenceActivity` called the inherited no-arg
-  `enableEdgeToEdge()` before `setContent`, then called the inherited `EdgeToEdge()` composable in
-  the sample branch. That composable derives system-bar appearance from `isSelectedThemeDark` (the
-  launcher theme preference), not from the requested sample mode. On a light-system emulator the
-  dark sample therefore kept dark status/nav icons, and its nav scrim was light while the sample
-  surface was dark.
-- This run (fix): `ComponentActivity.EdgeToEdge` now accepts
-  `darkTheme: Boolean = isSelectedThemeDark`. The normal settings path still calls the no-arg
-  default and keeps the early inherited `enableEdgeToEdge()`. The diagnostic branch passes
-  `themeSampleDark` and skips the early inherited call, so its window is configured only from the
-  requested sample mode: dark sample gets light bar icons and a dark nav scrim; light sample gets
-  dark icons and a light scrim. This is per-window only; no global setting, preference, manifest,
-  component, workflow, SDK or applicationId changed.
-- This run (regression): the theme guard now asserts the explicit `EdgeToEdge` override, the
-  `LaunchedEffect(darkTheme)` key, the sample branch passing `themeSampleDark`, and the normal path
-  still using `EdgeToEdge()`. The fixture suite adds missing-sample-mode and
-  missing-explicit-override negatives (now 9/9).
-- This run, verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh "$PWD"`
-  OK; `nothingui-theme-guard-test.sh` 9/9; `play-brand-guard.sh` OK and its tests pass;
-  `play-identity-guard.sh` OK and its tests pass; `manifest-guard-test.sh` all pass;
+- **Root cause, not guessed:** the Play policy only changed *which* renderer ran. `MonoIconThemeController`
+  and `MonoThemedBitmap` still defaulted to `ThemedIconDrawable.getColors`, and
+  `LawnchairProcessInitializer` sets the process-wide `COLORS_LOADER` to the wallpaper-derived
+  `Accent1`/`Accent2` swatches. That is why the actual icons and the themed QSB glyph stayed
+  blue/lavender after CI93.
+- **Neutral palette:** added `NothingUiIconColors` using the original `NothingUiPalette.Ink`/`White`
+  pair in `[background, foreground]` order, with the inherited transparent-background preference
+  preserved. No wallpaper color is read on the Play path.
+- **Inherited loader:** the Play branch of `LawnchairProcessInitializer` now returns the neutral pair,
+  so every `ThemedIconDrawable.getColors` consumer (including themed clock icons) is neutral in
+  Play. Non-Play keeps the exact inherited accent loader.
+- **Controller and cache:** `NothingUiIconThemeController` passes the neutral provider to the native
+  renderer and the generated fallback; `LawnchairThemeManager` uses the neutral pair in the Play
+  freshness key while keeping `ThemedIconDrawable.getColors` for non-Play.
+- **QSB:** `QsbIconUtil.setThemedIconResource` uses `NothingUiHomeChrome.textColor` for themed
+  layers and the single-tint path only behind `NothingUiFeature.homeEnabled`. Non-Play keeps
+  `QsbIconTint*`/`ColorAccent`. Search actions, accessibility, workspace, wallpaper and the red
+  header accent are unchanged.
+- **Style:** `NothingUiIconThemeController.policyFor` now puts `NothingUiIconPolicy.resolve(` on the
+  same line as `=` with 8-space arguments, fixing the only CI93 spotless/ktlint violation.
+- **Tests/guards:** added `NothingUiIconColorsTest` (black/white pairs, neutral channels, contrast,
+  stable order). Extended `nothingui-icon-render-guard.sh` and its fixture suite from 13/13 to
+  15/15 with the neutral palette, controller provider, Play/non-Play cache keys, QSB gate and
+  Play/non-Play loader checks.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-icon-render-guard.sh "$PWD"`
+  OK; `nothingui-icon-render-guard-test.sh` 15/15; `nothingui-home-guard.sh` OK and suite passes;
+  `nothingui-theme-guard.sh` OK and suite passes; `play-brand-guard-test.sh`,
+  `play-identity-guard-test.sh`, `manifest-guard-test.sh` and `verify-play-build-test.sh` all pass;
+  `sh -n` clean on both edited scripts; `git diff --check` clean. No Android build or emulator run
+  happened here; CI must produce the HOME/drawer pixels for review.
+- **Scope reminder:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing,
+  release, smoke-harness or asset change. The untracked local `w/` scratch directory was left
+  uncommitted.
+
+## done (previous run — Play icon renderer wiring)
+
+- **Root cause, not guessed:** the Play defaults lived only in `BoolPref` (`themed_icons` and
+  `pref_forceIconMonochrome` default true), while the inherited renderer read the raw preference
+  keys with false defaults. `LawnchairThemeManager` therefore built no theme controller on a fresh
+  Play install, and `MonoIconThemeController`'s forced branch also read
+  `shouldForceMonochrome()` with a false default. The provider's force branch returned early before
+  icon-pack/per-app overrides, so changing preferences alone could not make the actual pixels
+  monochrome and would have ignored explicit choices.
+- **Provider wiring:** `LawnchairIconProvider.getIcon` resolves `NothingUiIconPolicy` from the Play
+  gate, the themed-icons preference, the force preference and a per-component custom-selection
+  decision. The forced native fallback skips the icon pack only when the policy says so; an
+  explicit icon-pack or per-app override returns its own drawable and is not replaced.
+- **Renderer wiring:** added `NothingUiIconThemeController`, installed only when
+  `NothingUiFeature.homeEnabled`. It applies the policy per icon using `SourceHint.key`, delegates
+  monochrome-layer apps to the inherited `MonoIconThemeController`, and generates the missing-layer
+  fallback with the inherited `MonochromeIconFactory` + `MonoThemedBitmap`. File drawables are not
+  forced. Custom selections return no themed bitmap and cached custom entries return
+  `ThemedBitmap.NOT_SUPPORTED`.
+- **Cache isolation:** the Play `getStateForApp` freshness string now appends the policy cache key
+  (`ni=native|fallback|off`), in addition to the existing icon-pack, themed-source, themed, drawer,
+  force and override state.
+- **Non-Play:** `LawnchairThemeManager` still uses
+  `iconControllerFactory.createThemeController()` and the original force-preference branch, and
+  the provider keeps the original force/native decision. No non-Play cache string change.
+- **Regression actually run (no Gradle, no emulator):** new
+  `nothingui-icon-render-guard.sh` OK and its fixture suite 8/8; `nothingui-home-guard.sh` OK and
+  13/13; `nothingui-theme-guard.sh` OK and 9/9; drawer-trace guard OK and 6/6;
+  `emulator-smoke-test.sh` and `emulator-smoke-drawer-test.sh` all pass;
   `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. No local Gradle build or emulator run was performed; the existing smoke must produce the
-  dark/light PNGs for pixel review.
-- Scope reminder: this is the theme sample only. The actual HOME surface is not restyled. The
-  private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt and the non-Play runtime
-  control remain pending.
-- This run (P3a repair, root cause reproduced): `scripts/nothingui-theme-guard.sh` scanned the
-  full path from `find`, so CI's checkout parent `.../NothingOS-Launcher-/...` matched the
-  `nothing` token and the guard falsely reported a Nothing font asset. Running the guard with the
-  absolute repo path reproduced the CI53 failure; running it with `.` did not. The scan now
-  lowercases and checks font basenames only, so a legitimate parent path cannot trip it.
-- This run (regression): added `scripts/nothingui-theme-guard-test.sh` and wired it into
-  `scripts/verify-play-build.sh`. Its clean fixture lives under a parent named
-  `NothingOS-Launcher`; separate fixtures add real forbidden basenames (`ndot_regular.ttf`,
-  `NothingSans.ttf`, `nfont_display.ttf`) and prove a changed font without an updated attribution
-  hash and a missing OFL file still fail. The existing magic/provenance/licence checks are intact.
-- This run (diagnostic route): `PreferenceActivity` now accepts the explicit
-  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra only when `BuildConfig.DEBUG` and
-  `NothingUiFeature.themeEnabled` are both true. `dark`/`light` render
-  `NothingUiThemeSampleScreen`; every other case renders the normal settings surface. The
-  diagnostic branch also skips the settings-opened preference write, and no manifest component,
-  permission or workflow changed.
-- This run (screenshots): `scripts/emulator-smoke.sh` now launches the sample after the existing
-  About checks with `-f 0x18000000` so the new extra gets a fresh task instead of reusing the About
-  instance. It asserts `DOTWEL` in `theme-sample-dark.xml` / `theme-sample-light.xml`, captures
-  `theme-sample-dark.png` / `theme-sample-light.png`, then returns HOME. No emulator was available
-  here, so the PNGs are not produced yet; CI must produce and review them.
-- This run (guard): the theme guard now also fails if the diagnostic extra is present without both
-  `!BuildConfig.DEBUG` and `!NothingUiFeature.themeEnabled`; the regression suite covers a missing
-  debug gate.
-- This run, verification actually run (no Gradle, no emulator):
-  `nothingui-theme-guard.sh "$PWD"` OK; `nothingui-theme-guard-test.sh` 7/7;
-  `play-brand-guard.sh` OK; `play-brand-guard-test.sh` all pass; `play-identity-guard.sh` OK;
-  `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
-  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. The absolute-path guard run is the direct regression for CI53.
-- P2c rebrand verified by the coordinator: CI51 run `44903885094` on head `e6ea08b` was green with
-  4 actual Gradle tests plus the API 37 install, HOME, role and crash checks. The coordinator
-  inspected the artifacts and confirmed HOME reads `Welcome to DotWel Launcher` and About/app-info
-  show the correct dot-grid icons and `DotWel Launcher` name. This is recorded as coordinator
-  evidence, not re-run in this environment.
-- P3a: added `lawnchair/src/app/nothingui/theme` with an original monochrome palette
-  (`#0B0B0B` ink, `#F2F2F2` paper, neutral grays, the existing restrained `#D7261E` red accent),
-  semantic light/dark color tokens, a 4 dp spacing scale, motion durations/easings, and a Compose
-  `Typography` where Doto is limited to display and numeric styles while body/title/label styles
-  use `FontFamily.SansSerif`.
-- P3a: bundled Doto Regular 400 and Bold 700 as static TrueType resources
-  (`lawnchair/res/font/doto_regular.ttf`, `doto_bold.ttf`). They were generated from the official
-  Google Fonts variable font `ofl/doto/Doto[ROND,wght].ttf` at repo commit
-  `7380f7cebbf2250460c23fd301b51bcbab162edf`; glyphs are unchanged and only the axes are pinned.
-  The verbatim OFL 1.1 text is in `licenses/fonts/OFL-Doto.txt`; source, upstream commit, version,
-  derivation and SHA-256 hashes are in `licenses/fonts/doto.md`. No Nothing font or asset is used.
-- P3a: the theme is gated by `BuildConfig.NOTHINGUI_THEME_ENABLED`: false in `defaultConfig`, true
-  only in the `play` flavor. `NothingUiFeature.themeEnabled` exposes it and
-  `NothingUiThemeIfEnabled(fallback = ...)` requires an explicit non-Play fallback. The
-  github/nightly themes and resources were not changed; the shared font resources add size but are
-  not used by those channels.
-- P3a: added `NothingUiThemeSampleScreen` (stateless) plus dark/light `@Preview`s using the tokens,
-  and `tests/unit/java/app/nothingui/theme/NothingUiTokenTest.kt` for contrast targets, ordered
-  spacing/motion, the accent constant, Doto-only display/numeric styles, and display-vs-body sizes.
-- P3a: added `scripts/nothingui-theme-guard.sh` and wired it into `scripts/verify-play-build.sh`.
-  It checks the font magic bytes (not HTML), OFL text, attribution hashes, the default/Play/github/
-  nightly flag wiring, the `NothingUiFeature` gate, sans body wiring, and the sample/preview.
-- Prior P3a run verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh .` OK;
-  `play-brand-guard.sh .` OK; `play-identity-guard.sh .` OK; `manifest-guard-test.sh` all pass;
-  `play-identity-guard-test.sh` all pass; `play-brand-guard-test.sh` all pass;
-  `verify-play-build-test.sh` all pass; `sh -n` clean on edited scripts; `git diff --check` clean;
-  standalone ktlint 1.8.0 clean on the new Kotlin files, and the compose ruleset clean except
-  `compositionlocal-allowlist`, which `build.gradle` explicitly disables. `file` and fontTools
-  confirmed real TrueType fonts at weights 400/700, 320 glyphs, no `fvar` table, and no HTML.
+  clean.
+- **Next:** let CI89+/PR #11 build and confirm the real HOME/drawer pixels are neutral monochrome.
+  Then move to the search/QSB slice; do not treat this as visual sign-off until CI pixels are read.
+- **Scope reminder:** no Gradle, workflow, SDK, manifest, permission, applicationId, signing,
+  release or asset change. Drawer smoke is untouched. No Nothing assets were used. The untracked
+  local `w/` scratch directory was left uncommitted.
+
+## done (previous run — actual-home fixture and header rejection)
+
+- **Root cause from CI87, not guessed:** the old fixture invented a bottom QSB node with the
+  `search_container_workspace` id at `[0,1640][1080,1775]`, so `ui_qsb_top` returned 1640 and the
+  geometry looked correct in tests. The actual UIAutomator dump instead puts that id on the HEADER
+  at `[22,91][1058,294]`; the bottom QSB is only visible in the PNG at 1640..1775. The header
+  therefore made `qsb_top=91`, failed the `qsb_top > dock_bottom` gutter condition, and fell back
+  to `hotseat_top - margin` = 1183. The runtime trace confirmed the same `0.366` progress.
+- **Geometry fix:** `ui_qsb_top` now requires a numeric dock bottom and accepts only a
+  `search_container_workspace` whose top is strictly below it, so the y=91 header is rejected.
+  `ui_dock_bottom` excludes search containers by resource-id, so the dock band is the hotseat
+  icons (1375..1568), not the header or QSB. `drawer_target_for_dump` computes `dock_bottom` first
+  and passes it to `ui_qsb_top`.
+- **No-QSB start:** when the bottom QSB is absent (the actual HOME), `drawer_swipe_target` starts
+  at `dock_bottom + (dock_bottom - hotseat_top) / 4`: 1568 + 48 = 1616, ending at 96. Travel is
+  1520 px (>1500), start is inside the measured 1568..1640 gutter. A real bottom QSB still uses the
+  midpoint start (1604).
+- **Duration:** the swipe is now 500 ms instead of 300 ms and the duration is logged with every
+  attempt, so adb delivers more MOVE samples for the zero-velocity gesture.
+- **Fixtures:** replaced the synthetic bottom-QSB "actual" fixture with the real CI87 HOME shape
+  (header at `[22,91][1058,294]`, hotseat node `[0,1375][1080,1920]`, four icons ending at 1568,
+  no bottom QSB) and kept a separate real-bottom-QSB fixture. Assertions require start >1568,
+  start <1640, travel >1500 and no 1183 fallback. The mock-adb drawer test uses the same actual
+  HOME and requires >1500 px travel, a 1568..1640 start and a logged 500 ms duration.
+- **Regressions actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 61 checks pass;
+  `emulator-smoke-drawer-test.sh` 38 checks pass; `nothingui-drawer-trace-guard-test.sh` 6/6;
+  `nothingui-home-guard-test.sh` 13/13; `verify-play-build-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean.
+- **Scope reminder:** no app gesture logic, threshold, animation, manifest, permission, SDK,
+  applicationId, signing, release or workflow change. The debug Play `DotwelDrawerTrace` stays
+  until the longer gesture is verified in CI. Colored icons and the blue QSB remain pending.
+
+## done (previous run — smoke gesture length only)
+
+- **Root cause read from the actual CI84 trace, not guessed:** the old measured target started at
+  y 1183 and ended at y 384 (799 px on a 1920 shift range). The runtime trace showed only
+  `-722.0703` displacement and `0.3760783` progress at zero velocity, below the 0.4 phone
+  NORMAL→ALL_APPS success threshold, so the launcher snapped back to Normal exactly as designed.
+- **Fix in the harness only:** `drawer_swipe_target` now accepts the measured dock icon bottom and
+  QSB top. When both are present it starts in the empty gutter between them (actual HOME: dock
+  bottom 1568, QSB top 1640 → start 1604) and ends at 5 percent of the display (96 on 1920), a
+  1508 px / 78.5 percent travel. Without those measurements it keeps the safe above-dock start.
+  The x stays at the horizontal centre because the start row is below every dock icon.
+- **New pure helpers:** `ui_dock_bottom` (excludes the QSB and anything at/below its top),
+  `ui_qsb_top` (matches the `search_container_workspace` id suffix), `drawer_swipe_is_long_enough`
+  (strictly more than half the display height), and `drawer_swipe_travel_fraction`.
+- **Orchestration:** `drawer_target_for_dump` measures `ui_dock_top`, `ui_qsb_top` and
+  `ui_dock_bottom` from the same pre-swipe HOME XML and passes all three to the geometry. The
+  four bounded attempts, before/after XML+PNG, swipe log and per-attempt debug trace are unchanged.
+- **Regressions actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` passes with new
+  actual-1080x1920 geometry (`540 1604 540 96`, 0.7854), old-799-px reject (0.4161) and CI84
+  trace reject (0.3760); `emulator-smoke-drawer-test.sh` passes and now also requires every mock
+  attempt to swipe more than half the 1920 px display. Drawer-trace guard 6/6, home guard 13/13,
+  theme guard 9/9, brand/identity/manifest suites pass, repo-level identity/brand/theme/home/trace
+  guards OK, `sh -n` clean, `git diff --check` clean.
+- **Scope reminder:** no app gesture logic, threshold, animation, manifest, permission, SDK,
+  applicationId, signing, release or workflow change. The debug Play `DotwelDrawerTrace` stays
+  until the longer gesture is verified in CI. Colored icons and the blue QSB remain pending.
+
+## done (previous run — micro compile fix only)
+
+- `Launcher.java` now logs `DisplayController.getNavigationMode(this).name()` (NavigationMode is a
+  Java enum), not the invalid `.name` field.
+- `AbstractStateChangeTouchController` now routes all four DOWN/UP diagnostics through the existing
+  `stateName(...)` helper, and that helper uses `LauncherState.toString()` (the verified
+  `TestProtocol.stateOrdinalToString` identifier), not the nonexistent `state.name` field.
+- `nothingui-drawer-trace-guard.sh` fails if either file contains a `.name` field access without a
+  call (`.name` not followed by `(`); its fixture suite adds navigation-mode and LauncherState
+  negatives (now 6/6). The existing debug Play gate, per-attempt `logcat -s DotwelDrawerTrace`
+  capture and swipe evidence checks are unchanged.
+- Verification actually run (no Gradle, no emulator): drawer-trace guard OK and 6/6;
+  `verify-play-build-test.sh`; home guard 13/13; theme guard 9/9; brand guard 14/14; identity
+  guard 8/8; manifest guard all pass; emulator-smoke and drawer suites all pass; the repo-level
+  identity/home/theme/brand guards OK; `sh -n` clean; `git diff --check` clean.
+
+## done (previous run — P3b runtime drawer diagnostic)
+
+- **Micro diagnostic only:** added `src/com/android/launcher3/touch/DotwelDrawerTrace.java`, a
+  temporary log helper gated by `BuildConfig.DEBUG && "play".equals(BuildConfig.FLAVOR_channel)`.
+  Release and github/nightly builds never emit the tag.
+- **Selected factory:** `Launcher.createTouchControllers()` logs the selected controller class
+  names and `DisplayController.getNavigationMode(...).name` when the trace is enabled.
+- **Central controller:** `AbstractStateChangeTouchController` logs ACTION_DOWN accept/skip with
+  state, ACTION_UP with no-intercept/dragging/state, `onDragStart` with start displacement and
+  from/to state, and `onDragEnd` with velocity, fling, last displacement, progress and target
+  state. There is deliberately no per-MOVE logging.
+- **Smoke evidence:** `scripts/emulator-smoke.sh` runs a bounded
+  `adb logcat -d -s DotwelDrawerTrace` into `appdrawer-trace-N.txt` after every swipe attempt,
+  before the readiness check, so a no-op swipe still leaves a trace artifact.
+- **Regression:** added `scripts/nothingui-drawer-trace-guard.sh` and its fixture test (debug gate,
+  factory/controller trace points, no MOVE logging, per-attempt smoke capture); wired into
+  `scripts/verify-play-build.sh`. The mock-adb drawer test now also requires
+  `appdrawer-trace-N.txt` for all four attempts.
+- **Verification actually run (no Gradle, no emulator):** trace guard OK and its test 4/4;
+  `emulator-smoke-drawer-test.sh` all pass (now 42 checks); `emulator-smoke-test.sh` 34/34;
+  `nothingui-home-guard-test.sh` 13/13; `verify-play-build-test.sh` 11/11; `sh -n` clean on edited
+  scripts; `git diff --check` clean.
+- **Scope reminder:** no gesture routing, animation, workflow, SDK, manifest, permission,
+  applicationId, signing, Gradle or app-visual change. No guessed fix was applied. The untracked
+  local `w/` scratch directory was left uncommitted.
+
+## done (this run — P3b smoke harness retry-state repair)
+
+- **CI70 hang read correctly:** run `44924192206` on PR #11 was canceled after 22m. The real
+  `open_app_drawer` loop never advanced because every helper was a plain POSIX function writing
+  globals. `capture_ui_xml` set `attempt=1` on each capture, and `wait_for_launcher_idle` /
+  `wait_for_foreground` did the same, so the outer `attempt` was reset before it could reach
+  `max_attempts=4`. The helper variables `name`, `label`, `target`, `xml`, `root`, `width` and
+  `height` were also shared with callers. No assertion was weakened.
+- **Helper isolation:** all pure/parsing helpers in `scripts/emulator-smoke-lib.sh` and the smoke
+  script are now POSIX subshell functions `foo() ( ... )`, so their variables cannot leak. Helpers
+  that must call `fail`/`exit` stay in the current shell but use unique names (`_rh_*`, `_cai_*`,
+  `_cab_*`, `_cts_*`, `_vnh_*`, `_ead_*`). The `open_app_drawer` loop now keeps its `attempt` and
+  `poll` state, while the exact Settings foreground proof and the real drawer UI path are unchanged.
+- **Bounded operations:** added `run_with_timeout` (GNU `timeout`, or a background/kill fallback)
+  and bounded every `adb_cmd` call: 60s default, 20s for uiautomator dump/pull and screencap, 30s
+  for logcat, 300s for install, 180s for the base-APK pull, 60s for uninstall. Timeouts print the
+  operation to stderr.
+- **Evidence on failure:** `fail` marks the evidence as captured, and an `EXIT` trap in the live
+  flow captures logcat + screenshot and prints the artifact directory for any other nonzero exit.
+  This keeps evidence for `set -e` failures that do not go through `fail`.
+- **Mock-adb regression:** added executable `scripts/emulator-smoke-drawer-test.sh`. A mock `adb`
+  returns an unchanged HOME hierarchy, the test sources the real smoke script in a source-only mode
+  (no device), runs the real `open_app_drawer`, and requires exit 1 (not a timeout), exactly four
+  swipes, before/after XML+PNG and swipe command/log per attempt, retained logcat+screenshot, and
+  the terminal failure/evidence message, all inside a 30s host timeout. It is wired into
+  `scripts/verify-play-build.sh`. Temporarily reverting the `capture_ui_xml` subshell reproduces
+  the old behavior (timeout 124 and more than four swipes), so the regression is real.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-drawer-test.sh` passes
+  (31 checks); `emulator-smoke-test.sh` 34/34; `verify-play-build-test.sh` all pass;
+  `nothingui-home-guard-test.sh` 13/13; `nothingui-theme-guard-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. The regression was also proven to fail against a
+  temporary reverted copy of the smoke script.
+- **Scope reminder:** this run changed only the smoke harness and its tests. No app visual change;
+  the actual HOME grid/drawer visuals, colored icons and blue QSB are still pending and must not be
+  claimed as visually ready. User workspace/wallpaper choices were not touched. No workflow, SDK,
+  manifest, permission, applicationId, signing or Gradle change was made. The untracked local `w/`
+  scratch directory was left uncommitted.
+
+## done (prior run — P3b drawer-readiness smoke repair)
+
+- **CI68 failure read correctly:** run `44921875638` on PR #11 was green for compile/style/unit but
+  the API 37 smoke failed at `appdrawer` with no search label. The coordinator downloaded the actual
+  `home.xml` and `appdrawer.xml`; both were identical HOME (clock `4:10`, dock Phone/Messaging/
+  Contacts/WebView/Browser/Tester), so the swipe did not transition and the Settings launch phase
+  was never reached. The emulator's `ColorBuffer74` log noise was not assumed to be infra, and no
+  assertion was lowered.
+- **Root cause:** `open_app_drawer` swiped from `height * 3 / 4` (~1440 on 1920) to `height / 4`.
+  The dock occupies roughly 1375–1568, so the gesture started on the Phone icon instead of the
+  workspace and was consumed by the dock.
+- **Fix:** `open_app_drawer` now runs up to 4 bounded, state-based attempts. Each attempt waits for
+  the launcher to be the idle resumed foreground, captures `appdrawer-attempt-N-before.xml` +
+  `.png`, computes the target from the live HOME hierarchy, swipes, then polls for the real drawer
+  search input or app-list container. Every attempt also writes `appdrawer-attempt-N.xml` + `.png`
+  and an `appdrawer-swipe-log.txt` line plus `appdrawer-swipe-N.txt`.
+- **Geometry:** the swipe target uses the UIAutomator root bounds (so current insets/root bounds
+  apply), finds the dock top from the lowest labelled row, and starts in the empty workspace above
+  it (e.g. 1920 px display / 1400 px dock top -> start y 1208, end y 384). `wm size` is only a
+  measured fallback when the hierarchy is unavailable. The old 75% dock hit point is gone.
+- **Readiness:** `drawer_is_ready` accepts an actual search input (`/input`, `EditText`,
+  `AllAppsSearchInput`, `search_container_all_apps`) or app-list container (`apps_list_view`,
+  `SearchContainerView`); a closed HOME is not ready. The dump must also differ from the pre-swipe
+  HOME, so a swipe that did nothing cannot be mistaken for an opened drawer. The pre-search
+  `Settings` label assertion was removed because Settings may be off the first screen; the real
+  search-result assertion remains.
+- **Mandatory flow preserved:** the drawer is still opened by a real swipe, search is still typed
+  into the real input, the clickable Settings result is still tapped, and the exact
+  `com.android.settings/` foreground poll is still required (bounded 15 s). There is still no
+  `am start` shortcut to Settings. Clock/date, app-info, About, theme-sample, and crash checks are
+  unchanged.
+- **Regression:** `scripts/emulator-smoke-test.sh` is now 34/34, adding pure fixtures for root
+  bounds, dock-top detection, the measured swipe target (including the old 75% case and fallback),
+  drawer readiness (including an unchanged reference HOME), and static
+  assertions that each attempt is bounded, captures evidence, and no longer uses the 75% start.
+- Pending visuals are untouched: **colored icons and the blue QSB still need pixel repair; the
+  header fits the pinned row but is not visually ready.** Private-space runtime UI, the in-app
+  `RoleManager.ROLE_HOME` prompt and the non-Play runtime control remain pending. No Gradle,
+  workflow, SDK, manifest, permission, applicationId, signing, release, paid-service or YouTube
+  change was made. The untracked local `w/` scratch directory was left uncommitted.
+
+## done (prior run — P3b bounded finish)
+
+- Reviewed the existing branch diff against `main` and kept the saved work rather than restarting.
+  The branch already contained: the Play-only `NOTHINGUI_HOME_ENABLED` flag, the original
+  `NothingUiHomeHeaderView` (live Doto clock/date, red accent, dot strip), `NothingUiHomeClock`,
+  the smartspace-slot hook, monochrome icon defaults, QSB and page-dot hooks, a static home guard,
+  a JUnit clock test and the extended emulator smoke.
+- **Fixed the specific review concern (chrome contrast).** `NothingUiHomeChrome` no longer pairs
+  `Themes.getColorBackgroundFloating` (pale) with `Themes.getAttrColor(workspaceTextColor)` (often
+  wallpaper-derived white). It now selects an explicit original pair from `NothingUiPalette`:
+  light theme -> `Paper` surface + `Ink` text; dark theme -> `Gray900` surface + `Paper` text.
+  The choice follows the inherited user light/dark theme (`R.attr.isMainColorDark`), matching the
+  inherited day/night QSB icon and page-dot tints. The header, QSB pill and page dots all share
+  this pair.
+- **Header row fit.** Reduced the header clock to 30 sp, date to 10 sp, outer padding to 10/2 dp,
+  card padding to 14/6 dp, corner radius to 22 dp and the dot strip to 48×5 dp so the card fits the
+  existing single-row pinned smartspace cell without clipping. The header still uses the live clock,
+  date, red accent and monochrome dot motif; it is not a sample-only screen.
+- **Guard coverage added.** `scripts/nothingui-home-guard.sh` now asserts the original palette pair,
+  the `isMainColorDark` theme choice, that the header shares the pair, and that the chrome never
+  falls back to `getColorBackgroundFloating` / `workspaceTextColor`. It also locks the fitted
+  clock/date text sizes. The fixture suite adds an inherited-floating/wallpaper negative case.
+- **Smoke evidence.** `scripts/emulator-smoke.sh` captures the actual HOME (`home.xml` + `home.png`)
+  and requires live clock/date text with no inherited `Lawnchair` text. It opens the inherited app
+  drawer (`appdrawer.xml` + `.png`), searches for Settings, taps the real result, verifies
+  `com.android.settings` is foreground, then returns HOME. The app-info, About, theme-sample and
+  crash checks are retained.
+- Pending items are untouched: private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt
+  and the non-Play runtime control. No manifest, permission, SDK, applicationId, signing, release,
+  paid-service, workflow or YouTube change was made. The untracked local `w/` scratch directory was
+  left uncommitted.
+
+## verification actually run (no Gradle, no emulator, no CI)
+
+- This run: `sh scripts/emulator-smoke-test.sh` -> 61 checks passed (actual HOME header rejection,
+  no-QSB start 1616, start >1568 and <1640, travel 1520 >1500, no 1183 fallback, real bottom QSB
+  still 1604, duration 500 logged).
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> 38 checks passed (actual HOME fixture,
+  four bounded swipes, >1500 px travel, 1568..1640 start, 500 ms duration).
+- This run: `sh scripts/nothingui-drawer-trace-guard-test.sh` -> 6/6;
+  `sh scripts/nothingui-home-guard-test.sh` -> 13/13;
+  `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh`,
+  `emulator-smoke-test.sh`, `emulator-smoke-drawer-test.sh`; `git diff --check` clean.
+- Prior run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
+- Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13; `nothingui-theme-guard-test.sh` ->
+  9/9; `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
+  `verify-play-build-test.sh` -> all pass.
+- Prior run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`.
+- Prior run: `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the
+  Android-dependent header/chrome/QSB files produced only expected unresolved-Android-reference
+  cascades, no syntax errors.
+- Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
+  branch is statically verified only.
 
 ## next
 
-- PR10 CI must be approved and run on the new head. Confirm:
-  - `verify-play-build` passes with the theme guard at 9/9;
-  - the unit-test XML still contains all 7 `NothingUiTokenTest` tests and the workflow's existing
-    4-predicate `LockedProfilePredicateTest` assertion, with 0 skipped;
-  - `api37-emulator-evidence` contains `theme-sample-dark.xml` + `.png` and
-    `theme-sample-light.xml` + `.png`, each XML exposing `DOTWEL`.
-- Visually re-review the dark/light PNGs: the dark sample must now show light status/nav icons on
-  the dark surface, the light sample must show dark icons, and the smoke's existing
-  `return_home theme-sample` check must still resume the launcher (bar state is per-window, so HOME
-  keeps its own bars). Static guards cannot prove the rendered contrast.
-- P3b (home/grid), the next slice:
-  - derive a 4×6 `DeviceProfile` override from `WindowMetrics` (Android 17 large-screen rule), with
-    no `resources.displayMetrics` math;
-  - wire `NothingUiThemeIfEnabled` into the Play home surface only, passing the inherited
-    `LawnchairTheme` as the fallback so github/nightly behavior is unchanged;
-  - add the monochrome icon treatment hook and dot-matrix page indicator;
-  - add Compose UI tests and `@Preview`s for the grid, and keep the existing workspace scroll free
-    of jank.
-- P4 (drawer) follows P3b: restyle the inherited all-apps surface, keep A–Z and search, and verify
-  profile filtering.
-- Pending gates before P3a can be called shipped:
-  - CI on PR10 must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
-    (including `NothingUiTokenTest`), `verify-play-build.sh` (including the theme guard), and the
-    API 37 emulator smoke. None of those Gradle/emulator runs happened here.
-  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed for
-    system-bar contrast as well as palette/typography.
-  - A non-Play control build is still pending.
-  - P1 private-space runtime UI (drawer/search/recents) is still unverified.
-  - P2 in-app `RoleManager.ROLE_HOME` onboarding prompt is still unverified; the emulator `cmd
-    role` grant is only a stand-in.
+- Coordinator approves CI on PR #11 for head `9fc5a33`. Do not open a duplicate PR.
+- CI must show: `spotlessCheck` (the CI93 `policyFor` violation is fixed); `assembleLawnWithQuickstepPlayDebug`;
+  the Play unit tests including `NothingUiIconColorsTest`; `verify-play-build.sh` including the home
+  guard, the icon-render guard (15/15), the drawer-trace guard, `emulator-smoke-test.sh` and
+  `emulator-smoke-drawer-test.sh`; and the API 37 emulator smoke.
+- **Required pixel review:** the HOME/drawer PNGs must now show black/white icon plates and a
+  neutral (black/white) QSB search glyph, not the inherited blue/lavender accent. The header red
+  accent must stay red. Do not claim visual sign-off from the source guards alone.
+- Read the new runtime evidence after the first swipe:
+  - `appdrawer-swipe-log.txt` / `appdrawer-swipe-1.txt`: the start must be the measured hotseat
+    gutter (`540 1616 540 96` on the 1080x1920 actual HOME), not the old `540 1183 ...`; the
+    duration must read 500;
+  - `appdrawer-trace-1.txt`: `dragEnd` must show a displacement well above 768 px and progress
+    above 0.4 at velocity 0, with target AllApps; if the gutter start is not accepted, the trace
+    will show the DOWN/UP decision and the next smallest fix must follow that evidence.
+  - `appdrawer-attempt-1.xml` / `.png`: the first ready drawer, which must differ from HOME and
+    expose the search input or app-list container.
+- Confirm CI70's hang is gone: the API 37 smoke must finish the drawer phase instead of running past
+  22m. The bounded retry must produce at most four `appdrawer-attempt-*` sets; if readiness fails,
+  the run must exit nonzero with the retained evidence, not loop.
+- Review the new drawer artifacts before claiming the repair:
+  - `appdrawer-swipe-log.txt` and `appdrawer-swipe-N.txt`: the start y must be above the measured
+    dock top, not the old 75% point;
+  - `appdrawer-attempt-N-before.xml` / `.png`: HOME before each swipe;
+  - `appdrawer-attempt-N.xml` / `.png`: the state after each bounded wait;
+  - `appdrawer.xml` / `appdrawer.png`: the first ready drawer, which must differ from HOME and
+    expose the search input or app-list container;
+  - `activities-app-launch.txt`: only `topResumedActivity`/`mResumedActivity` lines are used; the
+    resumed package must be exactly `com.android.settings/`;
+  - `settings-launched.xml` / `.png` and `home-after-app-launch.xml` / `.png`.
+- The neutral icon/QSB fix is source-guarded only here. CI93 pixels were blue/lavender; the new
+  head `9fc5a33` must be re-inspected. The header fits the pinned row but is not otherwise visually
+  signed off.
+- P4 (drawer restyle) follows P3b; the inherited drawer/search/drag/widgets engine must stay.
+- Pending gates: private-space runtime UI, the in-app `RoleManager` prompt, and a non-Play runtime
+  control build remain unverified.
 
 ## blockers
 
-- P3a CI/visual evidence: CI62 (`44909523145`) on `e359a9a` produced the dark/light sample PNGs and
-  was green, but the dark sample had insufficient system-bar contrast. The fix is pushed on
-  `9d1e56e`; a new CI run must produce the PNGs and a coordinator must re-review them. No Gradle
-  build or emulator run was allowed in this environment, so the branch is statically verified only.
-- Scope: theme sample only; the actual HOME surface is not restyled. Private-space runtime UI,
-  the in-app `RoleManager` prompt and the non-Play runtime control remain pending.
-- PR10 approval: `gh` is unauthenticated here, so the pushed commits need a maintainer to approve
-  and run the PR workflow.
-- P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
-  recents). A private space needs a secure lock screen and explicit provisioning; do not
-  auto-create it.
-- P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
-  grant verifies the system role, not the prompt.
-- P2c visual gate: the coordinator verified HOME and About/app-info artifacts for CI51; the
-  non-Play runtime control build remains unverified.
+- No local Gradle build or emulator run is allowed here, so CI and pixels are unverified.
+- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
+- P3b visuals: the neutral icon/QSB fix on `9fc5a33` is statically verified only; CI93's blue/
+  lavender pixels require re-review on the new head. The header fits but is not otherwise visually
+  signed off.
+- P3b drawer smoke: CI84 (`44933644538`, artifact `14719700048`) proved the route works but the old
+  gesture only reached `0.3760783` progress. CI87 (`44935461427`, artifact `14719887963`) then
+  showed the fixture had invented a bottom QSB id, so the real y=91 header was used and the target
+  fell back to 1183; progress stayed at `0.366` target Normal. The real-home fixture and header
+  rejection are pushed on `039a41d`; a new API 37 run must show start `540 1616 540 96`, duration
+  500, `dragEnd` target AllApps and a ready drawer. If the gutter start is rejected, the trace
+  artifacts will identify the exact DOWN/UP decision.
 
 ## decisions locked
 
@@ -166,6 +384,44 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P3b actual-home fix: the bottom QSB is only accepted when its top is strictly below the measured
+  dock icon bottom; the same `search_container_workspace` id on the header is rejected. Cost if
+  wrong: a device whose QSB sits above the dock icons would fall back to the icon-band gutter
+  instead of the dock/QSB midpoint, which is still a >1500 px swipe.
+- P3b actual-home fix: when the bottom QSB is absent, start a quarter of the measured icon band
+  below the icon bottom (1568 + 48 = 1616). Cost if wrong: a shorter icon band starts closer to
+  the icons, but the start remains below every icon and above the PNG-visible QSB top.
+- P3b actual-home fix: the swipe duration is 500 ms instead of 300 ms. Cost if wrong: a slower
+  gesture on a low-end emulator could take longer, but it is still a bounded `input swipe` and
+  gives adb more MOVE samples at zero release velocity.
+- P3b drawer-readiness repair: derive the swipe target from the live HOME hierarchy (root bounds +
+  lowest labelled row) rather than a fixed display fraction. Cost if wrong: the hierarchy adds one
+  uiautomator dump per attempt, but the gesture can no longer land on the dock; if no labelled row
+  is found the measured `wm size` fallback uses 55% height, still above a 71%-height dock.
+- P3b drawer-readiness repair: require an actual drawer search input or app-list container before
+  proceeding. Cost if wrong: a future drawer that exposes neither id will fail rather than silently
+  testing HOME, which is the intended fail-closed behavior.
+- P3b drawer-readiness repair: require the post-swipe dump to differ from the pre-swipe HOME. Cost
+  if wrong: a drawer that opens and produces a byte-identical hierarchy would be rejected, but the
+  inherited drawer changes the visible tree, and this directly rejects the CI68 closed-HOME case.
+- P3b drawer-readiness repair: drop the pre-search `Settings` label assertion but keep the real
+  search-result assertion and the exact foreground poll. Cost if wrong: a drawer that opens without
+  Settings on the first screen still proceeds to search, which is the behavior the task needs.
+- P3b smoke repair: the app-launch assertion reads only the live
+  `topResumedActivity`/`mResumedActivity` fields and matches the exact package boundary; task
+  history is never treated as foreground. Cost if wrong: a dump that omits both fields fails the
+  smoke instead of passing on a historical record.
+- P3b smoke repair: the drawer taps the clickable Settings result node (or its nearest clickable
+  ancestor), never an earlier bare `text="Settings"` label. Cost if wrong: if the result container
+  is not clickable the nearest ancestor is used, and if no clickable node exists the label bounds
+  are the last-resort fallback.
+- P3b chrome pair: use the original `Paper`/`Ink` (light) and `Gray900`/`Paper` (dark) pair selected
+  by `R.attr.isMainColorDark`, not the inherited wallpaper text plus floating surface. Cost if
+  wrong: with a light theme on a dark wallpaper the card is light rather than wallpaper-matched,
+  but it keeps high contrast and follows the user's light/dark choice, matching QSB/day-night tints.
+- P3b header: keep the original header in the inherited pinned smartspace slot, sized to one row,
+  rather than hard-wiring it into `Workspace` or adding a second launcher surface. Cost if wrong:
+  the header is less tall than a multi-row Nothing-style clock widget, but it cannot clip the grid.
 - P3a repair: the forbidden-font check inspects lowercased basenames only. Cost if wrong: a
   forbidden font hidden inside a directory name would not be caught, but fonts live flat in
   `lawnchair/res/font` and the guard still checks the whole file list there.
@@ -217,26 +473,96 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Neutral Play icon/QSB fix on `agent/p3b-actual-home-visual-slice-n` (`9fc5a33`).
+  CI93 (`44944409947`) on `9076be5` was green, but the inspected HOME/drawer pixels kept the
+  wallpaper-derived blue/lavender tint on the icon fallback and the QSB glyph. Root cause was the
+  inherited process-wide `ThemedIconDrawable.COLORS_LOADER`, not the policy. Added
+  `NothingUiIconColors`, gated the loader to the neutral black/white pair in Play (non-Play
+  unchanged), passed the provider through the controller and fallback, kept the Play freshness key
+  neutral, neutralized themed QSB layers behind the Play gate, and fixed the CI93 `policyFor`
+  style. Icon-render guard now 15/15 with `NothingUiIconColorsTest`. CI/pixel review pending.
+- 2026-11-21: Actual-home fixture fix on `agent/p3b-actual-home-visual-slice-n` (`039a41d`).
+  CI87 (`44935461427`, artifact `14719887963`) still traced `0.366` progress target Normal. The
+  actual HOME XML puts `search_container_workspace` on the y=91 HEADER, not the bottom QSB, so
+  `ui_qsb_top` returned 91 and the gutter branch fell back to start 1183. The fixture had invented
+  a bottom-QSB id at 1640. `ui_qsb_top` now requires a dock bottom and rejects candidates at or
+  above it; `ui_dock_bottom` excludes search containers; `drawer_target_for_dump` derives the dock
+  bottom first. With no bottom QSB, the start is dock_bottom + icon_band/4 = 1568 + 48 = 1616,
+  ending at 96 (1520 px, 79.2 percent). The swipe duration is 500 ms and is logged. The real CI87
+  HOME is now the fixture; a separate bottom-QSB fixture still proves the 1604 midpoint. Local
+  shell suites: smoke 61 checks, drawer 38 checks, trace 6/6, home 13/13, verify suite all pass;
+  `sh -n` and `git diff --check` clean. No app logic, thresholds, manifest, permissions, SDK,
+  applicationId, signing or workflow change. New API 37 evidence is still required.
+- 2026-11-21: Smoke gesture length fix only on `agent/p3b-actual-home-visual-slice-n`
+  (`96e2f7b`, `4ebc2b5`). CI84 (`44933644538`, artifact `14719700048`) showed the route works
+  (DOWN accepted, Normal→AllApps) but the old test swipe covered only 799 px of the 1920 shift
+  range, so `dragEnd` at velocity 0 recorded progress `0.3760783` and correctly returned Normal.
+  The harness now measures the dock icon bottom and QSB top from the same HOME XML and starts in
+  the empty gutter between them, ending at 5 percent of the display (actual 1080x1920:
+  `540 1604 540 96`, 1508 px / 0.7854). Added pure `ui_dock_bottom`, `ui_qsb_top`,
+  `drawer_swipe_is_long_enough` and `drawer_swipe_travel_fraction`, plus regressions that reject
+  the old 0.4161 geometry and the CI84 0.3760 trace. The mock-adb drawer test now requires every
+  attempt to exceed half the display. App gesture logic, thresholds, visuals, manifest,
+  permissions, SDK, applicationId, signing and workflows are unchanged. Local shell suites pass;
+  the longer gesture still needs a new API 37 smoke run to produce the AllApps `dragEnd` trace.
+- 2026-11-21: Micro compile fix only on `agent/p3b-actual-home-visual-slice-n`. CI81
+  (`44932685973`) on `f2377c5` failed javac on the new diagnostics: `NavigationMode` is a Java
+  enum, so `getNavigationMode(this).name` became `.name()`, and `LauncherState` has no `name`
+  field, so all four state logs use `stateName(...)` backed by the verified `toString()`. The
+  drawer-trace guard now rejects `.name` field access and its fixture suite is 6/6. Debug Play
+  gating and per-attempt trace artifacts unchanged; no app behavior change.
+- 2026-11-21: P3b smoke harness retry-state repair on `agent/p3b-actual-home-visual-slice-n`
+  (`d5122ad`, `50176d8`). CI70 (`44924192206`) was canceled after 22m because plain POSIX helper
+  functions shared globals: `capture_ui_xml` reset the outer `open_app_drawer` `attempt`, so the
+  4-attempt loop could repeat forever; `name`/`label`/`target`/`xml` also leaked between helpers and
+  callers. Pure helpers are now subshell functions, effectful helpers use unique `_*` names, every
+  adb/uiautomator call is bounded by `run_with_timeout`, and an `EXIT` trap retains evidence on
+  failure. Added executable `emulator-smoke-drawer-test.sh` (mock adb, real `open_app_drawer`,
+  unchanged HOME, exactly four swipes, per-attempt evidence, exit 1 inside 30s) and wired it into
+  `verify-play-build.sh`; a temporary revert reproduces the old timeout/5+ swipes. Local shell
+  suites pass; no Gradle/emulator run here. Colored icons + blue QSB still need pixel repair; header
+  fits but is not visually ready.
+- 2026-11-21: P3b drawer-readiness repair on `agent/p3b-actual-home-visual-slice-n` (`522516b`,
+  `fb5aa61`, `83c3ad8`). CI68 (`44921875638`) was compile/style/unit green but the API 37 smoke failed because
+  `appdrawer.xml` was identical to `home.xml`; the 75%-height swipe started inside the dock/Phone
+  hit region. `open_app_drawer` now uses up to 4 bounded state-based attempts, waits for launcher
+  idle, derives the target from live root bounds + dock top, captures before/after XML+PNG and a
+  swipe log per attempt, and requires a real drawer input/container that differs from the pre-swipe
+  HOME. The real swipe -> search -> Settings tap -> exact
+  foreground flow is unchanged. `emulator-smoke-test.sh` is 34/34. Static checks only; CI and pixels
+  pending. Colored icons + blue QSB still need pixel repair; header fits but is not visually ready.
+- 2026-11-21: P3b smoke repair on `agent/p3b-actual-home-visual-slice-n` (`84a0493`). The app-launch
+  false positive came from grepping the whole dumpsys dump; only the live resumed fields now count,
+  polled with a bounded wait. The drawer taps the clickable Settings result instead of the first
+  text match, captures `settings-launched` and `home-after-app-launch` XML/PNG, and fails if either
+  foreground assertion is wrong. Added `emulator-smoke-lib.sh` and a 14-case regression wired into
+  `verify-play-build.sh`; existing guard suites and 16 unit tests unchanged. Colored icons + blue
+  QSB still need pixel repair; the header fits but is not visually ready. No visual edits this run.
+- 2026-11-21: P3b bounded finish on `agent/p3b-actual-home-visual-slice-n` (`ac31c4e`). Fixed the
+  chrome white-on-white risk with an explicit neutral surface/ink pair selected by the inherited
+  light/dark theme, shared it across the header/QSB/page dots, sized the header to the single pinned
+  row, extended the home guard (13/13) and kept the actual-HOME + drawer/search/launch smoke. Static
+  checks only; CI and pixel review pending. Pending private UI / RoleManager / non-Play runtime
+  unchanged.
+- 2026-11-21: P3b saved work checkpointed on the branch: Play-gated clock header, pure clock
+  formatter, monochrome icon defaults, QSB/page-dot chrome hooks, home guard + tests, and the
+  actual-HOME/drawer smoke. Run was cancelled before closeout; resumed and finished above.
 - 2026-11-21: P3a system-bar repair: CI62 (`44909523145`) on `e359a9a` was green (7 token + 4
   predicate JUnit tests, 0 skipped) but the real dark sample kept dark status/nav icons. Root
   cause: the sample branch used the inherited `EdgeToEdge()`/`enableEdgeToEdge()` theme preference
   instead of the requested sample mode. Added an explicit `darkTheme` parameter, passed
   `themeSampleDark` from the diagnostic branch, skipped the inherited early call there, and added
-  guard fixtures (9/9). Scope is the theme sample only; HOME is not restyled. New CI/pixel review
-  pending.
+  guard fixtures (9/9). P3a is merged; HOME styling moved to P3b.
 - 2026-11-21: P3a repair/visual-evidence slice: reproduced and fixed the CI53 guard false positive
   (full-path vs basename scan), added the `NothingOS-Launcher`/ndot regression suite, added the
   DEBUG+Play diagnostic sample route, and extended the API 37 smoke to capture dark/light sample
-  XML+PNG and return HOME. Static checks green; PR10 CI and screenshot review pending.
-- 2026-11-21: P3a foundation implemented and pushed on
-  `agent/p3a-theme-foundation-only-star`: palette/spacing/motion/typography, Doto OFL assets,
+  XML+PNG and return HOME.
+- 2026-11-21: P3a foundation implemented: palette/spacing/motion/typography, Doto OFL assets,
   Play-only `BuildConfig` gate, sample screen and previews, pure token tests, and a static theme
-  guard wired into `verify-play-build.sh`. Static checks green; branch CI and visual/device review
-  pending. Home/grid work is P3b.
+  guard wired into `verify-play-build.sh`.
 - 2026-11-21: P2c verified by the coordinator: CI51 (`44903885094`) on `e6ea08b` green with 4
   Gradle tests and API 37 install/HOME/role/crash checks; HOME says `Welcome to DotWel Launcher`
-  and About/app-info show the dot-grid icon and name. Private-space UI, the in-app RoleManager
-  prompt and the non-Play runtime control remain unverified.
+  and About/app-info show the dot-grid icon and name.
 - 2026-11-21: PR9 merged to `main` at `02ac058`; the P3a branch was cut from that merge.
 - 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green; the earlier About icon and HOME
   welcome defects were repaired by moving `play/res` to the `lawnWithQuickstepPlay` multi-flavor

@@ -225,6 +225,7 @@ import com.android.launcher3.states.RotationHelper;
 import com.android.launcher3.testing.TestLogging;
 import com.android.launcher3.testing.shared.TestProtocol;
 import com.android.launcher3.touch.AllAppsSwipeController;
+import com.android.launcher3.touch.DotwelDrawerTrace;
 import com.android.launcher3.touch.ItemClickHandler;
 import com.android.launcher3.touch.ItemLongClickListener;
 import com.android.launcher3.util.ActivityResultInfo;
@@ -232,6 +233,7 @@ import com.android.launcher3.util.BackPressHandler;
 import com.android.launcher3.util.CannedAnimationCoordinator;
 import com.android.launcher3.util.ComponentKey;
 import com.android.launcher3.util.ContextTracker;
+import com.android.launcher3.util.DisplayController;
 import com.android.launcher3.util.IntSet;
 import com.android.launcher3.util.ItemInflater;
 import com.android.launcher3.util.KeyboardShortcutsDelegate;
@@ -2655,7 +2657,14 @@ public class Launcher extends StatefulActivity<LauncherState>
     }
 
     public TouchController[] createTouchControllers() {
-        return new TouchController[] {getDragController(), new AllAppsSwipeController(this)};
+        TouchController[] controllers =
+                new TouchController[] {getDragController(), new AllAppsSwipeController(this)};
+        if (DotwelDrawerTrace.ENABLED) {
+            DotwelDrawerTrace.log("factory controllers="
+                    + controllers[0].getClass().getName() + "," + controllers[1].getClass().getName()
+                    + " navigationMode=" + DisplayController.getNavigationMode(this).name());
+        }
+        return controllers;
     }
 
     public void onDragLayerHierarchyChanged() {

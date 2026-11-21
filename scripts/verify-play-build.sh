@@ -37,6 +37,11 @@ sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
+sh "$SCRIPT_DIR/emulator-smoke-test.sh"
+sh "$SCRIPT_DIR/emulator-smoke-drawer-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
@@ -49,6 +54,22 @@ fi
 # NothingUI theme foundation and Play-only gate (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/theme" ]; then
     sh "$SCRIPT_DIR/nothingui-theme-guard.sh" "$ROOT"
+fi
+
+# NothingUI actual-home slice and Play-only gate (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
+    sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
+fi
+
+# Play-only icon renderer policy wiring (skipped for minimal fixtures).
+if [ -f "$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt" ]; then
+    sh "$SCRIPT_DIR/nothingui-icon-render-guard.sh" "$ROOT"
+fi
+
+# Debug-only app-drawer gesture trace and its per-swipe smoke capture (skipped
+# for minimal fixtures).
+if [ -f "$ROOT/src/com/android/launcher3/touch/DotwelDrawerTrace.java" ]; then
+    sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
 fi
 
 # 2. Locate the merged manifest for the Play debug variant.

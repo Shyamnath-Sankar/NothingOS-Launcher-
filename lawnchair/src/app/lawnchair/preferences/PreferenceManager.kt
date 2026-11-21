@@ -24,6 +24,7 @@ import app.lawnchair.font.FontCache
 import app.lawnchair.util.getApkVersionComparison
 import app.lawnchair.util.isGestureNavContractCompatible
 import app.lawnchair.util.isOnePlusStock
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.InvariantDeviceProfile
 import com.android.launcher3.InvariantDeviceProfile.INDEX_DEFAULT
 import com.android.launcher3.LauncherAppState
@@ -172,8 +173,10 @@ class PreferenceManager @Inject constructor(
     val searchResultSettingsEntry = BoolPref("pref_searchResultSettingsEntry", false, recreate)
     val searchResulRecentSuggestion = BoolPref("pref_searchResultRecentSuggestion", false, recreate)
 
-    val themedIcons = BoolPref("themed_icons", false, reloadIcons)
-    val drawerThemedIcons = BoolPref("drawer_themed_icons", false, reloadIcons)
+    // The Play channel opts fresh installs into the inherited monochrome icon treatment.
+    // Non-Play channels keep the inherited default, and an explicit user choice still wins.
+    val themedIcons = BoolPref("themed_icons", NothingUiFeature.homeEnabled, reloadIcons)
+    val drawerThemedIcons = BoolPref("drawer_themed_icons", NothingUiFeature.homeEnabled, reloadIcons)
 
     val hotseatQsbCornerRadius = FloatPref("pref_hotseatQsbCornerRadius", 1F, recreate)
     val hotseatQsbAlpha = IntPref("pref_searchHotseatTranparency", 100, recreate)
@@ -211,7 +214,7 @@ class PreferenceManager @Inject constructor(
         context.getApkVersionComparison().first[0],
     )
 
-    val forceIconMonochrome = BoolPref("pref_forceIconMonochrome", false)
+    val forceIconMonochrome = BoolPref("pref_forceIconMonochrome", NothingUiFeature.homeEnabled)
 
     override fun close() {
         TODO("Not yet implemented")

@@ -55,6 +55,8 @@ import com.android.launcher3.util.Themes;
 import java.util.function.Consumer;
 
 import app.lawnchair.theme.color.tokens.ColorTokens;
+import app.nothingui.home.NothingUiHomeChrome;
+import app.nothingui.theme.NothingUiFeature;
 
 /**
  * {@link PageIndicator} which shows dots per page. The active page is shown with the current
@@ -171,7 +173,10 @@ public class PageIndicatorDots extends View implements Insettable, PageIndicator
 
         mPaginationPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         mPaginationPaint.setStyle(Style.FILL);
-        mPaginationPaint.setColor(ColorTokens.pageIndicatorDotColor.resolveColor(context));
+        int dotColor = NothingUiFeature.INSTANCE.getHomeEnabled()
+                ? NothingUiHomeChrome.INSTANCE.pageIndicatorColor(context)
+                : ColorTokens.pageIndicatorDotColor.resolveColor(context);
+        mPaginationPaint.setColor(dotColor);
         mDotRadius = getResources().getDimension(R.dimen.page_indicator_dot_size) / 2;
         mGapWidth = getResources().getDimension(R.dimen.page_indicator_gap_width);
         mCircleGap = (enableLauncherVisualRefresh())

@@ -2,6 +2,7 @@ package app.lawnchair.icons
 
 import android.content.Context
 import android.util.Log
+import app.lawnchair.data.iconoverride.IconOverrideRepository
 import app.lawnchair.icons.shape.IconShape
 import app.lawnchair.icons.shape.PathShapeDelegate
 import app.lawnchair.preferences.PreferenceChangeListener
@@ -9,6 +10,9 @@ import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.ThemeProvider
+import app.nothingui.icons.NothingUiIconColors
+import app.nothingui.icons.NothingUiIconThemeController
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.concurrent.annotations.Ui
 import com.android.launcher3.dagger.ApplicationContext
@@ -58,6 +62,13 @@ constructor(
 
     private val prefListener = PreferenceChangeListener {
         uiExecutor.execute { verifyIconState() }
+    }
+
+    private val nothingUiThemeController by lazy {
+        NothingUiIconThemeController(
+            prefs = prefs1,
+            overrideRepo = IconOverrideRepository.INSTANCE.get(context),
+        )
     }
 
     override var iconState = parseIconStateV2(null)
@@ -143,16 +154,25 @@ constructor(
         val currentPrefs1State = prefs1State()
         val appShapeKey = currentAppShape.getHashString() + currentPrefs1State
         val folderShapeKey = currentFolderShape.getHashString() + currentPrefs1State
-        val themeController = iconControllerFactory.createThemeController()?.let {
-            if (prefs1.forceIconMonochrome.get()) {
-                FORCED_MONO_THEME_CONTROLLER
-            } else {
-                MONO_THEME_CONTROLLER
+        val themeController = if (NothingUiFeature.homeEnabled) {
+            // The Play wrapper applies the policy per icon so custom selections are not forced.
+            if (prefs1.themedIcons.get()) nothingUiThemeController else null
+        } else {
+            iconControllerFactory.createThemeController()?.let {
+                if (prefs1.forceIconMonochrome.get()) {
+                    FORCED_MONO_THEME_CONTROLLER
+                } else {
+                    MONO_THEME_CONTROLLER
+                }
             }
         }
         val themedColorsKey =
             if (themeController != null) {
-                ThemedIconDrawable.getColors(context).joinToString(",")
+                if (NothingUiFeature.homeEnabled) {
+                    NothingUiIconColors.forContext(context).joinToString(",")
+                } else {
+                    ThemedIconDrawable.getColors(context).joinToString(",")
+                }
             } else {
                 ""
             }

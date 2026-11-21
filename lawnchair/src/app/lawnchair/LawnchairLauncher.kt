@@ -51,6 +51,7 @@ import app.lawnchair.ui.popup.LawnchairShortcut
 import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.unsafeLazy
 import app.lawnchair.views.LawnchairFloatingSurfaceView
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.BubbleTextView
@@ -238,7 +239,11 @@ class LawnchairLauncher : QuickstepLauncher() {
         }
 
         // Handle update from version 12 Alpha 4 to version 12 Alpha 5.
+        // The Play channel's monochrome treatment intentionally works without a themed
+        // icon pack (it falls back to the platform monochrome layer or the original icon),
+        // so this legacy migration must not disable it there.
         if (
+            !NothingUiFeature.homeEnabled &&
             prefs.themedIcons.get() &&
             packageManager.getThemedIconPacksInstalled(this).isEmpty()
         ) {

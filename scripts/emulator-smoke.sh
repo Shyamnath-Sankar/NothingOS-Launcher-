@@ -12,10 +12,13 @@
 #     launcher is the resumed/default home
 #   - captures a screenshot, logcat, dumpsys and aapt evidence under an
 #     artifact directory, and fails on install/launch/crash problems
-#   - dumps the HOME UIAutomator hierarchy and, when the smartspace onboarding
-#     card is visible, requires the rendered welcome text to be "DotWel
-#     Launcher" with no "Lawnchair" text; otherwise records a pending note and
-#     fails if the hierarchy cannot be dumped at all
+#   - dumps the actual HOME UIAutomator hierarchy and requires the rendered
+#     NothingUI clock and date text, with no inherited "Lawnchair" text; captures
+#     home.png as the actual-home visual evidence
+#   - opens the inherited app drawer, captures its UI XML + screenshot, searches
+#     for Settings, taps the real clickable result, polls until the Settings
+#     activity is the exact resumed foreground, captures settings-launched.xml
+#     + .png, then returns HOME and captures home-after-app-launch.xml + .png
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
 #   - opens the debug-only Play theme sample through the existing
@@ -34,7 +37,7 @@ usage() {
 }
 
 APK=
-ARTIFACTS=
+ARTIFACTS=${ARTIFACTS:-}
 SERIAL=
 
 while [ "$#" -gt 0 ]; do
@@ -63,8 +66,11 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=${_EMULATOR_SMOKE_SCRIPT_DIR:-$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)}
 ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+# shellcheck source=emulator-smoke-lib.sh
+. "$SCRIPT_DIR/emulator-smoke-lib.sh"
 
 PKG=com.launchernos.dotwellabs.debug
 EXPECTED_LABEL='DotWel Launcher'
@@ -82,67 +88,92 @@ ARTIFACTS=$(CDPATH= cd -- "$ARTIFACTS" && pwd)
 
 adb_cmd() {
     if [ -n "$SERIAL" ]; then
-        adb -s "$SERIAL" "$@"
+        run_with_timeout "${ADB_TIMEOUT:-60}" adb -s "$SERIAL" "$@"
     else
-        adb "$@"
+        run_with_timeout "${ADB_TIMEOUT:-60}" adb "$@"
     fi
 }
 
 capture_logcat() {
-    adb_cmd logcat -d -v threadtime > "$ARTIFACTS/logcat.txt" 2>/dev/null || true
+    ADB_TIMEOUT=30 adb_cmd logcat -d -v threadtime > "$ARTIFACTS/logcat.txt" 2>/dev/null || true
 }
 
 capture_screenshot() {
-    adb_cmd exec-out screencap -p > "$ARTIFACTS/screenshot.png" 2>/dev/null || true
+    ADB_TIMEOUT=20 adb_cmd exec-out screencap -p > "$ARTIFACTS/screenshot.png" 2>/dev/null || true
 }
 
-capture_screenshot_to() {
+capture_screenshot_to() (
     target=$1
-    adb_cmd exec-out screencap -p > "$ARTIFACTS/$target" 2>/dev/null || true
-}
+    ADB_TIMEOUT=20 adb_cmd exec-out screencap -p > "$ARTIFACTS/$target" 2>/dev/null || true
+)
 
-capture_ui_xml() {
+# Bounded debug-only gesture trace. Captured after every swipe attempt even when
+# the drawer never becomes ready, so a no-op swipe still leaves evidence.
+capture_drawer_trace() (
+    attempt=$1
+    ADB_TIMEOUT=30 adb_cmd logcat -d -s DotwelDrawerTrace \
+        > "$ARTIFACTS/appdrawer-trace-$attempt.txt" 2>/dev/null || true
+)
+
+capture_ui_xml() (
     name=$1
     remote="/sdcard/$name"
     attempt=1
     while [ "$attempt" -le 3 ]; do
-        if adb_cmd shell uiautomator dump "$remote" > "$ARTIFACTS/uiautomator-$name.txt" 2>&1 &&
-            adb_cmd pull "$remote" "$ARTIFACTS/$name" > /dev/null 2>&1 &&
+        if ADB_TIMEOUT=20 adb_cmd shell uiautomator dump "$remote" \
+                > "$ARTIFACTS/uiautomator-$name.txt" 2>&1 &&
+            ADB_TIMEOUT=20 adb_cmd pull "$remote" "$ARTIFACTS/$name" > /dev/null 2>&1 &&
             [ -s "$ARTIFACTS/$name" ]; then
-            adb_cmd shell rm -f "$remote" > /dev/null 2>&1 || true
+            ADB_TIMEOUT=10 adb_cmd shell rm -f "$remote" > /dev/null 2>&1 || true
             return 0
         fi
         attempt=$((attempt + 1))
         sleep 1
     done
     return 1
-}
+)
+
+# Poll the live resumed activity, bounded, until it belongs to $1. Only the
+# topResumedActivity/mResumedActivity fields count: task history also names
+# packages and must never be mistaken for the foreground app.
+wait_for_foreground() (
+    expected_pkg=$1
+    dump=$2
+    attempts=${3:-10}
+    attempt=1
+    while [ "$attempt" -le "$attempts" ]; do
+        adb_cmd shell dumpsys activity activities > "$dump" 2>&1 || true
+        if foreground_is "$dump" "$expected_pkg"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 1
+)
 
 return_home() {
-    label=$1
-    adb_cmd shell input keyevent KEYCODE_HOME > "$ARTIFACTS/home-key-$label.txt" 2>&1 ||
-        fail "could not send the HOME key ($label)"
-    sleep 2
-    adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities-$label.txt" 2>&1 || true
-    resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activities-$label.txt" |
-        grep -F "$PKG/" | sed -n '1p' || true)
-    [ -n "$resumed" ] || fail "launcher is not resumed after $label"
+    _rh_label=$1
+    adb_cmd shell input keyevent KEYCODE_HOME > "$ARTIFACTS/home-key-$_rh_label.txt" 2>&1 ||
+        fail "could not send the HOME key ($_rh_label)"
+    wait_for_foreground "$PKG" "$ARTIFACTS/activities-$_rh_label.txt" 10 ||
+        fail "launcher is not the resumed foreground after $_rh_label"
 }
 
 capture_app_info() {
-    if ! app_info_out=$(adb_cmd shell am start -W \
+    if ! _cai_out=$(adb_cmd shell am start -W \
         -a android.settings.APPLICATION_DETAILS_SETTINGS \
         -d "package:$PKG" 2>&1); then
-        printf '%s\n' "$app_info_out" > "$ARTIFACTS/app-info-launch.txt"
+        printf '%s\n' "$_cai_out" > "$ARTIFACTS/app-info-launch.txt"
         fail "could not open app-info for $PKG"
     fi
-    printf '%s\n' "$app_info_out" > "$ARTIFACTS/app-info-launch.txt"
-    case "$app_info_out" in
+    printf '%s\n' "$_cai_out" > "$ARTIFACTS/app-info-launch.txt"
+    case "$_cai_out" in
         *"Error:"* | *"Error type"* | *Exception*)
             fail "app-info launch reported an error"
             ;;
     esac
-    printf '%s\n' "$app_info_out" | grep -q 'Status: ok' ||
+    printf '%s\n' "$_cai_out" | grep -q 'Status: ok' ||
         fail "app-info launch did not report Status: ok"
     sleep 2
     capture_screenshot_to app-info.png
@@ -157,21 +188,21 @@ capture_app_info() {
 # About is reached through the existing lawnchair://settings/about deep link, then
 # confirmed from the UIAutomator hierarchy. No guessed tap coordinates are used.
 capture_about() {
-    about_url='lawnchair://settings/about'
-    about_component="$PKG/app.lawnchair.ui.preferences.PreferenceActivity"
-    if ! about_out=$(adb_cmd shell am start -W \
+    _cab_url='lawnchair://settings/about'
+    _cab_component="$PKG/app.lawnchair.ui.preferences.PreferenceActivity"
+    if ! _cab_out=$(adb_cmd shell am start -W \
         -a android.intent.action.VIEW \
-        -d "$about_url" \
-        -n "$about_component" 2>&1); then
+        -d "$_cab_url" \
+        -n "$_cab_component" 2>&1); then
         printf 'About screen unavailable: deep link launch failed.\n%s\n' \
-            "$about_out" > "$ARTIFACTS/about-pending.txt"
+            "$_cab_out" > "$ARTIFACTS/about-pending.txt"
         return 0
     fi
-    printf '%s\n' "$about_out" > "$ARTIFACTS/about-launch.txt"
-    case "$about_out" in
+    printf '%s\n' "$_cab_out" > "$ARTIFACTS/about-launch.txt"
+    case "$_cab_out" in
         *"Error:"* | *"Error type"* | *Exception*)
             printf 'About screen unavailable: deep link launch reported an error.\n%s\n' \
-                "$about_out" > "$ARTIFACTS/about-pending.txt"
+                "$_cab_out" > "$ARTIFACTS/about-pending.txt"
             return 0
             ;;
     esac
@@ -203,69 +234,276 @@ capture_about() {
 # PreferenceActivity and an explicit diagnostic extra. The extra is ignored
 # outside debug Play builds, so this exercises the real device rendering path.
 capture_theme_sample() {
-    mode=$1
+    _cts_mode=$1
     # The About capture already used this activity. Force a fresh task so the
     # new diagnostic extra is delivered to a new instance instead of the system
     # merely bringing the existing About task to the front.
-    if ! sample_out=$(adb_cmd shell am start -W \
+    if ! _cts_out=$(adb_cmd shell am start -W \
         -f 0x18000000 \
         -n "$PKG/$THEME_SAMPLE_ACTIVITY" \
-        --es "$THEME_SAMPLE_EXTRA" "$mode" 2>&1); then
-        printf '%s\n' "$sample_out" > "$ARTIFACTS/theme-sample-$mode-launch.txt"
-        fail "could not open the $mode theme sample"
+        --es "$THEME_SAMPLE_EXTRA" "$_cts_mode" 2>&1); then
+        printf '%s\n' "$_cts_out" > "$ARTIFACTS/theme-sample-$_cts_mode-launch.txt"
+        fail "could not open the $_cts_mode theme sample"
     fi
-    printf '%s\n' "$sample_out" > "$ARTIFACTS/theme-sample-$mode-launch.txt"
-    case "$sample_out" in
+    printf '%s\n' "$_cts_out" > "$ARTIFACTS/theme-sample-$_cts_mode-launch.txt"
+    case "$_cts_out" in
         *"Error:"* | *"Error type"* | *Exception*)
-            fail "theme sample $mode launch reported an error"
+            fail "theme sample $_cts_mode launch reported an error"
             ;;
     esac
-    printf '%s\n' "$sample_out" | grep -q 'Status: ok' ||
-        fail "theme sample $mode launch did not report Status: ok"
+    printf '%s\n' "$_cts_out" | grep -q 'Status: ok' ||
+        fail "theme sample $_cts_mode launch did not report Status: ok"
     sleep 2
-    capture_ui_xml "theme-sample-$mode.xml" ||
-        fail "theme sample $mode UI XML capture failed"
-    if ! grep -Fq 'DOTWEL' "$ARTIFACTS/theme-sample-$mode.xml"; then
-        fail "theme sample $mode UI XML does not expose the DOTWEL sample text"
+    capture_ui_xml "theme-sample-$_cts_mode.xml" ||
+        fail "theme sample $_cts_mode UI XML capture failed"
+    if ! grep -Fq 'DOTWEL' "$ARTIFACTS/theme-sample-$_cts_mode.xml"; then
+        fail "theme sample $_cts_mode UI XML does not expose the DOTWEL sample text"
     fi
-    capture_screenshot_to "theme-sample-$mode.png"
-    [ -s "$ARTIFACTS/theme-sample-$mode.png" ] ||
-        fail "theme sample $mode screenshot capture failed"
+    capture_screenshot_to "theme-sample-$_cts_mode.png"
+    [ -s "$ARTIFACTS/theme-sample-$_cts_mode.png" ] ||
+        fail "theme sample $_cts_mode screenshot capture failed"
     printf 'Theme sample (%s): DOTWEL text is visible in the UI hierarchy.\n' \
-        "$mode" > "$ARTIFACTS/theme-sample-$mode.txt"
-    printf 'Screenshot: theme-sample-%s.png.\n' "$mode" \
-        >> "$ARTIFACTS/theme-sample-$mode.txt"
+        "$_cts_mode" > "$ARTIFACTS/theme-sample-$_cts_mode.txt"
+    printf 'Screenshot: theme-sample-%s.png.\n' "$_cts_mode" \
+        >> "$ARTIFACTS/theme-sample-$_cts_mode.txt"
 }
 
-# The smartspace onboarding card reads onboarding_welcome. A clean install has
-# HOME_BOUNCE_SEEN unset, so the card is expected. Assert the rendered text when
-# the card is present; if it has not rendered, record pending rather than claim
-# a brand pass that the evidence does not support.
-verify_home_welcome() {
-    attempt=1
-    captured=0
-    while [ "$attempt" -le 3 ]; do
+# Extract the first UIAutomator bounds tuple for a node that contains the given
+# needle. Prints "x1 y1 x2 y2" or nothing.
+ui_bounds_for() (
+    xml=$1
+    needle=$2
+    tr '>' '\n' < "$xml" |
+        grep -F "$needle" |
+        sed -n 's/.*bounds="\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]".*/\1 \2 \3 \4/p' |
+        sed -n '1p'
+)
+
+tap_center_of_bounds() (
+    bounds=$1
+    set -- $bounds
+    x=$((($1 + $3) / 2))
+    y=$((($2 + $4) / 2))
+    adb_cmd shell input tap "$x" "$y" > "$ARTIFACTS/tap-$x-$y.txt" 2>&1
+)
+
+# The Play home replaces the inherited welcome smartspace with the original
+# NothingUI clock/date header. Assert the rendered clock and date text, not a
+# static source guard, and keep the inherited brand check on the actual HOME.
+verify_nothing_home() {
+    _vnh_attempt=1
+    _vnh_captured=0
+    while [ "$_vnh_attempt" -le 4 ]; do
         if capture_ui_xml home.xml; then
-            captured=1
-            if grep -Fqi 'welcome' "$ARTIFACTS/home.xml"; then
-                if grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/home.xml" &&
-                    ! grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
-                    printf 'HOME welcome: "%s" is visible and no Lawnchair text is present.\n' \
-                        "$EXPECTED_LABEL" > "$ARTIFACTS/home-welcome.txt"
-                    return 0
+            _vnh_captured=1
+            if grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$ARTIFACTS/home.xml" &&
+                grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$ARTIFACTS/home.xml"; then
+                if grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
+                    fail "actual HOME UI still exposes inherited Lawnchair text"
                 fi
-                printf 'HOME welcome: card is visible but the brand is wrong.\n' \
-                    > "$ARTIFACTS/home-welcome.txt"
-                fail "HOME welcome UI does not say $EXPECTED_LABEL"
+                capture_screenshot_to home.png
+                [ -s "$ARTIFACTS/home.png" ] || fail "actual HOME screenshot capture failed"
+                printf 'Actual HOME: live clock and date text are visible; no Lawnchair text.\n' \
+                    > "$ARTIFACTS/home-nothing.txt"
+                printf 'Screenshot: home.png.\n' >> "$ARTIFACTS/home-nothing.txt"
+                return 0
             fi
+        fi
+        _vnh_attempt=$((_vnh_attempt + 1))
+        sleep 1
+    done
+    [ "$_vnh_captured" -eq 1 ] || fail "could not dump the actual HOME UIAutomator hierarchy"
+    fail "actual HOME does not expose the NothingUI clock/date text"
+}
+
+wait_for_launcher_idle() (
+    dump=$1
+    attempts=${2:-10}
+    attempt=1
+    while [ "$attempt" -le "$attempts" ]; do
+        adb_cmd shell dumpsys activity activities > "$dump" 2>&1 || true
+        if foreground_is "$dump" "$PKG"; then
+            return 0
         fi
         attempt=$((attempt + 1))
         sleep 1
     done
-    [ "$captured" -eq 1 ] ||
-        fail "could not dump the HOME UIAutomator hierarchy; the welcome brand is unverified"
-    printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
-        > "$ARTIFACTS/home-welcome-pending.txt"
+    return 1
+)
+
+read_wm_size() (
+    adb_cmd shell wm size | tr -d '\r' |
+        sed -n 's/.*: \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1 \2/p' |
+        sed -n '$p'
+)
+
+capture_drawer_attempt() (
+    label=$1
+    capture_ui_xml "$label.xml" || return 1
+    capture_screenshot_to "$label.png"
+    [ -s "$ARTIFACTS/$label.png" ] || return 1
+    return 0
+)
+
+# Derive the swipe from the current HOME hierarchy: its root bounds give the
+# real display area (insets included), the lowest labelled row gives the dock
+# band and the QSB container bounds the gutter below it. Fall back to measured
+# wm size only when the hierarchy is unavailable.
+drawer_target_for_dump() (
+    xml=$1
+    fallback_width=$2
+    fallback_height=$3
+    root=$(ui_root_bounds "$xml")
+    if [ -n "$root" ]; then
+        set -- $root
+        origin_x=$1
+        origin_y=$2
+        width=$(($3 - $1))
+        height=$(($4 - $2))
+        dock_top=$(ui_dock_top "$xml" "$root")
+        dock_bottom=$(ui_dock_bottom "$xml" "$root")
+        qsb_top=$(ui_qsb_top "$xml" "$dock_bottom")
+    else
+        origin_x=0
+        origin_y=0
+        width=$fallback_width
+        height=$fallback_height
+        dock_top=
+        dock_bottom=
+        qsb_top=
+    fi
+    target=$(drawer_swipe_target \
+        "$width" "$height" "$dock_top" "$dock_bottom" "$qsb_top") || return 1
+    set -- $target
+    printf '%s %s %s %s\n' \
+        $((origin_x + $1)) $((origin_y + $2)) \
+        $((origin_x + $3)) $((origin_y + $4))
+)
+
+# Open the app drawer with a bounded, state-based retry loop. Each attempt waits
+# for the launcher to be the idle foreground, captures the pre-swipe HOME XML +
+# PNG, swipes from the empty workspace above the measured dock top, then polls
+# for the real drawer search input/app-list container. Every attempt leaves
+# appdrawer-attempt-N-before/after XML+PNG plus a line in appdrawer-swipe-log.txt.
+open_app_drawer() {
+    wait_for_launcher_idle "$ARTIFACTS/appdrawer-launcher-idle.txt" 10 ||
+        fail "launcher did not become the idle foreground before the app-drawer swipe"
+
+    wm_size=$(read_wm_size)
+    [ -n "$wm_size" ] || fail "could not read the display size for the app-drawer swipe"
+    set -- $wm_size
+    fallback_width=$1
+    fallback_height=$2
+
+    : > "$ARTIFACTS/appdrawer-swipe-log.txt"
+    max_attempts=4
+    # adb delivers move samples over the swipe duration; 300 ms left the
+    # zero-velocity gesture with only a partial displacement, so use 500 ms
+    # and record it with every attempt.
+    swipe_duration=500
+    attempt=1
+    while [ "$attempt" -le "$max_attempts" ]; do
+        wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt" 10 ||
+            fail "launcher was not idle before app-drawer swipe attempt $attempt"
+        capture_drawer_attempt "appdrawer-attempt-$attempt-before" ||
+            fail "could not capture the HOME state before app-drawer swipe attempt $attempt"
+        target=$(drawer_target_for_dump \
+            "$ARTIFACTS/appdrawer-attempt-$attempt-before.xml" \
+            "$fallback_width" "$fallback_height") ||
+            fail "could not compute a safe app-drawer swipe target on attempt $attempt"
+        set -- $target
+        printf 'attempt=%s start=%s,%s end=%s,%s duration=%s\n' \
+            "$attempt" "$1" "$2" "$3" "$4" "$swipe_duration" \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+        adb_cmd shell input swipe "$1" "$2" "$3" "$4" "$swipe_duration" \
+            > "$ARTIFACTS/appdrawer-swipe-$attempt.txt" 2>&1 ||
+            fail "could not swipe open the app drawer on attempt $attempt"
+
+        ready=0
+        poll=1
+        while [ "$poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml "appdrawer-attempt-$attempt.xml" &&
+                drawer_is_ready "$ARTIFACTS/appdrawer-attempt-$attempt.xml" \
+                    "$ARTIFACTS/appdrawer-attempt-$attempt-before.xml"; then
+                ready=1
+                break
+            fi
+            poll=$((poll + 1))
+        done
+        capture_screenshot_to "appdrawer-attempt-$attempt.png"
+        [ -s "$ARTIFACTS/appdrawer-attempt-$attempt.png" ] ||
+            fail "app drawer attempt $attempt screenshot capture failed"
+        capture_drawer_trace "$attempt"
+        if [ "$ready" -eq 1 ]; then
+            cp "$ARTIFACTS/appdrawer-attempt-$attempt.xml" "$ARTIFACTS/appdrawer.xml"
+            cp "$ARTIFACTS/appdrawer-attempt-$attempt.png" "$ARTIFACTS/appdrawer.png"
+            printf 'attempt=%s drawer-ready\n' "$attempt" \
+                >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+            sleep 1
+            return 0
+        fi
+        printf 'attempt=%s drawer-not-ready; returning HOME\n' "$attempt" \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt" 2>&1 || true
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    fail "app drawer did not expose a search input or app list after $max_attempts bounded swipe attempts"
+}
+
+# Open the inherited app drawer, search for a real installed app, tap the result,
+# verify the app is foreground, then resume HOME. This exercises search, tap
+# launch and HOME resume on the actual device rather than reading source.
+exercise_app_drawer() {
+    adb_cmd shell pm path com.android.settings | grep -q '^package:' ||
+        fail "com.android.settings is not installed on the emulator"
+
+    open_app_drawer
+    capture_screenshot_to appdrawer.png
+    [ -s "$ARTIFACTS/appdrawer.png" ] || fail "app drawer screenshot capture failed"
+
+    _ead_input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" '/input"')
+    [ -n "$_ead_input_bounds" ] ||
+        _ead_input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" 'android.widget.EditText')
+    [ -n "$_ead_input_bounds" ] ||
+        _ead_input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" 'search_container_all_apps')
+    [ -n "$_ead_input_bounds" ] || fail "could not find the app drawer search input or container"
+    tap_center_of_bounds "$_ead_input_bounds" || fail "could not focus the app drawer search input"
+    sleep 1
+    adb_cmd shell input text 'settings' > "$ARTIFACTS/search-input.txt" 2>&1 ||
+        fail "could not type into the app drawer search input"
+    sleep 2
+    capture_ui_xml appdrawer-search.xml || fail "app drawer search UI XML capture failed"
+    capture_screenshot_to appdrawer-search.png
+    [ -s "$ARTIFACTS/appdrawer-search.png" ] ||
+        fail "app drawer search screenshot capture failed"
+    grep -Fq 'text="Settings"' "$ARTIFACTS/appdrawer-search.xml" ||
+        fail "app drawer search did not return Settings"
+
+    _ead_result_bounds=$(ui_clickable_label_bounds "$ARTIFACTS/appdrawer-search.xml" 'Settings')
+    [ -n "$_ead_result_bounds" ] ||
+        fail "could not find the clickable Settings search result bounds"
+    tap_center_of_bounds "$_ead_result_bounds" || fail "could not tap the Settings search result"
+    wait_for_foreground com.android.settings "$ARTIFACTS/activities-app-launch.txt" 15 ||
+        fail "tapping the Settings search result did not foreground com.android.settings"
+    capture_ui_xml settings-launched.xml || fail "launched Settings UI XML capture failed"
+    capture_screenshot_to settings-launched.png
+    [ -s "$ARTIFACTS/settings-launched.png" ] ||
+        fail "launched Settings screenshot capture failed"
+    printf 'App drawer/search: Settings was found, tapped and launched.\n' \
+        > "$ARTIFACTS/appdrawer.txt"
+    printf 'Screenshots: appdrawer.png, appdrawer-search.png, settings-launched.png.\n' \
+        >> "$ARTIFACTS/appdrawer.txt"
+    return_home app-launch-home
+    foreground_is "$ARTIFACTS/activities-app-launch-home.txt" "$PKG" ||
+        fail "launcher is not foreground after returning from Settings"
+    capture_ui_xml home-after-app-launch.xml ||
+        fail "HOME UI XML capture after the app launch failed"
+    capture_screenshot_to home-after-app-launch.png
+    [ -s "$ARTIFACTS/home-after-app-launch.png" ] ||
+        fail "HOME screenshot capture after the app launch failed"
 }
 
 fail() {
@@ -274,11 +512,12 @@ fail() {
         capture_logcat
         capture_screenshot
     fi
+    _SMOKE_EVIDENCE_CAPTURED=1
     printf 'emulator-smoke: evidence: %s\n' "$ARTIFACTS" >&2
     exit 1
 }
 
-find_aapt() {
+find_aapt() (
     for tool in aapt2 aapt; do
         if command -v "$tool" >/dev/null 2>&1; then
             command -v "$tool"
@@ -297,12 +536,35 @@ find_aapt() {
         done
     done
     return 1
+)
+
+# The mock-adb regression sources this file to exercise the real
+# open_app_drawer orchestration without touching a device. All function
+# definitions above this point are the production code under test.
+if [ "${_EMULATOR_SMOKE_SOURCE_ONLY:-0}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
+
+_SMOKE_EVIDENCE_CAPTURED=0
+
+smoke_exit_trap() {
+    _trap_status=$?
+    if [ "$_trap_status" -ne 0 ] && [ "$_SMOKE_EVIDENCE_CAPTURED" -eq 0 ]; then
+        if command -v adb >/dev/null 2>&1; then
+            capture_logcat
+            capture_screenshot
+        fi
+        printf 'emulator-smoke: FAIL: exit status %s\n' "$_trap_status" >&2
+        printf 'emulator-smoke: evidence: %s\n' "$ARTIFACTS" >&2
+    fi
+    return "$_trap_status"
 }
+trap 'smoke_exit_trap' EXIT
 
 command -v adb >/dev/null 2>&1 || fail "adb is not on PATH"
 
 if [ -z "$SERIAL" ]; then
-    devices=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+    devices=$(run_with_timeout 30 adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
     device_count=$(printf '%s\n' "$devices" | sed '/^$/d' | wc -l | tr -d ' ')
     if [ "$device_count" -ne 1 ]; then
         fail "expected exactly one adb device, found $device_count; pass --serial"
@@ -314,7 +576,7 @@ adb_cmd get-state >/dev/null 2>&1 || fail "adb device $SERIAL is not available"
 
 {
     printf 'serial=%s\n' "$SERIAL"
-    adb devices -l
+    run_with_timeout 30 adb devices -l
     adb_cmd shell getprop ro.build.version.sdk
     adb_cmd shell getprop ro.build.version.release
     adb_cmd shell getprop ro.build.type
@@ -354,12 +616,12 @@ printf 'apk=%s\n' "$APK" > "$ARTIFACTS/apk.txt"
 installed_paths=$(adb_cmd shell pm path "$PKG" 2>/dev/null | tr -d '\r' || true)
 case "$installed_paths" in
     package:*)
-        adb_cmd uninstall "$PKG" > "$ARTIFACTS/uninstall.txt" 2>&1 ||
+        ADB_TIMEOUT=60 adb_cmd uninstall "$PKG" > "$ARTIFACTS/uninstall.txt" 2>&1 ||
             fail "could not uninstall existing $PKG"
         ;;
 esac
 
-if ! adb_cmd install -t "$APK" > "$ARTIFACTS/install.txt" 2>&1; then
+if ! ADB_TIMEOUT=300 adb_cmd install -t "$APK" > "$ARTIFACTS/install.txt" 2>&1; then
     cat "$ARTIFACTS/install.txt" >&2
     fail "adb install failed"
 fi
@@ -377,7 +639,7 @@ esac
 
 base_apk=$(printf '%s\n' "$pm_paths" | sed -n 's/^package://p' | sed -n '1p')
 [ -n "$base_apk" ] || fail "could not find the installed base APK path"
-adb_cmd pull "$base_apk" "$ARTIFACTS/installed-base.apk" > "$ARTIFACTS/pull.txt" 2>&1 ||
+ADB_TIMEOUT=180 adb_cmd pull "$base_apk" "$ARTIFACTS/installed-base.apk" > "$ARTIFACTS/pull.txt" 2>&1 ||
     fail "could not pull the installed APK"
 
 AAPT=$(find_aapt) || fail "aapt2/aapt not found; install Android SDK build-tools"
@@ -467,7 +729,8 @@ home_resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activit
 capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
 
-verify_home_welcome
+verify_nothing_home
+exercise_app_drawer
 
 capture_app_info
 return_home app-info
