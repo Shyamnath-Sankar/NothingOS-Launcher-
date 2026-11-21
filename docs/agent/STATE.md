@@ -3,103 +3,83 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P2a (Play applicationId) — complete; P2b (labels/icons/NOTICE) next
-- branch: agent/p2a-implement-only-the-approve
+- current_phase: P2b (Play label + verification prep) — complete; P2 icon slice deferred
+- branch: agent/p2b-focused-label-and-verifica
 - pr: pending (agent-dev workflow opens it after this run)
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p2a-implement-only-the-approve
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p2b-focused-label-and-verifica
 
 ## done
-- P2a: Play-only `applicationId` is now `com.launchernos.dotwellabs` in `build.gradle`; it replaces
-  the old `app.lawnchair.play` (and the superseded plan value `dev.shyamnath.launcher`). github
-  (`app.lawnchair`) and nightly (`app.lawnchair.nightly`) are unchanged, as are `namespace
-  com.android.launcher3`, `minSdk 26`, `targetSdk 37`, manifest permissions, labels and icons.
-  Because the inherited `launcher_component` resValue derives from `${applicationId}`, it follows
-  the new Play id automatically.
-- P2a: added `scripts/play-identity-guard.sh` (+ `scripts/play-identity-guard-test.sh`). The guard
-  asserts the approved Play id, preserved github/nightly ids, namespace, minSdk/targetSdk, rejects
-  superseded ids, and fails on any `android:authorities` not derived from `${applicationId}` /
-  `${packageName}` (provider-authority collision guard). It is not wired into CI yet (workflows
-  intentionally untouched).
-- P2a docs: `AGENTS.md` §2 applicationId row marked DECIDED (Play only); spec D5 and plan P2 now
-  carry the approved id instead of the stale `dev.shyamnath.launcher`.
-- P2a tests actually run (no Gradle): `sh scripts/play-identity-guard-test.sh` → 8/8 pass;
-  `sh scripts/manifest-guard-test.sh` → all 31 existing tests pass; `sh scripts/play-identity-guard.sh`
-  on the repo → OK. No APK/merged-manifest was produced in this run.
-- P1c: `play/AndroidManifest.xml` now declares `ACCESS_HIDDEN_PROFILES`, so the hidden private
-  profile is discoverable and its inherited container can render.
-- P1c: removed the remaining bug-report components from Play — `app.lawnchair.bugreport.FileProvider`
-  (provider) and `app.lawnchair.bugreport.BugReportReceiver` (receiver), alongside the
-  `UploaderService` removed in P1b. The bug-report subsystem is now absent from Play.
-- P1c: `scripts/manifest-guard.sh` now flags every `app.lawnchair.bugreport.*` component and
-  requires `ACCESS_HIDDEN_PROFILES` in the merged manifest.
-  `sh scripts/manifest-guard-test.sh` → all 31 tests pass (includes the new provider/receiver,
-  required-permission and overlay cases).
-- P1c: search filters apps from locked profiles via `Sequence<AppInfo>.filterLockedProfiles()` in
-  `SearchUtils.kt`, applied in both `SearchUtils` and `AppSearchProvider`. It drops
-  `FLAG_DISABLED_QUIET_USER` apps, so locked private-space and paused work-profile apps never
-  surface in search. Added `tests/multivalentTests/.../LockedProfileSearchFilterTest.kt` (Soong
-  test source set; Gradle was not run per task).
-- P1c recents: no code change needed. `RecentTasksList` calls
-  `SystemUiProxy.getRecentTasks(numTasks, currentUserId)`, so recents only ever contains
-  current-user tasks; locked private/work profiles are other users and cannot surface.
-- P1c drawer: inherited `AlphabeticalAppsList`/`PrivateProfileManager` already hides private-space
-  apps unless the container is enabled; no change needed.
-- P1b: `play/AndroidManifest.xml` removes `app.lawnchair.LawnchairAccessibilityService` and the
-  bug-report `UploaderService`; Play settings hide the accessibility-backed gesture/sleep options.
-- P1a: `play/AndroidManifest.xml` removes the AGENTS.md §7 non-core permissions and the Google QSB
-  / Smartspacer components with `tools:node="remove"`, wired as both the play-flavor and
-  `lawnWithQuickstepPlay` variant manifest.
-- Gradle was not run (per task); CI on the PR builds `assembleLawnWithQuickstepPlayDebug`.
+- P2b label: Play-only `play_app_name` = **DotWel Launcher** (single l) in
+  `play/res/values/strings.xml`; the Play `<application>` and launcher `<activity>` labels reference
+  it. `github`/`nightly` keep the inherited `derived_app_name` ("Lawnchair"). Icons/`mipmap-*` were
+  deliberately not touched; they are a separate visually-reviewed slice.
+- P2b NOTICE: added a restrained original-contribution entry and stated the display label is not a
+  name-clearance claim. The public Play listing name remains OPEN.
+- P2b docs: `AGENTS.md` §2 has a DECIDED Play display-label row (listing name still OPEN); spec §7
+  and plan P2 record the label and the icon deferral.
+- P2b verification: added `scripts/verify-play-build.sh` (+ `scripts/verify-play-build-test.sh`).
+  It runs the existing identity/manifest fixture suites, locates the Gradle-merged
+  `lawnWithQuickstepPlayDebug` manifest under `build/intermediates/merged_manifest(s)`, fails closed
+  on zero or more than one candidate, runs `manifest-guard.sh` on it, then checks the merged
+  `package` equals the Play applicationId plus the existing debug `applicationIdSuffix` (`.debug`)
+  and that every provider authority equals or is prefixed by that resolved id. Workflows were not
+  touched; the coordinator wires it into CI.
+- P2b tests actually run (no Gradle): `sh scripts/play-identity-guard-test.sh` → 8/8;
+  `sh scripts/manifest-guard-test.sh` → 31/31; `sh scripts/verify-play-build-test.sh` → 7/7;
+  `sh -n` clean on all four scripts; `sh scripts/play-identity-guard.sh .` → OK.
+- P2b `LockedProfileSearchFilterTest`: not mirrored into Gradle. Exact blocker recorded below.
+- Prior P2a: Play-only applicationId `com.launchernos.dotwellabs`; static identity/authority guard.
+- Prior P1a/P1b/P1c: Play manifest overlay, accessibility/bug-report/feed removal,
+  `ACCESS_HIDDEN_PROFILES`, locked-profile search filter, guard updates.
 
 ## next
-- P2b (remaining P2): app label, launcher activity label, icon, `mipmap-*`, default strings; keep
-  the Apache `NOTICE` and add our `NOTICE` entry. Public Play listing/display name is still OPEN —
-  do not invent branding.
-- P9: wire `scripts/manifest-guard.sh` and `scripts/play-identity-guard.sh` into CI (workflows were
-  intentionally not touched in P1a/P1b/P1c/P2a).
-- P1 verification still pending (do not mark passed):
-  - merged-manifest guard must run against the real Gradle-merged `lawnWithQuickstepPlay` manifest in
-    CI; the guard fixture tests passing is not that verification.
-  - runtime private-space validation on a device/emulator (locked profile hidden from drawer, search
-    and recents) is still pending; APK CI passing is not that validation.
+- P2 remaining: original icon / `mipmap-*` slice with visual review (no Nothing assets).
+- P9: wire `scripts/verify-play-build.sh` (and its fixture suites) into CI after
+  `assembleLawnWithQuickstepPlayDebug`; keep workflows as the only execution hook.
+- P1/P2 runtime gates still pending (do not mark passed): merged-manifest guard on the real CI
+  build; install + default-home on emulator; private-space locked-profile validation.
 
 ## blockers
-- P1 merged-manifest guard verification: pending real merged-manifest run in CI.
-- P1 runtime private-space validation: pending device/emulator check.
-- No local Gradle run was possible by task rule; APK build is deferred to PR CI.
+- No Gradle run in this coding session, so no APK or merged manifest exists locally. Running
+  `scripts/verify-play-build.sh` in this checkout correctly fails closed until CI assembles the APK.
+- P1 merged-manifest guard verification: pending the real CI-merged manifest run.
+- P1 runtime private-space validation: pending device/emulator check (drawer, search, recents).
+- P2 default-home gate: pending emulator install and `RoleManager.ROLE_HOME` request.
+- `LockedProfileSearchFilterTest` Gradle mirror blocked: the repo has no Gradle unit-test source set
+  (root `build.gradle` has no `testOptions` / `testImplementation` / `src/test`), and the test lives
+  in the Soong-only `tests/multivalentTests/src/app/lawnchair/search/algorithms/` tree. It needs
+  `@RunWith(AndroidJUnit4::class)`, `androidx.test.ext:junit`, Truth and Android framework classes
+  (`ComponentName`, `UserHandle`). `libs.versions.toml` has junit/truth/androidx-junit but **no
+  Robolectric**, which `AndroidJUnit4` requires on the JVM and which `UserHandle.of()` needs to
+  avoid the "not mocked" error. Adding it means a new dependency plus `testOptions.unitTests` and a
+  test source dir — not safe/small for this run. Exact future path:
+  `src/test/java/app/lawnchair/search/algorithms/LockedProfileSearchFilterTest.kt` with
+  `testImplementation` junit/truth/androidx-junit and `org.robolectric:robolectric`, or extract the
+  status-flag predicate into a pure function and test that.
 
 ## decisions locked
 - applicationId for the Play rebrand: com.launchernos.dotwellabs (approved by the owner 2026-11-21).
-- Public Play listing name: OPEN, release blocker, do not guess.
+- Play display label: DotWel Launcher (single l), approved 2026-11-21; display label only.
+- Public Play listing name: OPEN, release blocker, do not guess or claim clearance.
 - Free models/services only. Cache heavy installs in workflows.
 
 ## rulings this run
-- P1c search filter uses `AppInfo.runtimeStatusFlags & FLAG_DISABLED_QUIET_USER` rather than a
-  per-result `UserManager.isQuietModeEnabled` binder call. `LoaderTask` and
-  `PackageUpdatedTask.OP_USER_AVAILABILITY_CHANGE` keep that flag in sync, so the filter is
-  current and cheap. Cost if wrong: if a future code path creates `AppInfo` without the quiet
-  flag, locked-profile apps could still surface in search.
-- P1c recents is covered by the platform: `getRecentTasks` is scoped to `currentUserId`, so no
-  app-side filter is needed. Cost if wrong: a future recents source that queries all users would
-  need its own locked-profile filter.
-- The guard now *requires* `ACCESS_HIDDEN_PROFILES`, which changes it from a pure forbidden-entry
-  check to also assert a Play invariant. The clean-manifest fixture was updated accordingly.
-  Cost if wrong: the guard fails on any manifest (e.g. a non-Play one) that legitimately omits the
-  permission.
-- Prior P1a/P1b rulings retained (play overlay wired as variant manifest; guard red until P1b;
-  settings gating via `isPlayStoreFlavor()`).
-- P2a: the identity guard is static (parses `build.gradle` and manifest sources) because Gradle is
-  not run in this environment. It catches a hardcoded provider authority before merge, but only a
-  real merged manifest proves the final authorities. Cost if wrong: a Gradle-generated literal
-  authority from a dependency would not be seen by the static scan.
-- P2a: the guard deliberately scans every `AndroidManifest*.xml` outside `build/`, including test
-  manifests. They currently use `${applicationId}` / `${packageName}`, so the check is quiet; a
-  future literal test authority would need an explicit allowance. Cost if wrong: false positive on
-  a non-shipped test manifest.
-- P2a: `AGENTS.md` §2 was updated from OPEN to DECIDED for the already-approved Play id only; the
-  public listing name remains OPEN.
+- P2b: implemented the label as a Play-only `play_app_name` resource referenced by the Play manifest
+  instead of a play-flavor `derived_app_name` override, because build-type `resValue` outranks flavor
+  resources and would have leaked the label or been ignored. Cost if wrong: the in-app
+  `derived_app_name` strings (About/dialogs) still say "Lawnchair" for Play until a follow-up uses
+  variant-level resValues.
+- P2b: added `tools:replace="android:label"` on the Play `<application>` so the different label is
+  explicit and merge-safe. Cost if wrong: harmless duplicate of the inherited marker.
+- P2b: `verify-play-build.sh` fails closed on more than one merged-manifest candidate rather than
+  picking one. Cost if wrong: a future AGP emitting two identical paths needs the search narrowed.
+- P2b: did not add Robolectric or a Gradle test source set just to mirror one test. Cost if wrong:
+  `filterLockedProfiles` remains covered by the Soong multivalent suite, not Gradle CI.
+- Prior P1/P2a rulings retained (see git history).
 
 ## log
+- 2026-11-21: P2b complete (Play-only DotWel Launcher label + NOTICE/docs + merged-manifest
+  verification script; icons deferred; no Gradle run)
 - 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + static identity/
   authority guard + docs; no Gradle run)
 - 2026-11-21: P1c complete (private-space permission + locked-profile search filter + bug-report
