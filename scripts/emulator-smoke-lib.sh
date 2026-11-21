@@ -4,6 +4,45 @@
 # These functions only read files; they never touch adb. That keeps the
 # foreground and UIAutomator parsing logic unit-testable with captured
 # artifacts instead of a live emulator.
+#
+# Every helper runs in a subshell so its variables cannot clobber a caller's
+# loop state (POSIX sh has no portable `local`).
+
+# Run a command with a bounded wall-clock timeout. GNU timeout is used when
+# available; otherwise the command runs in the background and is killed after
+# the limit. The diagnostic names the operation so a hung adb/uiautomator call
+# is visible in the evidence log.
+run_with_timeout() (
+    rwt_seconds=$1
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        rwt_status=0
+        timeout "$rwt_seconds" "$@" || rwt_status=$?
+        if [ "$rwt_status" -eq 124 ]; then
+            printf 'run_with_timeout: timed out after %ss: %s\n' \
+                "$rwt_seconds" "$*" >&2
+        fi
+        exit "$rwt_status"
+    fi
+    "$@" &
+    rwt_pid=$!
+    (
+        sleep "$rwt_seconds"
+        kill -TERM "$rwt_pid" 2>/dev/null || true
+        sleep 1
+        kill -KILL "$rwt_pid" 2>/dev/null || true
+    ) &
+    rwt_watch=$!
+    rwt_status=0
+    wait "$rwt_pid" || rwt_status=$?
+    kill "$rwt_watch" 2>/dev/null || true
+    wait "$rwt_watch" 2>/dev/null || true
+    if [ "$rwt_status" -eq 143 ] || [ "$rwt_status" -eq 137 ]; then
+        printf 'run_with_timeout: timed out after %ss: %s\n' \
+            "$rwt_seconds" "$*" >&2
+    fi
+    exit "$rwt_status"
+)
 
 # Print the component of the live resumed activity from a
 # `dumpsys activity activities` dump.
@@ -11,7 +50,7 @@
 # `topResumedActivity` is authoritative; `mResumedActivity` is the fallback.
 # Historical task records also mention package names, so only these two fields
 # may be treated as "foreground".
-resumed_component() {
+resumed_component() (
     dump=$1
     for field in topResumedActivity mResumedActivity; do
         component=$(grep -E "(^|[[:space:]])$field[=:]" "$dump" |
@@ -23,12 +62,12 @@ resumed_component() {
         fi
     done
     return 0
-}
+)
 
 # Succeed only when the resumed component belongs to exactly the given package.
 # The trailing slash keeps com.android.settings from matching
 # com.android.settings.intelligence.
-foreground_is() {
+foreground_is() (
     dump=$1
     expected_pkg=$2
     component=$(resumed_component "$dump")
@@ -36,24 +75,24 @@ foreground_is() {
         "$expected_pkg"/*) return 0 ;;
         *) return 1 ;;
     esac
-}
+)
 
 # Print the root bounds ("x1 y1 x2 y2") of a UIAutomator XML dump. UIAutomator
 # emits the window root as the first node, so its bounds are the visible display
 # area for this capture (insets included, unlike a fixed wm-size assumption).
-ui_root_bounds() {
+ui_root_bounds() (
     xml=$1
     [ -s "$xml" ] || return 0
     tr '>' '\n' < "$xml" |
         sed -n 's/.*bounds="\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]".*/\1 \2 \3 \4/p' |
         sed -n '1p'
-}
+)
 
 # Print the top y of the lowest labelled row (the hotseat/dock) from a
 # UIAutomator dump, using the root bounds to exclude the upper workspace. The
 # row is found by position, not by a hard-coded app name, so it survives
 # emulator locale changes. Prints nothing when the dump exposes no such row.
-ui_dock_top() {
+ui_dock_top() (
     xml=$1
     root=$2
     [ -s "$xml" ] || return 0
@@ -96,13 +135,13 @@ ui_dock_top() {
                 if (best != "") print best
             }
         '
-}
+)
 
 # Compute a safe upward swipe for opening the app drawer. $1/$2 are the
 # measured display width/height; $3 is the measured hotseat top (optional).
 # The swipe starts inside the empty workspace above the dock, never on a dock
 # icon, and ends in the upper part of the workspace. Prints "x1 y1 x2 y2".
-drawer_swipe_target() {
+drawer_swipe_target() (
     width=$1
     height=$2
     hotseat_top=${3:-}
@@ -132,7 +171,7 @@ drawer_swipe_target() {
         return 1
     fi
     printf '%s %s %s %s\n' "$x" "$start_y" "$x" "$end_y"
-}
+)
 
 # Succeed only when the UIAutomator dump shows an actual app-drawer search
 # input or app-list container. The launcher inflates these while HOME is
@@ -140,7 +179,7 @@ drawer_swipe_target() {
 # reference HOME dump is supplied, the drawer must also differ from it; this
 # rejects the CI68 case where a swipe did nothing and the dump stayed
 # byte-identical to HOME.
-drawer_is_ready() {
+drawer_is_ready() (
     xml=$1
     reference=${2:-}
     [ -s "$xml" ] || return 1
@@ -157,7 +196,7 @@ drawer_is_ready() {
         return 0
     fi
     return 1
-}
+)
 
 # Print the bounds ("x1 y1 x2 y2") of the clickable node that represents the
 # app labelled $2 in a UIAutomator XML dump. A clickable node that matches
@@ -165,7 +204,7 @@ drawer_is_ready() {
 # is preferred over a bare non-clickable label. This avoids tapping an earlier
 # "Settings" header instead of the real app result. Returns nothing when no
 # node carries that exact text or content description.
-ui_clickable_label_bounds() {
+ui_clickable_label_bounds() (
     xml=$1
     label=$2
     [ -s "$xml" ] || return 0
@@ -230,4 +269,4 @@ ui_clickable_label_bounds() {
                 else if (fallback != "") emit(fallback)
             }
         '
-}
+)

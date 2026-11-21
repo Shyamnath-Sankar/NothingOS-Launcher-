@@ -39,6 +39,7 @@ sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-test.sh"
+sh "$SCRIPT_DIR/emulator-smoke-drawer-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
