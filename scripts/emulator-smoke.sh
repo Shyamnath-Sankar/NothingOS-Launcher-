@@ -544,7 +544,7 @@ trap 'smoke_exit_trap' EXIT
 command -v adb >/dev/null 2>&1 || fail "adb is not on PATH"
 
 if [ -z "$SERIAL" ]; then
-    devices=$(adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
+    devices=$(run_with_timeout 30 adb devices | awk 'NR > 1 && $2 == "device" { print $1 }')
     device_count=$(printf '%s\n' "$devices" | sed '/^$/d' | wc -l | tr -d ' ')
     if [ "$device_count" -ne 1 ]; then
         fail "expected exactly one adb device, found $device_count; pass --serial"
@@ -556,7 +556,7 @@ adb_cmd get-state >/dev/null 2>&1 || fail "adb device $SERIAL is not available"
 
 {
     printf 'serial=%s\n' "$SERIAL"
-    adb devices -l
+    run_with_timeout 30 adb devices -l
     adb_cmd shell getprop ro.build.version.sdk
     adb_cmd shell getprop ro.build.version.release
     adb_cmd shell getprop ro.build.type
