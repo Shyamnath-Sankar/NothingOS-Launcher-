@@ -40,10 +40,13 @@ class SleepGestureHandler(context: Context) : GestureHandler(context) {
         val pref = PreferenceManager2.getInstance(context).sleepMode.get().first()
         val method = when (pref) {
             SleepMode.AUTO -> methods.first { it.isSupported() }
+
             SleepMode.ROOT -> methods.filterIsInstance<SleepMethodRoot>().first()
+
             SleepMode.ACCESSIBILITY ->
                 methods.filterIsInstance<SleepMethodPieAccessibility>().firstOrNull()
                     ?: methods.first { it.isSupported() }
+
             SleepMode.DEVICE_ADMIN -> methods.filterIsInstance<SleepMethodDeviceAdmin>().first()
         }
 
