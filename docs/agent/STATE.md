@@ -3,15 +3,43 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (bounded finish)**. The saved Play-gated header,
-  clock, chrome, icon defaults, page dots and smoke work is now finished and statically verified.
-  CI and pixel review are still pending, so P3b is not "visually done".
+- current_phase: **P3b — actual HOME visual slice (smoke repair only)**. This run fixed the
+  emulator-smoke false positive and added a focused regression. No visual change was made. Colored
+  icons and the blue QSB are still pending pixel repair, and the header fits the pinned row but is
+  **not visually ready**. P3b is not visually done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `ac31c4e` (base `main` at `0df97ff`)
-- pr: none opened by the agent. The coordinator opens the PR for this branch. Do not create a
-  duplicate. The previous P3a PR #10 is separate and already merged history.
+- head: `84a0493` (base `main` at `0df97ff`)
+- pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — P3b bounded finish)
+## done (this run — P3b smoke repair)
+
+- **Root cause of the false positive:** `exercise_app_drawer` grepped the entire
+  `activities-app-launch.txt` dump for `com.android.settings/`. Task history also names that
+  package, so a historical Settings record passed while `topResumedActivity` was still the
+  launcher (CI66 run `44916179774`). The Settings result tap also used the first `text="Settings"`
+  node, which can be a header rather than the app.
+- **Fix:** new pure helpers in `scripts/emulator-smoke-lib.sh`:
+  `resumed_component` reads only `topResumedActivity`/`mResumedActivity`;
+  `foreground_is` requires the exact `com.android.settings/` package boundary (so
+  `com.android.settings.intelligence` cannot match); `ui_clickable_label_bounds` prefers a
+  clickable Settings node or its nearest clickable ancestor over an earlier bare label.
+- `scripts/emulator-smoke.sh` now polls `wait_for_foreground` (bounded 10 s) after the real drawer
+  search tap, captures `settings-launched.xml` + `.png`, then returns HOME, asserts the launcher is
+  foreground, and captures `home-after-app-launch.xml` + `.png`. There is no `am start` shortcut to
+  Settings. All other checks are unchanged.
+- **Focused regression:** `scripts/emulator-smoke-test.sh` covers the historical-Settings dump,
+  exact package boundary, the `mResumedActivity` fallback, clickable-vs-header node choice,
+  content-desc matching, and static assertions that the drawer flow taps the result and never
+  launches Settings directly. It is wired into `scripts/verify-play-build.sh`. The existing guard
+  suites and the 16 existing unit tests were not modified.
+- Pending visuals are untouched: **colored icons and the blue QSB still need pixel repair; the
+  header fits the pinned row but is not visually ready.** Private-space runtime UI, the in-app
+  `RoleManager.ROLE_HOME` prompt and the non-Play runtime control remain pending. No Gradle,
+  workflow, SDK, manifest, permission, applicationId, signing, release, paid-service or YouTube
+  change was made. The untracked local `w/` scratch directory was left uncommitted.
+
+## done (prior run — P3b bounded finish)
 
 - Reviewed the existing branch diff against `main` and kept the saved work rather than restarting.
   The branch already contained: the Play-only `NOTHINGUI_HOME_ENABLED` flag, the original
@@ -45,33 +73,41 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`
-- `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed, including the new
+- This run: `sh scripts/emulator-smoke-test.sh` -> 14/14 passed.
+- This run: `sh scripts/nothingui-home-guard-test.sh` -> all passed (existing suite unchanged);
+  `nothingui-theme-guard-test.sh` -> all passed; `play-brand-guard-test.sh`,
+  `play-identity-guard-test.sh`, `manifest-guard-test.sh`, `verify-play-build-test.sh` -> all pass.
+- This run: `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh`,
+  `emulator-smoke-test.sh`; `git diff --check` clean.
+- Prior run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`
+- Prior run: `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed, including the new
   inherited-floating/wallpaper negative.
-- `sh scripts/nothingui-theme-guard.sh "$PWD"` -> OK; `nothingui-theme-guard-test.sh` -> 9/9.
-- `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
+- Prior run: `sh scripts/nothingui-theme-guard.sh "$PWD"` -> OK; `nothingui-theme-guard-test.sh` -> 9/9.
+- Prior run: `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
   `verify-play-build-test.sh` -> all pass.
-- `sh -n` clean on the edited smoke and home-guard scripts; `git diff --check` clean.
-- `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the Android-dependent
-  header/chrome/QSB files produced only expected unresolved-Android-reference cascades, no syntax
-  errors.
+- Prior run: `sh -n` clean on the edited smoke and home-guard scripts; `git diff --check` clean.
+- Prior run: `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the
+  Android-dependent header/chrome/QSB files produced only expected unresolved-Android-reference
+  cascades, no syntax errors.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
   branch is statically verified only.
 
 ## next
 
-- Coordinator opens the PR for `agent/p3b-actual-home-visual-slice-n` and runs CI.
-- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; Play unit tests including
-  `NothingUiHomeClockTest` (5 tests) and the existing 4-test `LockedProfilePredicateTest`;
-  `verify-play-build.sh` including the home guard at 13/13; and the API 37 emulator smoke.
-- Review the smoke artifacts before claiming the visuals:
-  - `home.xml` / `home.png`: live clock and date visible, no `Lawnchair` text, header not clipped
-    in the pinned row.
-  - `appdrawer.xml` / `appdrawer-search.png`: search returns Settings and tapping it launches
-    `com.android.settings`, then HOME resumes.
-  - Confirm the neutral card/ink pair reads with contrast in both light and dark themes.
-- Only after the PNGs are inspected can P3b be called visually complete. Do not claim finished
-  visuals from source guards alone.
+- Coordinator reviews the `84a0493` diff and approves CI on PR #11. Do not open a duplicate PR.
+- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
+  tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
+  `verify-play-build.sh` including `emulator-smoke-test.sh` (14/14) and the home guard (13/13);
+  and the API 37 emulator smoke.
+- Review the new smoke artifacts before claiming the repair:
+  - `activities-app-launch.txt`: only `topResumedActivity`/`mResumedActivity` lines are used; the
+    resumed package must be exactly `com.android.settings/`.
+  - `settings-launched.xml` / `settings-launched.png`: captured while Settings is foreground.
+  - `home-after-app-launch.xml` / `home-after-app-launch.png`: captured after HOME, with the
+    launcher foreground.
+- Visual review is still outstanding: **colored icons and the blue QSB need pixel repair; the
+  header fits the pinned row but is not visually ready.** Do not claim finished visuals from source
+  guards alone.
 - P4 (drawer restyle) follows P3b; the inherited drawer/search/drag/widgets engine must stay.
 - Pending gates: private-space runtime UI, the in-app `RoleManager` prompt, and a non-Play runtime
   control build remain unverified.
@@ -80,6 +116,8 @@ when no task input is given, and continues from "next".
 
 - No local Gradle build or emulator run is allowed here, so CI and pixels are unverified.
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
+- P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
+  is not visually ready.
 
 ## decisions locked
 
@@ -90,6 +128,14 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P3b smoke repair: the app-launch assertion reads only the live
+  `topResumedActivity`/`mResumedActivity` fields and matches the exact package boundary; task
+  history is never treated as foreground. Cost if wrong: a dump that omits both fields fails the
+  smoke instead of passing on a historical record.
+- P3b smoke repair: the drawer taps the clickable Settings result node (or its nearest clickable
+  ancestor), never an earlier bare `text="Settings"` label. Cost if wrong: if the result container
+  is not clickable the nearest ancestor is used, and if no clickable node exists the label bounds
+  are the last-resort fallback.
 - P3b chrome pair: use the original `Paper`/`Ink` (light) and `Gray900`/`Paper` (dark) pair selected
   by `R.attr.isMainColorDark`, not the inherited wallpaper text plus floating surface. Cost if
   wrong: with a light theme on a dark wallpaper the card is light rather than wallpaper-matched,
@@ -148,6 +194,13 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3b smoke repair on `agent/p3b-actual-home-visual-slice-n` (`84a0493`). The app-launch
+  false positive came from grepping the whole dumpsys dump; only the live resumed fields now count,
+  polled with a bounded wait. The drawer taps the clickable Settings result instead of the first
+  text match, captures `settings-launched` and `home-after-app-launch` XML/PNG, and fails if either
+  foreground assertion is wrong. Added `emulator-smoke-lib.sh` and a 14-case regression wired into
+  `verify-play-build.sh`; existing guard suites and 16 unit tests unchanged. Colored icons + blue
+  QSB still need pixel repair; the header fits but is not visually ready. No visual edits this run.
 - 2026-11-21: P3b bounded finish on `agent/p3b-actual-home-visual-slice-n` (`ac31c4e`). Fixed the
   chrome white-on-white risk with an explicit neutral surface/ink pair selected by the inherited
   light/dark theme, shared it across the header/QSB/page dots, sized the header to the single pinned
