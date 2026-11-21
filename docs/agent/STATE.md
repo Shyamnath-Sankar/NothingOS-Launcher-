@@ -3,19 +3,57 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P3b — actual HOME visual slice (drawer-readiness smoke repair only)**. CI68
-  (`44921875638`) was compile/style/unit green but the API 37 smoke failed at the drawer step
-  (`appdrawer` did not expose a search label): the coordinator's `appdrawer.xml` was identical to
-  `home.xml`. Root cause was the swipe start at 75% height, inside the dock/Phone hit region, so the
-  all-apps transition never began. This run makes `open_app_drawer` bounded and state-based. No app
+- current_phase: **P3b — actual HOME visual slice (smoke harness retry-state repair only)**. CI70
+  (`44924192206`) was canceled after 22m because the real `scripts/emulator-smoke.sh` reused POSIX
+  global helper variables: `capture_ui_xml` reset the outer `open_app_drawer` attempt counter on
+  every capture, so the intended 4-attempt limit could repeat forever. This run isolates every
+  helper, bounds the adb/uiautomator calls, and adds an executable mock-adb regression. No app
   visual change was made. Colored icons and the blue QSB are still pending pixel repair, and the
   header fits the pinned row but is **not visually ready**. P3b is not visually done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `83c3ad8` (code head; this closeout docs commit follows it; base `main` at `0df97ff`)
+- head: `50176d8` (code head; this closeout docs commit follows it; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
-## done (this run — P3b drawer-readiness smoke repair)
+## done (this run — P3b smoke harness retry-state repair)
+
+- **CI70 hang read correctly:** run `44924192206` on PR #11 was canceled after 22m. The real
+  `open_app_drawer` loop never advanced because every helper was a plain POSIX function writing
+  globals. `capture_ui_xml` set `attempt=1` on each capture, and `wait_for_launcher_idle` /
+  `wait_for_foreground` did the same, so the outer `attempt` was reset before it could reach
+  `max_attempts=4`. The helper variables `name`, `label`, `target`, `xml`, `root`, `width` and
+  `height` were also shared with callers. No assertion was weakened.
+- **Helper isolation:** all pure/parsing helpers in `scripts/emulator-smoke-lib.sh` and the smoke
+  script are now POSIX subshell functions `foo() ( ... )`, so their variables cannot leak. Helpers
+  that must call `fail`/`exit` stay in the current shell but use unique names (`_rh_*`, `_cai_*`,
+  `_cab_*`, `_cts_*`, `_vnh_*`, `_ead_*`). The `open_app_drawer` loop now keeps its `attempt` and
+  `poll` state, while the exact Settings foreground proof and the real drawer UI path are unchanged.
+- **Bounded operations:** added `run_with_timeout` (GNU `timeout`, or a background/kill fallback)
+  and bounded every `adb_cmd` call: 60s default, 20s for uiautomator dump/pull and screencap, 30s
+  for logcat, 300s for install, 180s for the base-APK pull, 60s for uninstall. Timeouts print the
+  operation to stderr.
+- **Evidence on failure:** `fail` marks the evidence as captured, and an `EXIT` trap in the live
+  flow captures logcat + screenshot and prints the artifact directory for any other nonzero exit.
+  This keeps evidence for `set -e` failures that do not go through `fail`.
+- **Mock-adb regression:** added executable `scripts/emulator-smoke-drawer-test.sh`. A mock `adb`
+  returns an unchanged HOME hierarchy, the test sources the real smoke script in a source-only mode
+  (no device), runs the real `open_app_drawer`, and requires exit 1 (not a timeout), exactly four
+  swipes, before/after XML+PNG and swipe command/log per attempt, retained logcat+screenshot, and
+  the terminal failure/evidence message, all inside a 30s host timeout. It is wired into
+  `scripts/verify-play-build.sh`. Temporarily reverting the `capture_ui_xml` subshell reproduces
+  the old behavior (timeout 124 and more than four swipes), so the regression is real.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-drawer-test.sh` passes
+  (31 checks); `emulator-smoke-test.sh` 34/34; `verify-play-build-test.sh` all pass;
+  `nothingui-home-guard-test.sh` 13/13; `nothingui-theme-guard-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. The regression was also proven to fail against a
+  temporary reverted copy of the smoke script.
+- **Scope reminder:** this run changed only the smoke harness and its tests. No app visual change;
+  the actual HOME grid/drawer visuals, colored icons and blue QSB are still pending and must not be
+  claimed as visually ready. User workspace/wallpaper choices were not touched. No workflow, SDK,
+  manifest, permission, applicationId, signing or Gradle change was made. The untracked local `w/`
+  scratch directory was left uncommitted.
+
+## done (prior run — P3b drawer-readiness smoke repair)
 
 - **CI68 failure read correctly:** run `44921875638` on PR #11 was green for compile/style/unit but
   the API 37 smoke failed at `appdrawer` with no search label. The coordinator downloaded the actual
@@ -110,11 +148,15 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Coordinator reviews the `83c3ad8` diff and approves CI on PR #11. Do not open a duplicate PR.
+- Coordinator reviews the `50176d8` diff and approves CI on PR #11. Do not open a duplicate PR.
 - CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; the existing 16 Play unit
   tests unchanged (`NothingUiHomeClockTest` 5 + `LockedProfilePredicateTest` 4 + the rest);
-  `verify-play-build.sh` including `emulator-smoke-test.sh` (34/34) and the home guard (13/13);
-  and the API 37 emulator smoke.
+  `verify-play-build.sh` including `emulator-smoke-test.sh` (34/34), the new
+  `emulator-smoke-drawer-test.sh` (31 checks) and the home guard (13/13); and the API 37 emulator
+  smoke.
+- Confirm CI70's hang is gone: the API 37 smoke must finish the drawer phase instead of running past
+  22m. The bounded retry must produce at most four `appdrawer-attempt-*` sets; if readiness fails,
+  the run must exit nonzero with the retained evidence, not loop.
 - Review the new drawer artifacts before claiming the repair:
   - `appdrawer-swipe-log.txt` and `appdrawer-swipe-N.txt`: the start y must be above the measured
     dock top, not the old 75% point;
@@ -138,9 +180,10 @@ when no task input is given, and continues from "next".
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
 - P3b visuals: colored icons and the blue QSB are still pending pixel repair; the header fits but
   is not visually ready.
-- P3b drawer smoke: the new geometry is statically verified only. CI68's `ColorBuffer74` log noise
-  is not accepted as an infra excuse; the next API 37 run must show a real drawer transition or
-  fail with the new per-attempt evidence.
+- P3b drawer smoke: CI70 was canceled after 22m because the retry counter was clobbered by helper
+  globals. The fix and its mock-adb regression are pushed on `50176d8`, but a new API 37 run must
+  still prove the real device transition (or fail with per-attempt evidence). CI68's
+  `ColorBuffer74` log noise is not accepted as an infra excuse.
 
 ## decisions locked
 
@@ -230,6 +273,17 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3b smoke harness retry-state repair on `agent/p3b-actual-home-visual-slice-n`
+  (`d5122ad`, `50176d8`). CI70 (`44924192206`) was canceled after 22m because plain POSIX helper
+  functions shared globals: `capture_ui_xml` reset the outer `open_app_drawer` `attempt`, so the
+  4-attempt loop could repeat forever; `name`/`label`/`target`/`xml` also leaked between helpers and
+  callers. Pure helpers are now subshell functions, effectful helpers use unique `_*` names, every
+  adb/uiautomator call is bounded by `run_with_timeout`, and an `EXIT` trap retains evidence on
+  failure. Added executable `emulator-smoke-drawer-test.sh` (mock adb, real `open_app_drawer`,
+  unchanged HOME, exactly four swipes, per-attempt evidence, exit 1 inside 30s) and wired it into
+  `verify-play-build.sh`; a temporary revert reproduces the old timeout/5+ swipes. Local shell
+  suites pass; no Gradle/emulator run here. Colored icons + blue QSB still need pixel repair; header
+  fits but is not visually ready.
 - 2026-11-21: P3b drawer-readiness repair on `agent/p3b-actual-home-visual-slice-n` (`522516b`,
   `fb5aa61`, `83c3ad8`). CI68 (`44921875638`) was compile/style/unit green but the API 37 smoke failed because
   `appdrawer.xml` was identical to `home.xml`; the 75%-height swipe started inside the dock/Phone
