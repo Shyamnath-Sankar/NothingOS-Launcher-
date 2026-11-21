@@ -3,159 +3,83 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P3a (theme foundation only) — system-bar contrast repair for the DEBUG+Play theme
-  sample. CI62 run `44909523145` on `e359a9a` was green (actual JUnit XML: 7 token + 4 predicate
-  tests, 0 skipped), but coordinator inspection of the real `theme-sample-dark`/`theme-sample-light`
-  PNGs found the dark sample keeping dark status/nav icons on the dark surface. Root cause is fixed
-  this run; CI and pixel re-review on the new head are pending. P3a is not complete.
-- branch: agent/p3a-theme-foundation-only-star
-- pr: #10 (existing PR for this branch; resume it, do not open a duplicate):
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/10
-  PR9 is merged to `main` at `02ac058`.
+- current_phase: **P3b — actual HOME visual slice (bounded finish)**. The saved Play-gated header,
+  clock, chrome, icon defaults, page dots and smoke work is now finished and statically verified.
+  CI and pixel review are still pending, so P3b is not "visually done".
+- branch: `agent/p3b-actual-home-visual-slice-n`
+- head: `ac31c4e` (base `main` at `0df97ff`)
+- pr: none opened by the agent. The coordinator opens the PR for this branch. Do not create a
+  duplicate. The previous P3a PR #10 is separate and already merged history.
 
-## done
+## done (this run — P3b bounded finish)
 
-- This run (P3a system-bar repair, root cause): `PreferenceActivity` called the inherited no-arg
-  `enableEdgeToEdge()` before `setContent`, then called the inherited `EdgeToEdge()` composable in
-  the sample branch. That composable derives system-bar appearance from `isSelectedThemeDark` (the
-  launcher theme preference), not from the requested sample mode. On a light-system emulator the
-  dark sample therefore kept dark status/nav icons, and its nav scrim was light while the sample
-  surface was dark.
-- This run (fix): `ComponentActivity.EdgeToEdge` now accepts
-  `darkTheme: Boolean = isSelectedThemeDark`. The normal settings path still calls the no-arg
-  default and keeps the early inherited `enableEdgeToEdge()`. The diagnostic branch passes
-  `themeSampleDark` and skips the early inherited call, so its window is configured only from the
-  requested sample mode: dark sample gets light bar icons and a dark nav scrim; light sample gets
-  dark icons and a light scrim. This is per-window only; no global setting, preference, manifest,
-  component, workflow, SDK or applicationId changed.
-- This run (regression): the theme guard now asserts the explicit `EdgeToEdge` override, the
-  `LaunchedEffect(darkTheme)` key, the sample branch passing `themeSampleDark`, and the normal path
-  still using `EdgeToEdge()`. The fixture suite adds missing-sample-mode and
-  missing-explicit-override negatives (now 9/9).
-- This run, verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh "$PWD"`
-  OK; `nothingui-theme-guard-test.sh` 9/9; `play-brand-guard.sh` OK and its tests pass;
-  `play-identity-guard.sh` OK and its tests pass; `manifest-guard-test.sh` all pass;
-  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. No local Gradle build or emulator run was performed; the existing smoke must produce the
-  dark/light PNGs for pixel review.
-- Scope reminder: this is the theme sample only. The actual HOME surface is not restyled. The
-  private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt and the non-Play runtime
-  control remain pending.
-- This run (P3a repair, root cause reproduced): `scripts/nothingui-theme-guard.sh` scanned the
-  full path from `find`, so CI's checkout parent `.../NothingOS-Launcher-/...` matched the
-  `nothing` token and the guard falsely reported a Nothing font asset. Running the guard with the
-  absolute repo path reproduced the CI53 failure; running it with `.` did not. The scan now
-  lowercases and checks font basenames only, so a legitimate parent path cannot trip it.
-- This run (regression): added `scripts/nothingui-theme-guard-test.sh` and wired it into
-  `scripts/verify-play-build.sh`. Its clean fixture lives under a parent named
-  `NothingOS-Launcher`; separate fixtures add real forbidden basenames (`ndot_regular.ttf`,
-  `NothingSans.ttf`, `nfont_display.ttf`) and prove a changed font without an updated attribution
-  hash and a missing OFL file still fail. The existing magic/provenance/licence checks are intact.
-- This run (diagnostic route): `PreferenceActivity` now accepts the explicit
-  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra only when `BuildConfig.DEBUG` and
-  `NothingUiFeature.themeEnabled` are both true. `dark`/`light` render
-  `NothingUiThemeSampleScreen`; every other case renders the normal settings surface. The
-  diagnostic branch also skips the settings-opened preference write, and no manifest component,
-  permission or workflow changed.
-- This run (screenshots): `scripts/emulator-smoke.sh` now launches the sample after the existing
-  About checks with `-f 0x18000000` so the new extra gets a fresh task instead of reusing the About
-  instance. It asserts `DOTWEL` in `theme-sample-dark.xml` / `theme-sample-light.xml`, captures
-  `theme-sample-dark.png` / `theme-sample-light.png`, then returns HOME. No emulator was available
-  here, so the PNGs are not produced yet; CI must produce and review them.
-- This run (guard): the theme guard now also fails if the diagnostic extra is present without both
-  `!BuildConfig.DEBUG` and `!NothingUiFeature.themeEnabled`; the regression suite covers a missing
-  debug gate.
-- This run, verification actually run (no Gradle, no emulator):
-  `nothingui-theme-guard.sh "$PWD"` OK; `nothingui-theme-guard-test.sh` 7/7;
-  `play-brand-guard.sh` OK; `play-brand-guard-test.sh` all pass; `play-identity-guard.sh` OK;
-  `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
-  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. The absolute-path guard run is the direct regression for CI53.
-- P2c rebrand verified by the coordinator: CI51 run `44903885094` on head `e6ea08b` was green with
-  4 actual Gradle tests plus the API 37 install, HOME, role and crash checks. The coordinator
-  inspected the artifacts and confirmed HOME reads `Welcome to DotWel Launcher` and About/app-info
-  show the correct dot-grid icons and `DotWel Launcher` name. This is recorded as coordinator
-  evidence, not re-run in this environment.
-- P3a: added `lawnchair/src/app/nothingui/theme` with an original monochrome palette
-  (`#0B0B0B` ink, `#F2F2F2` paper, neutral grays, the existing restrained `#D7261E` red accent),
-  semantic light/dark color tokens, a 4 dp spacing scale, motion durations/easings, and a Compose
-  `Typography` where Doto is limited to display and numeric styles while body/title/label styles
-  use `FontFamily.SansSerif`.
-- P3a: bundled Doto Regular 400 and Bold 700 as static TrueType resources
-  (`lawnchair/res/font/doto_regular.ttf`, `doto_bold.ttf`). They were generated from the official
-  Google Fonts variable font `ofl/doto/Doto[ROND,wght].ttf` at repo commit
-  `7380f7cebbf2250460c23fd301b51bcbab162edf`; glyphs are unchanged and only the axes are pinned.
-  The verbatim OFL 1.1 text is in `licenses/fonts/OFL-Doto.txt`; source, upstream commit, version,
-  derivation and SHA-256 hashes are in `licenses/fonts/doto.md`. No Nothing font or asset is used.
-- P3a: the theme is gated by `BuildConfig.NOTHINGUI_THEME_ENABLED`: false in `defaultConfig`, true
-  only in the `play` flavor. `NothingUiFeature.themeEnabled` exposes it and
-  `NothingUiThemeIfEnabled(fallback = ...)` requires an explicit non-Play fallback. The
-  github/nightly themes and resources were not changed; the shared font resources add size but are
-  not used by those channels.
-- P3a: added `NothingUiThemeSampleScreen` (stateless) plus dark/light `@Preview`s using the tokens,
-  and `tests/unit/java/app/nothingui/theme/NothingUiTokenTest.kt` for contrast targets, ordered
-  spacing/motion, the accent constant, Doto-only display/numeric styles, and display-vs-body sizes.
-- P3a: added `scripts/nothingui-theme-guard.sh` and wired it into `scripts/verify-play-build.sh`.
-  It checks the font magic bytes (not HTML), OFL text, attribution hashes, the default/Play/github/
-  nightly flag wiring, the `NothingUiFeature` gate, sans body wiring, and the sample/preview.
-- Prior P3a run verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh .` OK;
-  `play-brand-guard.sh .` OK; `play-identity-guard.sh .` OK; `manifest-guard-test.sh` all pass;
-  `play-identity-guard-test.sh` all pass; `play-brand-guard-test.sh` all pass;
-  `verify-play-build-test.sh` all pass; `sh -n` clean on edited scripts; `git diff --check` clean;
-  standalone ktlint 1.8.0 clean on the new Kotlin files, and the compose ruleset clean except
-  `compositionlocal-allowlist`, which `build.gradle` explicitly disables. `file` and fontTools
-  confirmed real TrueType fonts at weights 400/700, 320 glyphs, no `fvar` table, and no HTML.
+- Reviewed the existing branch diff against `main` and kept the saved work rather than restarting.
+  The branch already contained: the Play-only `NOTHINGUI_HOME_ENABLED` flag, the original
+  `NothingUiHomeHeaderView` (live Doto clock/date, red accent, dot strip), `NothingUiHomeClock`,
+  the smartspace-slot hook, monochrome icon defaults, QSB and page-dot hooks, a static home guard,
+  a JUnit clock test and the extended emulator smoke.
+- **Fixed the specific review concern (chrome contrast).** `NothingUiHomeChrome` no longer pairs
+  `Themes.getColorBackgroundFloating` (pale) with `Themes.getAttrColor(workspaceTextColor)` (often
+  wallpaper-derived white). It now selects an explicit original pair from `NothingUiPalette`:
+  light theme -> `Paper` surface + `Ink` text; dark theme -> `Gray900` surface + `Paper` text.
+  The choice follows the inherited user light/dark theme (`R.attr.isMainColorDark`), matching the
+  inherited day/night QSB icon and page-dot tints. The header, QSB pill and page dots all share
+  this pair.
+- **Header row fit.** Reduced the header clock to 30 sp, date to 10 sp, outer padding to 10/2 dp,
+  card padding to 14/6 dp, corner radius to 22 dp and the dot strip to 48×5 dp so the card fits the
+  existing single-row pinned smartspace cell without clipping. The header still uses the live clock,
+  date, red accent and monochrome dot motif; it is not a sample-only screen.
+- **Guard coverage added.** `scripts/nothingui-home-guard.sh` now asserts the original palette pair,
+  the `isMainColorDark` theme choice, that the header shares the pair, and that the chrome never
+  falls back to `getColorBackgroundFloating` / `workspaceTextColor`. It also locks the fitted
+  clock/date text sizes. The fixture suite adds an inherited-floating/wallpaper negative case.
+- **Smoke evidence.** `scripts/emulator-smoke.sh` captures the actual HOME (`home.xml` + `home.png`)
+  and requires live clock/date text with no inherited `Lawnchair` text. It opens the inherited app
+  drawer (`appdrawer.xml` + `.png`), searches for Settings, taps the real result, verifies
+  `com.android.settings` is foreground, then returns HOME. The app-info, About, theme-sample and
+  crash checks are retained.
+- Pending items are untouched: private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt
+  and the non-Play runtime control. No manifest, permission, SDK, applicationId, signing, release,
+  paid-service, workflow or YouTube change was made. The untracked local `w/` scratch directory was
+  left uncommitted.
+
+## verification actually run (no Gradle, no emulator, no CI)
+
+- `sh scripts/nothingui-home-guard.sh "$PWD"` -> `nothingui-home-guard: OK`
+- `sh scripts/nothingui-home-guard-test.sh` -> 13/13 passed, including the new
+  inherited-floating/wallpaper negative.
+- `sh scripts/nothingui-theme-guard.sh "$PWD"` -> OK; `nothingui-theme-guard-test.sh` -> 9/9.
+- `play-brand-guard-test.sh`, `play-identity-guard-test.sh`, `manifest-guard-test.sh`,
+  `verify-play-build-test.sh` -> all pass.
+- `sh -n` clean on the edited smoke and home-guard scripts; `git diff --check` clean.
+- `kotlinc` compiled the pure `NothingUiHomeClock.kt` (exit 0). Parsing the Android-dependent
+  header/chrome/QSB files produced only expected unresolved-Android-reference cascades, no syntax
+  errors.
+- Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
+  branch is statically verified only.
 
 ## next
 
-- PR10 CI must be approved and run on the new head. Confirm:
-  - `verify-play-build` passes with the theme guard at 9/9;
-  - the unit-test XML still contains all 7 `NothingUiTokenTest` tests and the workflow's existing
-    4-predicate `LockedProfilePredicateTest` assertion, with 0 skipped;
-  - `api37-emulator-evidence` contains `theme-sample-dark.xml` + `.png` and
-    `theme-sample-light.xml` + `.png`, each XML exposing `DOTWEL`.
-- Visually re-review the dark/light PNGs: the dark sample must now show light status/nav icons on
-  the dark surface, the light sample must show dark icons, and the smoke's existing
-  `return_home theme-sample` check must still resume the launcher (bar state is per-window, so HOME
-  keeps its own bars). Static guards cannot prove the rendered contrast.
-- P3b (home/grid), the next slice:
-  - derive a 4×6 `DeviceProfile` override from `WindowMetrics` (Android 17 large-screen rule), with
-    no `resources.displayMetrics` math;
-  - wire `NothingUiThemeIfEnabled` into the Play home surface only, passing the inherited
-    `LawnchairTheme` as the fallback so github/nightly behavior is unchanged;
-  - add the monochrome icon treatment hook and dot-matrix page indicator;
-  - add Compose UI tests and `@Preview`s for the grid, and keep the existing workspace scroll free
-    of jank.
-- P4 (drawer) follows P3b: restyle the inherited all-apps surface, keep A–Z and search, and verify
-  profile filtering.
-- Pending gates before P3a can be called shipped:
-  - CI on PR10 must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
-    (including `NothingUiTokenTest`), `verify-play-build.sh` (including the theme guard), and the
-    API 37 emulator smoke. None of those Gradle/emulator runs happened here.
-  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed for
-    system-bar contrast as well as palette/typography.
-  - A non-Play control build is still pending.
-  - P1 private-space runtime UI (drawer/search/recents) is still unverified.
-  - P2 in-app `RoleManager.ROLE_HOME` onboarding prompt is still unverified; the emulator `cmd
-    role` grant is only a stand-in.
+- Coordinator opens the PR for `agent/p3b-actual-home-visual-slice-n` and runs CI.
+- CI must show: `spotlessCheck`; `assembleLawnWithQuickstepPlayDebug`; Play unit tests including
+  `NothingUiHomeClockTest` (5 tests) and the existing 4-test `LockedProfilePredicateTest`;
+  `verify-play-build.sh` including the home guard at 13/13; and the API 37 emulator smoke.
+- Review the smoke artifacts before claiming the visuals:
+  - `home.xml` / `home.png`: live clock and date visible, no `Lawnchair` text, header not clipped
+    in the pinned row.
+  - `appdrawer.xml` / `appdrawer-search.png`: search returns Settings and tapping it launches
+    `com.android.settings`, then HOME resumes.
+  - Confirm the neutral card/ink pair reads with contrast in both light and dark themes.
+- Only after the PNGs are inspected can P3b be called visually complete. Do not claim finished
+  visuals from source guards alone.
+- P4 (drawer restyle) follows P3b; the inherited drawer/search/drag/widgets engine must stay.
+- Pending gates: private-space runtime UI, the in-app `RoleManager` prompt, and a non-Play runtime
+  control build remain unverified.
 
 ## blockers
 
-- P3a CI/visual evidence: CI62 (`44909523145`) on `e359a9a` produced the dark/light sample PNGs and
-  was green, but the dark sample had insufficient system-bar contrast. The fix is pushed on
-  `9d1e56e`; a new CI run must produce the PNGs and a coordinator must re-review them. No Gradle
-  build or emulator run was allowed in this environment, so the branch is statically verified only.
-- Scope: theme sample only; the actual HOME surface is not restyled. Private-space runtime UI,
-  the in-app `RoleManager` prompt and the non-Play runtime control remain pending.
-- PR10 approval: `gh` is unauthenticated here, so the pushed commits need a maintainer to approve
-  and run the PR workflow.
-- P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
-  recents). A private space needs a secure lock screen and explicit provisioning; do not
-  auto-create it.
-- P2 default-home gate: in-app `RoleManager` prompt pending manual verification. CI35's `cmd role`
-  grant verifies the system role, not the prompt.
-- P2c visual gate: the coordinator verified HOME and About/app-info artifacts for CI51; the
-  non-Play runtime control build remains unverified.
+- No local Gradle build or emulator run is allowed here, so CI and pixels are unverified.
+- The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must run the PR workflow.
 
 ## decisions locked
 
@@ -166,6 +90,13 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P3b chrome pair: use the original `Paper`/`Ink` (light) and `Gray900`/`Paper` (dark) pair selected
+  by `R.attr.isMainColorDark`, not the inherited wallpaper text plus floating surface. Cost if
+  wrong: with a light theme on a dark wallpaper the card is light rather than wallpaper-matched,
+  but it keeps high contrast and follows the user's light/dark choice, matching QSB/day-night tints.
+- P3b header: keep the original header in the inherited pinned smartspace slot, sized to one row,
+  rather than hard-wiring it into `Workspace` or adding a second launcher surface. Cost if wrong:
+  the header is less tall than a multi-row Nothing-style clock widget, but it cannot clip the grid.
 - P3a repair: the forbidden-font check inspects lowercased basenames only. Cost if wrong: a
   forbidden font hidden inside a directory name would not be caught, but fonts live flat in
   `lawnchair/res/font` and the guard still checks the whole file list there.
@@ -217,26 +148,31 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3b bounded finish on `agent/p3b-actual-home-visual-slice-n` (`ac31c4e`). Fixed the
+  chrome white-on-white risk with an explicit neutral surface/ink pair selected by the inherited
+  light/dark theme, shared it across the header/QSB/page dots, sized the header to the single pinned
+  row, extended the home guard (13/13) and kept the actual-HOME + drawer/search/launch smoke. Static
+  checks only; CI and pixel review pending. Pending private UI / RoleManager / non-Play runtime
+  unchanged.
+- 2026-11-21: P3b saved work checkpointed on the branch: Play-gated clock header, pure clock
+  formatter, monochrome icon defaults, QSB/page-dot chrome hooks, home guard + tests, and the
+  actual-HOME/drawer smoke. Run was cancelled before closeout; resumed and finished above.
 - 2026-11-21: P3a system-bar repair: CI62 (`44909523145`) on `e359a9a` was green (7 token + 4
   predicate JUnit tests, 0 skipped) but the real dark sample kept dark status/nav icons. Root
   cause: the sample branch used the inherited `EdgeToEdge()`/`enableEdgeToEdge()` theme preference
   instead of the requested sample mode. Added an explicit `darkTheme` parameter, passed
   `themeSampleDark` from the diagnostic branch, skipped the inherited early call there, and added
-  guard fixtures (9/9). Scope is the theme sample only; HOME is not restyled. New CI/pixel review
-  pending.
+  guard fixtures (9/9). P3a is merged; HOME styling moved to P3b.
 - 2026-11-21: P3a repair/visual-evidence slice: reproduced and fixed the CI53 guard false positive
   (full-path vs basename scan), added the `NothingOS-Launcher`/ndot regression suite, added the
   DEBUG+Play diagnostic sample route, and extended the API 37 smoke to capture dark/light sample
-  XML+PNG and return HOME. Static checks green; PR10 CI and screenshot review pending.
-- 2026-11-21: P3a foundation implemented and pushed on
-  `agent/p3a-theme-foundation-only-star`: palette/spacing/motion/typography, Doto OFL assets,
+  XML+PNG and return HOME.
+- 2026-11-21: P3a foundation implemented: palette/spacing/motion/typography, Doto OFL assets,
   Play-only `BuildConfig` gate, sample screen and previews, pure token tests, and a static theme
-  guard wired into `verify-play-build.sh`. Static checks green; branch CI and visual/device review
-  pending. Home/grid work is P3b.
+  guard wired into `verify-play-build.sh`.
 - 2026-11-21: P2c verified by the coordinator: CI51 (`44903885094`) on `e6ea08b` green with 4
   Gradle tests and API 37 install/HOME/role/crash checks; HOME says `Welcome to DotWel Launcher`
-  and About/app-info show the dot-grid icon and name. Private-space UI, the in-app RoleManager
-  prompt and the non-Play runtime control remain unverified.
+  and About/app-info show the dot-grid icon and name.
 - 2026-11-21: PR9 merged to `main` at `02ac058`; the P3a branch was cut from that merge.
 - 2026-11-21: CI42 (`44901579949`) on `293f96e` was fully green; the earlier About icon and HOME
   welcome defects were repaired by moving `play/res` to the `lawnWithQuickstepPlay` multi-flavor
