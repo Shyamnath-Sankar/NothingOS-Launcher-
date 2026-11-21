@@ -2,3 +2,4 @@
 
 *.bat text eol=crlf
 *.jar binary
+licenses/fonts/OFL-Doto.txt whitespace=-trailing-space
