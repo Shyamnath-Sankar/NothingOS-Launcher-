@@ -20,11 +20,14 @@ fail() {
 }
 
 write_manifest() {
-    printf '%s\n' \
-        '<?xml version="1.0" encoding="utf-8"?>' \
-        '<manifest xmlns:android="http://schemas.android.com/apk/res/android">' \
-        "$1" \
-        '</manifest>' > "$2"
+    manifest_file=$1
+    shift
+    {
+        printf '%s\n' '<?xml version="1.0" encoding="utf-8"?>'
+        printf '%s\n' '<manifest xmlns:android="http://schemas.android.com/apk/res/android">'
+        printf '%s\n' "$@"
+        printf '%s\n' '</manifest>'
+    } > "$manifest_file"
 }
 
 expect_pass() {
@@ -55,10 +58,18 @@ expect_fail_contains() {
 }
 
 clean_manifest="$TMP_DIR/clean.xml"
-write_manifest \
+write_manifest "$clean_manifest" \
     '<uses-permission android:name="android.permission.INTERNET" />' \
-    "$clean_manifest"
+    '<uses-permission android:name="android.permission.ACCESS_HIDDEN_PROFILES" />'
 expect_pass 'clean manifest passes' "$clean_manifest"
+
+missing_private_space_manifest="$TMP_DIR/missing-private-space.xml"
+write_manifest "$missing_private_space_manifest" \
+    '<uses-permission android:name="android.permission.INTERNET" />'
+expect_fail_contains \
+    'missing private-space permission fails' \
+    "$missing_private_space_manifest" \
+    'ACCESS_HIDDEN_PROFILES'
 
 for permission in \
     android.permission.READ_CONTACTS \
@@ -78,7 +89,7 @@ for permission in \
     com.kieronquinn.app.smartspacer.permission.ACCESS_SMARTSPACER
 do
     manifest="$TMP_DIR/permission.xml"
-    write_manifest "<uses-permission android:name=\"$permission\" />" "$manifest"
+    write_manifest "$manifest" "<uses-permission android:name=\"$permission\" />"
     expect_fail_contains "forbidden permission $permission" "$manifest" "$permission"
 done
 
@@ -86,29 +97,32 @@ for component in \
     app.lawnchair.smartspace.SmartspaceAppWidgetProvider \
     app.lawnchair.smartspace.SmartspacePreferencesShortcut \
     app.lawnchair.LawnchairAccessibilityService \
+    app.lawnchair.bugreport.FileProvider \
+    app.lawnchair.bugreport.BugReportReceiver \
     app.lawnchair.bugreport.UploaderService \
     app.lawnchair.feed.FeedService
 do
     manifest="$TMP_DIR/component.xml"
-    write_manifest "<application><receiver android:name=\"$component\" /></application>" "$manifest"
+    write_manifest "$manifest" "<application><receiver android:name=\"$component\" /></application>"
     expect_fail_contains "forbidden component $component" "$manifest" "$component"
 done
 
-# The Play overlay must remove the inherited accessibility service and the
-# bug-report foreground-sync service (AGENTS.md section 7). The merged-manifest
-# guard can only run after Gradle merges the overlay, so assert the overlay
-# itself declares the removals.
+# The Play overlay must remove the inherited accessibility and bug-report
+# components (AGENTS.md section 7). The merged-manifest guard can only run
+# after Gradle merges the overlay, so assert the overlay itself declares the
+# removals.
 overlay="$SCRIPT_DIR/../play/AndroidManifest.xml"
 
-expect_overlay_remove_service() {
+expect_overlay_remove() {
     name=$1
-    component=$2
+    tag=$2
+    component=$3
     if [ ! -f "$overlay" ]; then
         fail "$name (overlay missing: $overlay)"
         return
     fi
-    if awk -v component="$component" '
-        BEGIN { RS = "<service" }
+    if awk -v tag="<$tag" -v component="$component" '
+        BEGIN { RS = tag }
         index($0, "android:name=\"" component "\"") && index($0, "tools:node=\"remove\"") { found = 1 }
         END { exit found ? 0 : 1 }
     ' "$overlay"; then
@@ -118,12 +132,29 @@ expect_overlay_remove_service() {
     fi
 }
 
-expect_overlay_remove_service \
+expect_overlay_remove \
     'play overlay removes accessibility service' \
+    'service' \
     'app.lawnchair.LawnchairAccessibilityService'
-expect_overlay_remove_service \
+expect_overlay_remove \
+    'play overlay removes bug-report provider' \
+    'provider' \
+    'app.lawnchair.bugreport.FileProvider'
+expect_overlay_remove \
+    'play overlay removes bug-report receiver' \
+    'receiver' \
+    'app.lawnchair.bugreport.BugReportReceiver'
+expect_overlay_remove \
     'play overlay removes bug-report foreground-sync service' \
+    'service' \
     'app.lawnchair.bugreport.UploaderService'
+
+# The overlay must also declare the private-space permission.
+if grep -Fq 'android.permission.ACCESS_HIDDEN_PROFILES' "$overlay"; then
+    pass 'play overlay declares private-space permission'
+else
+    fail 'play overlay declares private-space permission (missing ACCESS_HIDDEN_PROFILES)'
+fi
 
 if sh "$GUARD" > "$TMP_DIR/out" 2> "$TMP_DIR/err"; then
     fail 'missing argument exits non-zero'

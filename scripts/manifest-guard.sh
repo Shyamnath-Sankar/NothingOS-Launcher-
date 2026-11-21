@@ -45,11 +45,24 @@ check permission 'com\.kieronquinn\.app\.smartspacer\.permission\.ACCESS_SMARTSP
 check component 'app\.lawnchair\.smartspace\.SmartspaceAppWidgetProvider'
 check component 'app\.lawnchair\.smartspace\.SmartspacePreferencesShortcut'
 
-# Accessibility and feed / foreground-sync components (AGENTS.md section 7).
-# P1b removes these from the Play variant; the guard flags any that survive merging.
+# Accessibility, bug-report and feed / foreground-sync components (AGENTS.md
+# section 7). P1b/P1c remove these from the Play variant; the guard flags any
+# that survive merging. The bug-report pattern covers FileProvider,
+# BugReportReceiver and UploaderService.
 check component 'app\.lawnchair\.LawnchairAccessibilityService'
-check component 'app\.lawnchair\.bugreport\.UploaderService'
+check component 'app\.lawnchair\.bugreport\.[A-Za-z0-9_.$]+'
 check component 'app\.lawnchair\.feed\.[A-Za-z0-9_.]+'
+
+# Required permissions (AGENTS.md section 7: Android 15+ private space).
+require() {
+    permission=$1
+    if ! grep -Eq "android:name=\"($permission)\"" "$manifest"; then
+        printf 'manifest-guard: missing required permission: %s\n' "$permission" >&2
+        violations=$((violations + 1))
+    fi
+}
+
+require 'android\.permission\.ACCESS_HIDDEN_PROFILES'
 
 if [ "$violations" -ne 0 ]; then
     printf 'manifest-guard: FAIL: %s still contains %d forbidden entry/entries.\n' \

@@ -60,6 +60,14 @@
         android:name="com.kieronquinn.app.smartspacer.permission.ACCESS_SMARTSPACER"
         tools:node="remove" />
 
+    <!--
+      Play compliance: Android 15+ private space (AGENTS.md section 7). This is
+      what lets the launcher discover the hidden private profile and render its
+      container. Locked profiles are filtered out of the drawer, search and
+      recents; see AppSearchProvider/SearchUtils for the search filter.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_HIDDEN_PROFILES" />
+
     <!-- Keep the overrideLibrary marker needed by the Smartspacer SDK dependency. -->
     <uses-sdk tools:overrideLibrary="com.kieronquinn.app.smartspacer.sdk.client" />
 
@@ -123,9 +131,17 @@
             tools:node="remove" />
 
         <!--
-          Play compliance: remove the inherited bug-report foreground-sync
-          service (AGENTS.md section 7).
+          Play compliance: remove the inherited bug-report subsystem
+          (AGENTS.md section 7). UploaderService was removed in P1b; the
+          FileProvider and BugReportReceiver would otherwise survive and leave
+          the crash-notification upload path half-wired.
         -->
+        <provider
+            android:name="app.lawnchair.bugreport.FileProvider"
+            tools:node="remove" />
+        <receiver
+            android:name="app.lawnchair.bugreport.BugReportReceiver"
+            tools:node="remove" />
         <service
             android:name="app.lawnchair.bugreport.UploaderService"
             tools:node="remove" />
