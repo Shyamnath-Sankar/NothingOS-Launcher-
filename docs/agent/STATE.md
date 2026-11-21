@@ -110,6 +110,22 @@ when no task input is given, and continues from "next".
   because `.github/workflows/` is off-limits. Cost if wrong: a future CI refactor that stops
   calling `verify-play-build.sh` also drops the theme guard.
 
+## prior rulings still binding (P2c)
+
+- Play resources live in the `lawnWithQuickstepPlay` multi-flavor source set, not the single
+  `play` flavor. `flavorDimensions` puts `app` (lawn) before `channel` (play), so a single-flavor
+  Play resource loses same-name lawn resources at merge time. The brand guard asserts the source
+  set ownership.
+- The Play manifest lists both `android:label` and `android:icon` in `tools:replace`; the overlay
+  owns both values and the base values are discarded at merge.
+- All Play icon artwork lives in `play/res`; github/nightly keep the inherited Lawnchair icon.
+  The Play icon is an original near-black/white/red dot grid, not a Nothing asset.
+- Play locale overrides replace only the `Lawnchair` brand token in `onboarding_welcome`.
+  `derived_app_name` is a Play-gated variant-level `resValue` because the build-type value outranks
+  flavor resources.
+- The brand guard is called from `verify-play-build.sh`, not a workflow file, so CI keeps it
+  without editing `.github/workflows/`.
+
 ## log
 
 - 2026-11-21: P3a foundation implemented and pushed on
