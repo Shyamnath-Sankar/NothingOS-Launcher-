@@ -27,6 +27,17 @@ jobs:
 
       # compileSdk 37 / buildTools 37.0.0 are newer than the runner image's
       # preinstalled SDK. Accept licenses and let AGP download what it needs.
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/build-tools
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            /usr/local/lib/android/sdk/licenses
+          key: android-sdk-37-buildtools-v1
+
       - uses: android-actions/setup-android@v3
         with:
           # 'tools' was removed from current SDK repositories; install platform-tools only.
@@ -60,6 +71,17 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/build-tools
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            /usr/local/lib/android/sdk/licenses
+          key: android-sdk-37-buildtools-v1
+
       - uses: android-actions/setup-android@v3
         with:
           # 'tools' was removed from current SDK repositories; install platform-tools only.
@@ -80,6 +102,17 @@ jobs:
           java-version: 21
 
       - uses: gradle/actions/setup-gradle@v6
+
+      - name: Cache Android SDK packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/build-tools
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/cmdline-tools
+            /usr/local/lib/android/sdk/licenses
+          key: android-sdk-37-buildtools-v1
 
       - uses: android-actions/setup-android@v3
         with:
