@@ -292,7 +292,7 @@ tap_center_of_bounds() (
 # coordinate if a future system image renames the button.
 ui_cancel_bounds() (
     xml=$1
-    for label in Cancel "No thanks" "Not now" "Don't switch"; do
+    for label in Cancel CANCEL "No thanks" "No, thanks" "Not now" "Don't switch"; do
         bounds=$(ui_bounds_for "$xml" "$label")
         if [ -n "$bounds" ]; then
             printf '%s\n' "$bounds"
