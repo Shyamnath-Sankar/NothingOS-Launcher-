@@ -14,7 +14,8 @@
 #     artifact directory, and fails on install/launch/crash problems
 #   - dumps the HOME UIAutomator hierarchy and, when the smartspace onboarding
 #     card is visible, requires the rendered welcome text to be "DotWel
-#     Launcher" with no "Lawnchair" text; otherwise records a pending note
+#     Launcher" with no "Lawnchair" text; otherwise records a pending note and
+#     fails if the hierarchy cannot be dumped at all
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
 #
@@ -199,8 +200,10 @@ capture_about() {
 # a brand pass that the evidence does not support.
 verify_home_welcome() {
     attempt=1
+    captured=0
     while [ "$attempt" -le 3 ]; do
         if capture_ui_xml home.xml; then
+            captured=1
             if grep -Fqi 'welcome' "$ARTIFACTS/home.xml"; then
                 if grep -Fq "$EXPECTED_LABEL" "$ARTIFACTS/home.xml" &&
                     ! grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
@@ -216,13 +219,10 @@ verify_home_welcome() {
         attempt=$((attempt + 1))
         sleep 1
     done
-    if [ -s "$ARTIFACTS/home.xml" ]; then
-        printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
-            > "$ARTIFACTS/home-welcome-pending.txt"
-    else
-        printf 'HOME welcome pending: UIAutomator could not dump the HOME hierarchy.\n' \
-            > "$ARTIFACTS/home-welcome-pending.txt"
-    fi
+    [ "$captured" -eq 1 ] ||
+        fail "could not dump the HOME UIAutomator hierarchy; the welcome brand is unverified"
+    printf 'HOME welcome pending: no welcome text is visible in the UIAutomator hierarchy.\n' \
+        > "$ARTIFACTS/home-welcome-pending.txt"
 }
 
 fail() {

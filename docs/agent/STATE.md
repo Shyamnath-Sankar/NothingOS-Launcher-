@@ -38,7 +38,8 @@ when no task input is given, and continues from "next".
   for precedence, stripped lawn resources, and consumer drift.
 - This run (smoke): `scripts/emulator-smoke.sh` now dumps the HOME UIAutomator hierarchy after launch.
   When the smartspace welcome card is visible it requires `DotWel Launcher` and rejects `Lawnchair`;
-  when no welcome text is visible it writes `home-welcome-pending.txt` instead of claiming a pass.
+  when no welcome text is visible it writes `home-welcome-pending.txt` instead of claiming a pass,
+  and it fails closed if the HOME hierarchy cannot be dumped at all.
   The mandatory screenshot is unchanged, and the About UI XML plus `about.png` are preserved as icon
   evidence with an explicit note that the icon is reviewed visually, not pixel-asserted.
 - This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 14/14;
