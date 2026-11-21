@@ -81,6 +81,15 @@ public abstract class AbstractStateChangeTouchController
     private boolean mAllAppsOvershootStarted;
     private float mLastDisplacement;
 
+    private boolean mGestureTraceActive;
+    private LauncherState mGestureStartState;
+    private float mGestureDownX;
+    private float mGestureDownY;
+    private long mGestureDownTime;
+    private int mGestureMoveCount;
+    private float mGestureLastMoveY;
+    private long mGestureLastMoveTime;
+
     public AbstractStateChangeTouchController(Launcher l, SingleAxisSwipeDetector.Direction dir) {
         mLauncher = l;
         mDetector = new SingleAxisSwipeDetector(l, this, dir);
@@ -158,7 +167,65 @@ public abstract class AbstractStateChangeTouchController
 
     @Override
     public final boolean onControllerTouchEvent(MotionEvent ev) {
+        traceGestureEvent(ev);
         return mDetector.onTouchEvent(ev);
+    }
+
+    /**
+     * Emits one bounded summary per NORMAL -> ALL_APPS gesture. MOVE events only
+     * update counters: logging every sample would flood logcat and hide the
+     * DOWN/UP evidence.
+     */
+    private void traceGestureEvent(MotionEvent ev) {
+        if (!DotwelDrawerTrace.ENABLED) {
+            return;
+        }
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                mGestureStartState = mLauncher.getStateManager().getState();
+                mGestureTraceActive = mGestureStartState == NORMAL;
+                mGestureDownX = ev.getX();
+                mGestureDownY = ev.getY();
+                mGestureDownTime = ev.getEventTime();
+                mGestureMoveCount = 0;
+                mGestureLastMoveY = 0f;
+                mGestureLastMoveTime = 0L;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (mGestureTraceActive) {
+                    mGestureMoveCount++;
+                    mGestureLastMoveY = ev.getY();
+                    mGestureLastMoveTime = ev.getEventTime();
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (mGestureTraceActive) {
+                    mGestureTraceActive = false;
+                    logGestureSummary(ev);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    private void logGestureSummary(MotionEvent ev) {
+        String action = ev.getActionMasked() == MotionEvent.ACTION_UP ? "UP" : "CANCEL";
+        String lastMoveY = mGestureMoveCount > 0
+                ? Float.toString(mGestureLastMoveY) : "none";
+        String lastMoveTime = mGestureMoveCount > 0
+                ? Long.toString(mGestureLastMoveTime) : "none";
+        DotwelDrawerTrace.log("gestureSummary action=" + action
+                + " downX=" + mGestureDownX
+                + " downY=" + mGestureDownY
+                + " downTime=" + mGestureDownTime
+                + " moveCount=" + mGestureMoveCount
+                + " lastMoveY=" + lastMoveY
+                + " lastMoveTime=" + lastMoveTime
+                + " upY=" + ev.getY()
+                + " upTime=" + ev.getEventTime()
+                + " history=" + ev.getHistorySize());
     }
 
     protected float getShiftRange() {

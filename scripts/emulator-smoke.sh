@@ -287,6 +287,100 @@ tap_center_of_bounds() (
     adb_cmd shell input tap "$x" "$y" > "$ARTIFACTS/tap-$x-$y.txt" 2>&1
 )
 
+# Find the platform consent screen's cancel control. RoleManager's HOME dialog
+# uses "Cancel" on AOSP/Pixel; the extra labels keep the smoke from guessing a
+# coordinate if a future system image renames the button.
+ui_cancel_bounds() (
+    xml=$1
+    for label in Cancel CANCEL "No thanks" "No, thanks" "Not now" "Don't switch"; do
+        bounds=$(ui_bounds_for "$xml" "$label")
+        if [ -n "$bounds" ]; then
+            printf '%s\n' "$bounds"
+            return 0
+        fi
+    done
+    return 0
+)
+
+# Capture the real platform HOME-role consent screen after an explicit tap on
+# the existing settings warning, cancel it, and prove the role holder list did
+# not change. This runs only on the disposable API 37 emulator, before the smoke
+# grants the role for the remaining HOME checks.
+verify_default_home_consent() {
+    _vdhc_before="$ARTIFACTS/role-consent-before.txt"
+    adb_cmd shell cmd role get-role-holders --user 0 "$HOME_ROLE" > "$_vdhc_before" 2>&1 || true
+    if grep -Fq "$PKG" "$_vdhc_before"; then
+        printf 'Role consent skipped: %s already holds HOME.\n' "$PKG" \
+            > "$ARTIFACTS/role-consent-pending.txt"
+        return 0
+    fi
+    if ! _vdhc_launch=$(adb_cmd shell am start -W \
+        -n "$PKG/$THEME_SAMPLE_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_vdhc_launch" > "$ARTIFACTS/role-consent-settings-launch.txt"
+        fail "could not open settings for the HOME role consent check"
+    fi
+    printf '%s\n' "$_vdhc_launch" > "$ARTIFACTS/role-consent-settings-launch.txt"
+    case "$_vdhc_launch" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "settings launch for the HOME role consent check reported an error"
+            ;;
+    esac
+    printf '%s\n' "$_vdhc_launch" | grep -q 'Status: ok' ||
+        fail "settings launch for the HOME role consent check did not report Status: ok"
+    sleep 2
+    capture_ui_xml role-consent-settings.xml ||
+        fail "could not capture the settings default-launcher warning"
+    capture_screenshot_to role-consent-settings.png
+    if ! grep -Fq 'default launcher' "$ARTIFACTS/role-consent-settings.xml"; then
+        fail "settings did not expose the default-launcher warning"
+    fi
+    _vdhc_warning=$(ui_bounds_for "$ARTIFACTS/role-consent-settings.xml" 'default launcher')
+    [ -n "$_vdhc_warning" ] || fail "could not find the default-launcher warning bounds"
+    tap_center_of_bounds "$_vdhc_warning" ||
+        fail "could not tap the default-launcher warning"
+    _vdhc_attempt=1
+    _vdhc_consent=
+    while [ "$_vdhc_attempt" -le 5 ]; do
+        sleep 1
+        if capture_ui_xml "role-consent-attempt-$_vdhc_attempt.xml"; then
+            _vdhc_xml="$ARTIFACTS/role-consent-attempt-$_vdhc_attempt.xml"
+            if grep -Eiq 'default (home|launcher)' "$_vdhc_xml" &&
+                [ -n "$(ui_cancel_bounds "$_vdhc_xml")" ]; then
+                _vdhc_consent=$_vdhc_xml
+                break
+            fi
+        fi
+        _vdhc_attempt=$((_vdhc_attempt + 1))
+    done
+    [ -n "$_vdhc_consent" ] ||
+        fail "tapping the warning did not open the platform HOME role consent screen"
+    cp "$_vdhc_consent" "$ARTIFACTS/role-consent.xml"
+    capture_screenshot_to role-consent.png
+    [ -s "$ARTIFACTS/role-consent.png" ] ||
+        fail "HOME role consent screenshot capture failed"
+    _vdhc_cancel=$(ui_cancel_bounds "$_vdhc_consent")
+    [ -n "$_vdhc_cancel" ] || fail "could not find the HOME role consent cancel control"
+    tap_center_of_bounds "$_vdhc_cancel" ||
+        fail "could not cancel the platform HOME role consent"
+    wait_for_foreground "$PKG" "$ARTIFACTS/activities-role-consent-cancel.txt" 10 ||
+        fail "cancelling the HOME role consent did not return to settings"
+    adb_cmd shell cmd role get-role-holders --user 0 "$HOME_ROLE" \
+        > "$ARTIFACTS/role-consent-after.txt" 2>&1 ||
+        fail "could not read the HOME role holders after cancelling consent"
+    if grep -Fq "$PKG" "$ARTIFACTS/role-consent-after.txt"; then
+        fail "cancelling the HOME role consent still granted the role"
+    fi
+    sort "$_vdhc_before" > "$ARTIFACTS/role-consent-before.sorted"
+    sort "$ARTIFACTS/role-consent-after.txt" > "$ARTIFACTS/role-consent-after.sorted"
+    cmp -s "$ARTIFACTS/role-consent-before.sorted" \
+        "$ARTIFACTS/role-consent-after.sorted" ||
+        fail "cancelling the HOME role consent changed the role holder list"
+    printf 'Default-home consent: the platform role dialog was shown after a settings tap and cancelled; the role holder list is unchanged.\n' \
+        > "$ARTIFACTS/role-consent.txt"
+    printf 'Screenshots: role-consent-settings.png, role-consent.png.\n' \
+        >> "$ARTIFACTS/role-consent.txt"
+}
+
 # The Play home replaces the inherited welcome smartspace with the original
 # NothingUI clock/date header. Assert the rendered clock and date text, not a
 # static source guard, and keep the inherited brand check on the actual HOME.
@@ -397,10 +491,10 @@ open_app_drawer() {
 
     : > "$ARTIFACTS/appdrawer-swipe-log.txt"
     max_attempts=4
-    # adb delivers move samples over the swipe duration; 300 ms left the
-    # zero-velocity gesture with only a partial displacement, so use 500 ms
-    # and record it with every attempt.
-    swipe_duration=500
+    # adb delivers move samples over the swipe duration. The 500 ms gesture was
+    # observed with only a partial displacement, so use a bounded 1500 ms
+    # gesture and record it with every attempt.
+    swipe_duration=1500
     attempt=1
     while [ "$attempt" -le "$max_attempts" ]; do
         wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt" 10 ||
@@ -698,6 +792,8 @@ adb_cmd shell dumpsys activity activities > "$ARTIFACTS/activities.txt" 2>&1 || 
 resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activities.txt" |
     grep -F "$PKG/" | sed -n '1p' || true)
 [ -n "$resumed" ] || fail "launcher is not the resumed activity after launch"
+
+verify_default_home_consent
 
 adb_cmd shell cmd role get-role-holders --user 0 "$HOME_ROLE" \
     > "$ARTIFACTS/role-before.txt" 2>&1 || true

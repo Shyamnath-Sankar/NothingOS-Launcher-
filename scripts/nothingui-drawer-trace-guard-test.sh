@@ -57,6 +57,15 @@ EOF
 package com.android.launcher3.touch;
 
 class AbstractStateChangeTouchController {
+    private LauncherState mGestureStartState;
+    private boolean mGestureTraceActive;
+    private float mGestureDownX;
+    private float mGestureDownY;
+    private long mGestureDownTime;
+    private int mGestureMoveCount;
+    private float mGestureLastMoveY;
+    private long mGestureLastMoveTime;
+
     void intercept() {
         DotwelDrawerTrace.log("intercept action=DOWN decision=accept state=");
         DotwelDrawerTrace.log("intercept action=UP noIntercept=");
@@ -68,6 +77,49 @@ class AbstractStateChangeTouchController {
 
     void dragEnd(float velocity) {
         DotwelDrawerTrace.log("dragEnd velocity=" + velocity);
+    }
+
+    void onControllerTouchEvent(MotionEvent ev) {
+        if (!DotwelDrawerTrace.ENABLED) {
+            return;
+        }
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                mGestureStartState = mLauncher.getStateManager().getState();
+                mGestureTraceActive = mGestureStartState == NORMAL;
+                mGestureDownX = ev.getX();
+                mGestureDownY = ev.getY();
+                mGestureDownTime = ev.getEventTime();
+                mGestureMoveCount = 0;
+                mGestureLastMoveY = 0f;
+                mGestureLastMoveTime = 0L;
+                break;
+            case MotionEvent.ACTION_MOVE:
+                if (mGestureTraceActive) {
+                    mGestureMoveCount++;
+                    mGestureLastMoveY = ev.getY();
+                    mGestureLastMoveTime = ev.getEventTime();
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL:
+                if (mGestureTraceActive) {
+                    mGestureTraceActive = false;
+                    DotwelDrawerTrace.log("gestureSummary action=" + "UP"
+                            + " downX=" + mGestureDownX
+                            + " downY=" + mGestureDownY
+                            + " downTime=" + mGestureDownTime
+                            + " moveCount=" + mGestureMoveCount
+                            + " lastMoveY=" + mGestureLastMoveY
+                            + " lastMoveTime=" + mGestureLastMoveTime
+                            + " upY=" + ev.getY()
+                            + " upTime=" + ev.getEventTime()
+                            + " history=" + ev.getHistorySize());
+                }
+                break;
+            default:
+                break;
+        }
     }
 }
 EOF
@@ -146,22 +198,11 @@ expect_fail_contains 'invalid navigation-mode .name field access fails' \
 
 bad_state="$TMP_DIR/bad-state"
 cp -R "$clean" "$bad_state"
-write_file "$bad_state/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
-package com.android.launcher3.touch;
+cat >> "$bad_state/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
 
-class AbstractStateChangeTouchController {
-    void intercept() {
-        DotwelDrawerTrace.log("intercept action=DOWN decision=accept state="
-                + mLauncher.getStateManager().getState().name);
-        DotwelDrawerTrace.log("intercept action=UP noIntercept=");
-    }
-
-    void dragStart(float startDisplacement) {
-        DotwelDrawerTrace.log("dragStart startDisplacement=" + startDisplacement);
-    }
-
-    void dragEnd(float velocity) {
-        DotwelDrawerTrace.log("dragEnd velocity=" + velocity);
+class ExtraNameAccess {
+    String nameOf(LauncherState state) {
+        return state.name;
     }
 }
 EOF
@@ -193,29 +234,47 @@ expect_fail_contains 'a trace without the debug gate fails' \
 
 move_log="$TMP_DIR/move-log"
 cp -R "$clean" "$move_log"
-write_file "$move_log/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
-package com.android.launcher3.touch;
+cat >> "$move_log/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
 
-class AbstractStateChangeTouchController {
-    void intercept() {
-        DotwelDrawerTrace.log("intercept action=DOWN decision=accept state=");
-        DotwelDrawerTrace.log("intercept action=UP noIntercept=");
-    }
-
-    void dragStart(float startDisplacement) {
-        DotwelDrawerTrace.log("dragStart startDisplacement=" + startDisplacement);
-    }
-
-    void dragEnd(float velocity) {
-        DotwelDrawerTrace.log("dragEnd velocity=" + velocity);
-    }
-
-    void drag() {
-        DotwelDrawerTrace.log("ACTION_MOVE");
+class PerMoveLog {
+    void logMove(MotionEvent ev) {
+        switch (ev.getActionMasked()) {
+            case MotionEvent.ACTION_MOVE:
+                DotwelDrawerTrace.log("move y=" + ev.getY());
+                break;
+            case MotionEvent.ACTION_UP:
+                break;
+            default:
+                break;
+        }
     }
 }
 EOF
 expect_fail_contains 'per-MOVE logging fails' "$move_log" 'must not log per-MOVE events'
+
+move_literal="$TMP_DIR/move-literal"
+cp -R "$clean" "$move_literal"
+cat >> "$move_literal/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" <<'EOF'
+
+class PerMoveLiteral {
+    void logMove() {
+        DotwelDrawerTrace.log("ACTION_MOVE");
+    }
+}
+EOF
+expect_fail_contains 'a literal ACTION_MOVE log fails' \
+    "$move_literal" 'must not log per-MOVE events'
+
+no_summary="$TMP_DIR/no-summary"
+cp -R "$clean" "$no_summary"
+awk '
+    /gestureSummary action=/ { skip = 1 }
+    skip && /history=/ { skip = 0; next }
+    !skip { print }
+' "$clean/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java" \
+    > "$no_summary/src/com/android/launcher3/touch/AbstractStateChangeTouchController.java"
+expect_fail_contains 'a missing per-gesture summary fails' \
+    "$no_summary" 'does not record a per-gesture summary'
 
 no_trace="$TMP_DIR/no-trace"
 cp -R "$clean" "$no_trace"

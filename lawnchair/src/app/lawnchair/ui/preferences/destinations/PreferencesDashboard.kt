@@ -86,8 +86,10 @@ import app.lawnchair.ui.preferences.navigation.Quickstep
 import app.lawnchair.ui.preferences.navigation.Search
 import app.lawnchair.ui.preferences.navigation.Smartspace
 import app.lawnchair.ui.util.addIf
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.isDefaultLauncher
 import app.lawnchair.util.restartLauncher
+import app.nothingui.settings.DefaultHomeRoleConsent
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import com.android.launcher3.util.MSDLPlayerWrapper
@@ -352,10 +354,13 @@ fun PreferencesSetDefaultLauncherWarning(
             modifier = Modifier,
             onClick = {
                 mMSDLPlayerWrapper.playToken(MSDLToken.TAP_MEDIUM_EMPHASIS)
-                Intent(Settings.ACTION_HOME_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    .let { context.startActivity(it) }
-                (context as? Activity)?.finish()
+                val roleRequested = isPlayStoreFlavor() && DefaultHomeRoleConsent.requestRole(context)
+                if (!roleRequested) {
+                    Intent(Settings.ACTION_HOME_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        .let { context.startActivity(it) }
+                    (context as? Activity)?.finish()
+                }
             },
             title = {
                 ProvideDescriptionTextStyle {

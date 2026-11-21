@@ -6,8 +6,9 @@
 #   for release or github/nightly;
 # - the selected touch-controller factory records controller classes and the
 #   navigation mode;
-# - the central state-change controller records DOWN/UP interception and the
-#   drag start/end decisions, but never logs per-MOVE events;
+# - the central state-change controller records DOWN/UP interception, the drag
+#   start/end decisions and one bounded per-gesture event summary for the
+#   debugPlay Normal->AllApps interaction, but never logs per-MOVE events;
 # - the smoke script captures the trace after every swipe attempt regardless of
 #   drawer readiness.
 #
@@ -63,7 +64,29 @@ grep -Fq 'dragStart startDisplacement=' "$CONTROLLER_FILE" ||
     fail "the state-change controller does not record drag start"
 grep -Fq 'dragEnd velocity=' "$CONTROLLER_FILE" ||
     fail "the state-change controller does not record drag end"
-if grep -Fq 'ACTION_MOVE' "$CONTROLLER_FILE"; then
+
+grep -Fq 'gestureSummary action=' "$CONTROLLER_FILE" ||
+    fail "the state-change controller does not record a per-gesture summary"
+for field in downX= downY= downTime= moveCount= lastMoveY= lastMoveTime= upY= upTime= history=; do
+    grep -Fq "$field" "$CONTROLLER_FILE" ||
+        fail "the per-gesture summary does not record $field"
+done
+grep -Fq 'mGestureStartState == NORMAL' "$CONTROLLER_FILE" ||
+    fail "the per-gesture summary is not gated to the Normal->AllApps interaction"
+grep -Fq 'DotwelDrawerTrace.ENABLED' "$CONTROLLER_FILE" ||
+    fail "the per-gesture summary is not gated to debug Play builds"
+grep -Fq 'mGestureMoveCount++' "$CONTROLLER_FILE" ||
+    fail "the per-gesture summary does not count MOVE events"
+
+if grep -Eq 'DotwelDrawerTrace\.log\([^;]*ACTION_MOVE' "$CONTROLLER_FILE"; then
+    fail "the state-change controller must not log per-MOVE events"
+fi
+if awk '
+    /case MotionEvent\.ACTION_MOVE:/ { in_move = 1 }
+    /case MotionEvent\.ACTION_UP:/ || /case MotionEvent\.ACTION_CANCEL:/ { in_move = 0 }
+    in_move && /DotwelDrawerTrace\.log/ { bad = 1 }
+    END { exit bad ? 0 : 1 }
+' "$CONTROLLER_FILE"; then
     fail "the state-change controller must not log per-MOVE events"
 fi
 

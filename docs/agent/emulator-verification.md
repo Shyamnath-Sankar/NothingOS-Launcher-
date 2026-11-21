@@ -17,8 +17,11 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
 - requires an API 37 device and clean-installs only `com.launchernos.dotwellabs.debug`
 - pulls the installed APK and verifies its package plus the installed application and launchable
   activity label are `DotWel Launcher`
-- resolves and launches the HOME activity, then grants `android.app.role.HOME` with
-  `cmd role add-role-holder` and verifies the role holder and default-home resolution
+- before granting the role, opens the settings default-launcher warning, taps it, waits for the
+  real platform `RoleManager` HOME consent screen, captures `role-consent-settings.xml`/`.png` and
+  `role-consent.xml`/`.png`, taps Cancel, and verifies the role holder list is unchanged
+- then grants `android.app.role.HOME` with `cmd role add-role-holder` and verifies the role holder
+  and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
 - captures app-info and About evidence, then opens the debug-only Play theme sample through the
@@ -28,9 +31,10 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   hierarchies, and returns HOME. The extra is inert unless the build is both debug and Play, so
   release and non-Play builds keep the normal settings surface.
 
-The `cmd role` grant is a disposable-emulator stand-in for the user-initiated
-`RoleManager.createRequestRoleIntent(ROLE_HOME)` onboarding. The in-app onboarding prompt itself is
-still a manual check.
+The smoke now captures and cancels the real user-initiated
+`RoleManager.createRequestRoleIntent(ROLE_HOME)` consent after tapping the settings warning, before
+using the `cmd role` grant as disposable-emulator setup for the remaining HOME/drawer checks. The
+grant remains test setup, not an app bypass. The broader onboarding flow is still a manual check.
 
 ## Locked private-space validation
 

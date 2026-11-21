@@ -25,8 +25,10 @@ ARTIFACTS="$TMP_DIR/artifacts"
 mkdir -p "$MOCK_BIN" "$ARTIFACTS"
 
 # The actual HOME hierarchy: the search_container_workspace id belongs to the
-# header at y=91, the hotseat icons end at y=1568, and the bottom QSB is not in
-# UIAutomator. This is the CI87 shape that exposed the 1183 px fallback.
+# header at y=91, the hotseat icons end at y=1568, and the bottom QSB is three
+# id-less "Search" nodes at y=1626..1794. This is the CI87/CI97 shape: the old
+# dock parser took the deepest Search node (1794) as the dock bottom and
+# produced start 1898.
 HOME_XML="$TMP_DIR/home.xml"
 cat > "$HOME_XML" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -41,6 +43,9 @@ cat > "$HOME_XML" <<'EOF'
       <node index="2" text="Contacts" class="android.widget.TextView" content-desc="" clickable="true" bounds="[540,1375][799,1568]" />
       <node index="3" text="WebView Browser Tester" class="android.widget.TextView" content-desc="" clickable="true" bounds="[799,1375][1058,1568]" />
     </node>
+    <node index="4" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1626][1080,1794]" />
+    <node index="5" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1642][1080,1778]" />
+    <node index="6" text="" class="android.widget.TextView" content-desc="Search" clickable="true" bounds="[0,1679][1080,1742]" />
   </node>
 </hierarchy>
 EOF
@@ -214,21 +219,21 @@ else
 fi
 
 bad_starts=$(awk -F'[ =,]' '
-    /^attempt=.* start=/ && ($5 <= 1568 || $5 >= 1640) { print }
+    /^attempt=.* start=/ && ($5 <= 1568 || $5 >= 1626) { print }
 ' "$ARTIFACTS/appdrawer-swipe-log.txt")
 if [ -z "$bad_starts" ]; then
-    pass 'every attempt starts in the 1568..1640 empty gutter'
+    pass 'every attempt starts in the 1568..1626 empty gutter'
 else
     fail "an attempt started outside the gutter: $bad_starts"
 fi
 
 bad_durations=$(awk -F'[ =,]' '
-    /^attempt=.* start=/ && $10 != 500 { print }
+    /^attempt=.* start=/ && $10 != 1500 { print }
 ' "$ARTIFACTS/appdrawer-swipe-log.txt")
 if [ -z "$bad_durations" ]; then
-    pass 'every attempt logs the 500 ms swipe duration'
+    pass 'every attempt logs the bounded 1500 ms swipe duration'
 else
-    fail "an attempt did not log a 500 ms duration: $bad_durations"
+    fail "an attempt did not log a 1500 ms duration: $bad_durations"
 fi
 
 if grep -Fq 'emulator-smoke: FAIL: app drawer did not expose' "$TMP_DIR/runner.err"; then

@@ -139,10 +139,12 @@ ui_dock_top() (
 
 # Print the bottom y of the lowest labelled row (the hotseat/dock) from a
 # UIAutomator dump. This complements ui_dock_top: together they bound the dock
-# icon band so a swipe can start in the empty gutter below it. Search
-# containers (the workspace header and any bottom QSB) are excluded by
-# resource-id so they cannot be mistaken for the dock. When the QSB top is
-# supplied, anything at or below it is also excluded.
+# icon band so a swipe can start in the empty gutter below it. The bottom is
+# taken only from nodes in the same row as ui_dock_top, so the bottom QSB's
+# "Search" nodes cannot be mistaken for dock icons even when they carry no
+# resource-id. Search containers (the workspace header and any bottom QSB) are
+# also excluded by resource-id. When the QSB top is supplied, anything at or
+# below it is excluded.
 ui_dock_bottom() (
     xml=$1
     root=$2
@@ -154,9 +156,11 @@ ui_dock_bottom() (
     root_h=$(($4 - $2))
     [ "$root_h" -gt 0 ] || return 0
     threshold=$((root_y1 + root_h * 55 / 100))
+    row_tolerance=$((root_h * 2 / 100))
     case "$qsb_top" in '' | *[!0-9]*) qsb_top= ;; esac
     tr '>' '\n' < "$xml" |
-        awk -v threshold="$threshold" -v qsb_top="$qsb_top" '
+        awk -v threshold="$threshold" -v qsb_top="$qsb_top" \
+            -v row_tolerance="$row_tolerance" '
             function attr(s, name,    pat, v) {
                 pat = "[[:space:]]" name "=\"[^\"]*\""
                 if (!match(s, pat)) return ""
@@ -185,10 +189,24 @@ ui_dock_bottom() (
                 y1 = y_of(bounds, 2)
                 if (y1 < threshold) next
                 if (qsb_top != "" && y1 >= qsb_top) next
-                y2 = y_of(bounds, 4)
-                if (y2 > best) best = y2
+                count++
+                row_top[count] = y1
+                row_bottom[count] = y_of(bounds, 4)
             }
             END {
+                dock_top = -1
+                for (i = 1; i <= count; i++) {
+                    if (dock_top < 0 || row_top[i] < dock_top) {
+                        dock_top = row_top[i]
+                    }
+                }
+                if (dock_top < 0) exit
+                for (i = 1; i <= count; i++) {
+                    if (row_top[i] <= dock_top + row_tolerance &&
+                        row_bottom[i] > best) {
+                        best = row_bottom[i]
+                    }
+                }
                 if (best > 0) print best
             }
         '
