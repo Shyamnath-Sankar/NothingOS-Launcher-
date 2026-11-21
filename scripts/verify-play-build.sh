@@ -36,6 +36,7 @@ fail() {
 sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
