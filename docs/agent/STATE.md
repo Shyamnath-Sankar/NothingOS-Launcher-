@@ -3,17 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 — Play-only HOME role consent / smoke harness repair**. CI97
-  (`44949228055`) was compile/style/unit green and the real native `ROLE_HOME` consent dialog was
-  captured and cancelled with the role holder list unchanged. The later drawer phase then failed all
-  four attempts. The actual HOME XML has three id-less bottom `Search` nodes at y=1626..1794;
-  `ui_dock_bottom` took the deepest as the dock bottom (1794) and produced start 1898. This run
-  fixes the dock-row parser and the Play default-launcher hint; a CI rerun is pending.
+- current_phase: **P8 — Play-only HOME role consent / drawer input pacing and trace**. CI100
+  (`44951103338`) was compile/style/unit green, the native role consent cancel passed, and the Play
+  hint showed `DotWel Launcher` in actual pixels. Drawer geometry is now correct on all four
+  attempts (`540 1616 540 96`, 500 ms), but the drawer still fails: the runtime traces show a
+  partial displacement at zero velocity. This run lengthens the bounded harness swipe to 1500 ms
+  and adds one debugPlay input summary per Normal->AllApps gesture; a CI rerun is pending.
 - branch: `agent/p8-home-role-consent`
-- head: `e40fc3b` (dock-row fix) + `f83603d` (Play hint) on base `8dd0b33`; base `main` `a446b11`.
+- head: `d341e51` (1500 ms pacing + gesture input summary) on base `430751e`; base `main` `a446b11`.
 - pr: #12: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/12
 
-## done (this run — dock-row parser and Play default-launcher hint)
+## done (this run — 1500 ms harness pacing and gesture input summary)
+
+- **Evidence read, not guessed:** CI100 (`44951103338`) compiled, styled and unit-tested green;
+  the real role-consent cancel passed and the Play hint pixels say `DotWel Launcher`. Geometry was
+  correct on all four attempts (`start=540,1616 end=540,96 duration=500`), yet the drawer never
+  became ready. The actual traces reported last displacement/progress `-726.84 / .37856`,
+  `-194.84 / .10148`, `-188.76 / .09831` and `-264.76 / .13790`, all at velocity 0 and accepted
+  Normal->AllApps. The requested 1520 px MOVE travel was not fully observed: attempt 1 DOWN
+  `21:32:40.016`, dragStart `.072`, dragEnd `41.781` (>500 ms); the others took 1.54/1.29/.98 s.
+  `BaseSwipeDetector` deliberately does not update coordinates on ACTION_UP; only MOVE events drive
+  progress.
+- **Harness pacing:** `scripts/emulator-smoke.sh` now uses a bounded `swipe_duration=1500` (was 500)
+  and still logs the duration with every attempt. The four-attempt bound, the genuine swipe,
+  search, exact `com.android.settings` foreground and HOME-return assertions are unchanged.
+- **Per-gesture input summary:** `AbstractStateChangeTouchController` counts MOVE events and emits
+  exactly one `gestureSummary` at UP/CANCEL with `action`, `downX`, `downY`, `downTime`,
+  `moveCount`, `lastMoveY`, `lastMoveTime` (`none` when no MOVE arrived), `upY`, `upTime` and
+  `history`. It is gated by `DotwelDrawerTrace.ENABLED` (debug Play only) and a start state of
+  `NORMAL`, so unrelated input is not logged. There is deliberately no per-MOVE log line.
+- **Explicit non-change:** app gesture thresholds, `BaseSwipeDetector`/UP semantics, success
+  assertions and the drawer readiness rules were not changed. The longer duration is harness-only.
+- **Guards:** `scripts/nothingui-drawer-trace-guard.sh` now requires the summary fields, the debug
+  Play and Normal gates, the MOVE counter, and rejects per-MOVE logging (literal and inside a MOVE
+  case). Its fixture suite adds missing-summary, realistic per-MOVE and literal per-MOVE negatives.
+  `emulator-smoke-test.sh` and `emulator-smoke-drawer-test.sh` require the logged 1500 ms duration.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-drawer-trace-guard.sh "$PWD"`
+  OK; its suite all pass; `emulator-smoke-test.sh` all pass; `emulator-smoke-drawer-test.sh` all
+  pass; `verify-play-build-test.sh`, home/theme/home-role/icon/brand/identity/manifest suites all
+  pass; the repo-level identity, brand, theme, home, home-role and icon guards OK; `sh -n` clean on
+  every edited script; `git diff --check` clean.
+- **Scope reminder:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing,
+  release, paid-service or asset change. The untracked local `w/` scratch directory was left
+  uncommitted.
+
+## done (previous run — dock-row parser and Play default-launcher hint)
 
 - **Root cause from the CI97 actual XML, not guessed:** the dock icons (Phone, Messaging, Contacts,
   WebView Browser Tester) share y=1375..1568. The bottom QSB is three `content-desc="Search"` nodes
@@ -377,45 +411,46 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the full actual HOME with the
-  three id-less bottom `Search` nodes, dock bottom 1568, start 1616 in the 1568..1626 gutter and no
-  1898. The same test failed before the parser fix with dock bottom 1794 and target 1898.
-- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass, every mock attempt starts in
-  1568..1626 and travels more than 1500 px.
-- This run: `sh scripts/play-brand-guard.sh "$PWD"` -> OK; `sh scripts/play-brand-guard-test.sh` ->
-  all pass, including the Play hint and non-Play inherited-text negatives.
-- This run: `sh scripts/nothingui-home-role-guard-test.sh` -> all pass;
-  `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh scripts/nothingui-drawer-trace-guard.sh "$PWD"` -> OK; its fixture suite all pass,
+  including the missing-summary, realistic per-MOVE and literal per-MOVE negatives.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the bounded 1500 ms duration.
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass, every mock attempt logs 1500 ms,
+  starts in 1568..1626 and travels more than 1500 px.
+- This run: `verify-play-build-test.sh`, `nothingui-home-guard-test.sh`,
+  `nothingui-theme-guard-test.sh`, `nothingui-home-role-guard-test.sh`,
+  `nothingui-icon-render-guard-test.sh`, `play-brand-guard-test.sh`,
+  `play-identity-guard-test.sh` and `manifest-guard-test.sh` all pass; the repo-level identity,
+  brand, theme, home, home-role and icon guards all print OK.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
+- Prior run: `emulator-smoke-test.sh` and `emulator-smoke-drawer-test.sh` passed the dock-row fix,
+  the full actual HOME fixture and the Play hint; `play-brand-guard.sh "$PWD"` and its suite passed.
 - Prior run: `DefaultHomeRolePolicy` TDD harness failed first with unresolved references, then passed
   after the pure policy was added (`DefaultHomeRolePolicy: OK`).
-- This run: `sh scripts/nothingui-home-role-guard.sh "$PWD"` -> `nothingui-home-role-guard: OK`;
-  `sh scripts/nothingui-home-role-guard-test.sh` -> 7/7.
-- This run: `sh scripts/emulator-smoke-test.sh` -> 69 checks; `sh scripts/emulator-smoke-drawer-test.sh`
-  -> 38 checks; `sh scripts/verify-play-build-test.sh` -> 11 checks.
-- This run: `play-brand-guard-test.sh` 14, `play-identity-guard-test.sh` 8,
-  `manifest-guard-test.sh` 31, `nothingui-theme-guard-test.sh` 9, `nothingui-home-guard-test.sh` 13,
-  `nothingui-icon-render-guard-test.sh` 15, `nothingui-drawer-trace-guard-test.sh` 6.
-- This run: `sh -n` clean on the edited smoke/guard/verify scripts; `git diff --check` clean.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. The
-  branch is statically verified only; the real role consent dialog is scripted but unverified.
+  branch is statically verified only; the longer gesture and the input summary are scripted but
+  unverified on device.
 
 ## next
 
-- Run/approve **PR12** for `agent/p8-home-role-consent` at head `f83603d` (branch `agent/p8-home-role-consent`).
-  Do not resume merged PR11.
+- Run/approve **PR12** for `agent/p8-home-role-consent` at head `d341e51` (branch
+  `agent/p8-home-role-consent`). Do not resume merged PR11.
 - CI must be green on the new head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
-  unit tests including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the role guard
-  and the brand guard, and the API 37 emulator smoke.
-- Inspect the new runtime artifacts after the first rerun:
+  unit tests including `DefaultHomeRolePolicyTest`, `verify-play-build.sh` including the role guard,
+  the brand guard, the drawer-trace guard and both smoke suites, and the API 37 emulator smoke.
+- Inspect the new runtime artifacts after the rerun:
   - `appdrawer-swipe-log.txt` / `appdrawer-swipe-N.txt`: the start must be `540 1616` (inside the
-    measured 1568..1626 gutter), not `540 1898`; the duration remains 500.
-  - `appdrawer-trace-N.txt`: `dragEnd` must show the AllApps target and progress above 0.4 at zero
-    release velocity. If it still snaps back, use the trace decision, not a blind retry.
+    measured 1568..1626 gutter) and the duration must read 1500.
+  - `appdrawer-trace-N.txt`: every Normal->AllApps gesture must leave one `gestureSummary` with
+    `downX/downY/downTime`, `moveCount`, `lastMoveY/lastMoveTime`, `upY/upTime` and `history`. A
+    nonzero `moveCount` with little Y change means the MOVE stream arrived but the drag was not
+    delivered; `moveCount` near zero or `lastMoveY=none` means adb lost the MOVE stream. Do not
+    change thresholds, gesture logic, UP semantics or success assertions from this evidence alone.
+  - `appdrawer-trace-N.txt`: `dragEnd` must still show the AllApps target and progress above 0.4 at
+    zero release velocity.
   - `appdrawer-attempt-N.xml` / `.png`: the first ready drawer must differ from HOME and expose the
     search input or app-list container.
   - `role-consent-settings.xml` / `.png`: the settings warning is visible, is the node tapped, and
-    now says `DotWel Launcher`, not `Lawnchair`.
+    says `DotWel Launcher`, not `Lawnchair`.
   - `role-consent.xml` / `.png`: the real platform HOME role consent, with a Cancel control.
   - `role-consent-before.txt` / `role-consent-after.txt`: our package is not a holder and the lists
     are unchanged after cancel.
@@ -423,6 +458,8 @@ when no task input is given, and continues from "next".
     cancel, not a granted role.
 - If the API 37 system image uses a different cancel label, change `ui_cancel_bounds` from the
   captured XML. Do not guess a new coordinate or lower the assertion.
+- If the 1500 ms gesture still fails, use the `gestureSummary` to decide the next smallest
+  harness-only fix; do not change app gesture logic or the 0.4 threshold.
 - **Correction:** CI93 (`44944409947`) on `9076be5` had assembly, unit tests and emulator pass but a
   style failure; it was not fully green. CI95 (`44946373901`) was fully green in 11m40 and its actual
   pixels were verified black/white icons and black HOME/drawer QSB. Keep it as the merged-main
@@ -436,8 +473,9 @@ when no task input is given, and continues from "next".
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
   API 37 emulator run are unverified until PR12 CI runs on the new head.
 - The agent cannot open/approve PRs (`gh` is unauthenticated); a maintainer must approve/run PR12.
-- CI97's drawer failure is fixed in source but not yet re-run; the next CI must show the `540 1616`
-  start and an AllApps `dragEnd`, or the trace must identify the next exact decision.
+- CI100's drawer failure is not fixed by this run's source change; the 1500 ms gesture and the
+  `gestureSummary` are diagnostic evidence only. The next CI must show whether the MOVE stream or
+  the delivered coordinates are the problem.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
 
@@ -457,9 +495,14 @@ when no task input is given, and continues from "next".
 - P3b actual-home fix: when the bottom QSB is absent, start a quarter of the measured icon band
   below the icon bottom (1568 + 48 = 1616). Cost if wrong: a shorter icon band starts closer to
   the icons, but the start remains below every icon and above the PNG-visible QSB top.
-- P3b actual-home fix: the swipe duration is 500 ms instead of 300 ms. Cost if wrong: a slower
-  gesture on a low-end emulator could take longer, but it is still a bounded `input swipe` and
-  gives adb more MOVE samples at zero release velocity.
+- P8 drawer diagnostic: the harness swipe duration is now 1500 ms instead of 500 ms. Cost if wrong:
+  the gesture takes longer on a slow emulator, but it is still a bounded `input swipe` and gives adb
+  more MOVE samples at zero release velocity. This is a harness/fixture change only; the app's
+  gesture logic, threshold and ACTION_UP semantics are untouched.
+- P8 drawer diagnostic: the per-gesture `gestureSummary` is emitted once at UP/CANCEL and only for a
+  debug Play gesture that started in `NORMAL`. Cost if wrong: a gesture that never reaches this
+  controller leaves no summary, but that is exactly the lost-input case the existing DOWN/UP
+  interception lines already show; no unrelated input is logged and there is no per-MOVE flood.
 - P3b drawer-readiness repair: derive the swipe target from the live HOME hierarchy (root bounds +
   lowest labelled row) rather than a fixed display fraction. Cost if wrong: the hierarchy adds one
   uiautomator dump per attempt, but the gesture can no longer land on the dock; if no labelled row
@@ -539,6 +582,18 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: Drawer input pacing and per-gesture summary on `agent/p8-home-role-consent`
+  (`d341e51`). CI100 (`44951103338`) was compile/style/unit green, the role consent cancel passed
+  and the Play hint pixels say `DotWel Launcher`. Geometry was correct on all four attempts
+  (`540 1616 540 96`, 500 ms), but the traces showed last displacement/progress `-726.84 / .37856`,
+  `-194.84 / .10148`, `-188.76 / .09831`, `-264.76 / .13790`, all velocity 0 and accepted
+  Normal->AllApps; the requested 1520 px MOVE travel was not fully observed. The harness now uses a
+  bounded 1500 ms swipe (still logged per attempt) and the debug Play controller emits one
+  `gestureSummary` at UP/CANCEL with DOWN x/y/time, MOVE count, last MOVE y/time, UP y/time and
+  history size. No per-MOVE log, no app threshold/UP/success change. The drawer-trace guard now
+  requires the summary fields/gates and rejects per-MOVE logging; smoke fixtures assert 1500 ms.
+  Local trace, smoke, drawer and all guard suites pass; `sh -n` and `git diff --check` clean. CI and
+  device evidence are still required.
 - 2026-11-21: Dock-row parser and Play hint repair on `agent/p8-home-role-consent` (`e40fc3b`,
   `f83603d`). CI97 (`44949228055`) passed compile/style/unit and captured/cancelled the real native
   `ROLE_HOME` dialog with an unchanged role holder list, but the drawer phase failed four attempts.
