@@ -36,6 +36,56 @@ The smoke now captures and cancels the real user-initiated
 using the `cmd role` grant as disposable-emulator setup for the remaining HOME/drawer checks. The
 grant remains test setup, not an app bypass. The broader onboarding flow is still a manual check.
 
+## Real grid and widget-picker verification
+
+After the role is granted and the actual HOME is verified, the smoke runs two more read-only phases
+against the real launcher UI. Neither phase writes a preference, starts a fake activity or fabricates
+a view.
+
+- **Home screen grid.** It opens the existing `PreferenceActivity` with the existing
+  `lawnchair://settings/home-screen-grid` deep link, then polls the real UIAutomator hierarchy for
+  the `Home screen grid` title, the preview (`LauncherPreviewView`/`LauncherPreviewLayout`), the
+  `Columns`, `Rows` and `Dock icons` labels, at least three accessibility `SeekBar` controls and the
+  `Apply` button. It captures `grid-settings.xml`/`.png` and requires `Apply` to still be disabled,
+  proving no grid change was staged. It never taps a control or Apply. It then presses HOME and
+  re-verifies the actual HOME clock/date.
+- **HOME long-press and Widgets.** It measures the empty central workspace from the actual HOME
+  hierarchy: the header bottom comes from the workspace search container and the dock top from the
+  lowest labelled row, so the long-press point stays below the header and above the dock icons and
+  bottom QSB. A real `input swipe x y x y 1000` long-press opens the real
+  `OptionsPopupView`/`DeepShortcutView` popup. The smoke captures `home-popup.xml`/`.png`, taps the
+  `Widgets` item by its measured clickable bounds, and polls for the native picker. It accepts either
+  the refactored Compose picker (`com.android.launcher3.widgetpicker:id/widgets_catalog` plus a
+  search/list label) or the inherited picker (`widgets_search_bar`/`search_bar_container` plus
+  `primary_widgets_list_view`/`search_widgets_list_view`). The picker hierarchy must differ from the
+  pre-long-press HOME, so a closed HOME with incidental English text cannot pass. It captures
+  `widgets-picker.xml`/`.png`, returns HOME and re-verifies the actual HOME clock/date.
+
+Evidence for these phases:
+
+```text
+grid-settings-launch.txt
+grid-settings-attempt-N.xml
+grid-settings.xml
+grid-settings.png
+grid-settings.txt
+home-before-widgets-attempt-N.xml/.png
+widgets-launcher-idle-N.txt
+widgets-longpress-N.txt
+widgets-longpress-log.txt
+home-popup-attempt-N-P.xml
+home-popup.xml
+home-popup.png
+widgets-picker-attempt-N-P.xml
+widgets-picker.xml
+widgets-picker.png
+widgets-picker.txt
+```
+
+Every wait is a bounded UIAutomator poll. The existing role-consent Cancel, the 1500 ms / four-attempt
+drawer swipe, the Settings search/tap and the exact `com.android.settings` foreground check are
+unchanged.
+
 ## Locked private-space validation
 
 `scripts/private-space-check.sh` is deliberately separate. It detects an
