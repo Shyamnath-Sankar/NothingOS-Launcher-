@@ -29,11 +29,15 @@ object NothingUiHomeClock {
 
     fun formatClock(now: Calendar, is24Hour: Boolean, locale: Locale): String {
         val pattern = if (is24Hour) "HH:mm" else "h:mm"
-        return SimpleDateFormat(pattern, locale).format(now.time)
+        return formatter(pattern, now, locale).format(now.time)
     }
 
     fun formatDate(now: Calendar, locale: Locale): String {
-        return SimpleDateFormat("EEE d MMM", locale).format(now.time).uppercase(locale)
+        return formatter("EEE d MMM", now, locale).format(now.time).uppercase(locale)
+    }
+
+    private fun formatter(pattern: String, now: Calendar, locale: Locale): SimpleDateFormat {
+        return SimpleDateFormat(pattern, locale).apply { timeZone = now.timeZone }
     }
 
     fun accessibilityLabel(clock: String, date: String): String = "$clock, $date"

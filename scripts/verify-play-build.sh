@@ -37,6 +37,7 @@ sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
 
 # Identity of the source tree (build.gradle + source manifests).
 sh "$SCRIPT_DIR/play-identity-guard.sh" "$ROOT"
@@ -49,6 +50,11 @@ fi
 # NothingUI theme foundation and Play-only gate (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/theme" ]; then
     sh "$SCRIPT_DIR/nothingui-theme-guard.sh" "$ROOT"
+fi
+
+# NothingUI actual-home slice and Play-only gate (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
+    sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
 fi
 
 # 2. Locate the merged manifest for the Play debug variant.
