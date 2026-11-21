@@ -3,43 +3,43 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P1b (accessibility + foreground-sync removal) — complete; P1c next
-- branch: agent/p1b-second-slice-of-p1-remove
+- current_phase: P1c (private space + bug-report cleanup) — complete; P2 next
+- branch: agent/p1c-final-slice-of-p1-private
 - pr: pending (agent-dev workflow opens it after this run)
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p1b-second-slice-of-p1-remove
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p1c-final-slice-of-p1-private
 
 ## done
-- P1b: `play/AndroidManifest.xml` now removes `app.lawnchair.LawnchairAccessibilityService`
-  and the bug-report foreground-sync service `app.lawnchair.bugreport.UploaderService` with
-  `tools:node="remove"`. The classes stay compiled for the shared source set, but the Play build
-  never declares them. github/nightly keep both.
-- P1b settings entry points: Play (`BuildConfig.FLAVOR_channel == "play"`, via the existing
-  `isPlayStoreFlavor()`) hides the accessibility-backed gesture options (`Recents`,
-  `OpenNotifications`, `OpenQuickSettings`), removes `SleepMode.ACCESSIBILITY` from the sleep-mode
-  list, drops `SleepMethodPieAccessibility` from `SleepGestureHandler`, and makes
-  `GestureWithAccessibilityHandler` a no-op so it never opens a dead system accessibility screen.
-- `scripts/manifest-guard-test.sh` now also asserts the Play overlay declares the two
-  `tools:node="remove"` services. Test run: `sh scripts/manifest-guard-test.sh` → all 25 tests pass.
-- Commits: d394373 (manifest + overlay test), 166b9b6 (settings gating).
-- Gradle was not run (per task); CI on the PR builds `assembleLawnWithQuickstepPlayDebug`.
-- P1a: `play/AndroidManifest.xml` removes the AGENTS.md §7 non-core permissions and the Google
-  QSB / Smartspacer components with `tools:node="remove"`.
-- Wired as the `play` flavor manifest and as the `lawnWithQuickstepPlay` variant manifest. The
-  variant manifest has the highest merge priority, which is what makes the removal markers
-  effective against entries declared by the higher-priority `lawn`/`withQuickstep` flavors.
-- `scripts/manifest-guard.sh` + `scripts/manifest-guard-test.sh`: POSIX guard fails on forbidden
-  permissions/components from AGENTS.md §7, including the accessibility and feed/foreground-sync
-  entries that P1b will remove. Test run: `sh scripts/manifest-guard-test.sh` → all 22 tests pass.
-- Commits: e5347d0 (manifest overlay), a11239e (guard), 54bcb72 (accessibility/feed checks).
+- P1c: `play/AndroidManifest.xml` now declares `ACCESS_HIDDEN_PROFILES`, so the hidden private
+  profile is discoverable and its inherited container can render.
+- P1c: removed the remaining bug-report components from Play — `app.lawnchair.bugreport.FileProvider`
+  (provider) and `app.lawnchair.bugreport.BugReportReceiver` (receiver), alongside the
+  `UploaderService` removed in P1b. The bug-report subsystem is now absent from Play.
+- P1c: `scripts/manifest-guard.sh` now flags every `app.lawnchair.bugreport.*` component and
+  requires `ACCESS_HIDDEN_PROFILES` in the merged manifest.
+  `sh scripts/manifest-guard-test.sh` → all 31 tests pass (includes the new provider/receiver,
+  required-permission and overlay cases).
+- P1c: search filters apps from locked profiles via `Sequence<AppInfo>.filterLockedProfiles()` in
+  `SearchUtils.kt`, applied in both `SearchUtils` and `AppSearchProvider`. It drops
+  `FLAG_DISABLED_QUIET_USER` apps, so locked private-space and paused work-profile apps never
+  surface in search. Added `tests/multivalentTests/.../LockedProfileSearchFilterTest.kt` (Soong
+  test source set; Gradle was not run per task).
+- P1c recents: no code change needed. `RecentTasksList` calls
+  `SystemUiProxy.getRecentTasks(numTasks, currentUserId)`, so recents only ever contains
+  current-user tasks; locked private/work profiles are other users and cannot surface.
+- P1c drawer: inherited `AlphabeticalAppsList`/`PrivateProfileManager` already hides private-space
+  apps unless the container is enabled; no change needed.
+- P1b: `play/AndroidManifest.xml` removes `app.lawnchair.LawnchairAccessibilityService` and the
+  bug-report `UploaderService`; Play settings hide the accessibility-backed gesture/sleep options.
+- P1a: `play/AndroidManifest.xml` removes the AGENTS.md §7 non-core permissions and the Google QSB
+  / Smartspacer components with `tools:node="remove"`, wired as both the play-flavor and
+  `lawnWithQuickstepPlay` variant manifest.
 - Gradle was not run (per task); CI on the PR builds `assembleLawnWithQuickstepPlayDebug`.
 
 ## next
-- P1c: `ACCESS_HIDDEN_PROFILES` + private-space containers; locked profiles never surface in
-  drawer, search or recents.
-- P9: wire `scripts/manifest-guard.sh` into CI (workflows were intentionally not touched in P1a/P1b).
-- Follow-up (not in P1b scope): the bug-report receiver/provider still exist in Play while
-  `UploaderService` is gone, so the crash-notification "Upload" action can leave a stuck
-  notification. Either gate the upload action off in Play or remove the whole bug-report subsystem.
+- P2: rebrand — applicationId `com.launchernos.dotwellabs` for the Play channel only, app label,
+  launcher activity label, icon, `mipmap-*`, default strings; keep the Apache `NOTICE`.
+- P9: wire `scripts/manifest-guard.sh` into CI (workflows were intentionally not touched in
+  P1a/P1b/P1c).
 
 ## blockers
 - None.
@@ -50,23 +50,21 @@ when no task input is given, and continues from "next".
 - Free models/services only. Cache heavy installs in workflows.
 
 ## rulings this run
-- The play flavor manifest is lower merge priority than the `lawn`/`withQuickstep` flavor
-  manifests (flavor dimension order), so a play-flavor-only `tools:node="remove"` cannot remove
-  their entries. Ruling: also wire `play/AndroidManifest.xml` as the `lawnWithQuickstepPlay`
-  variant manifest (highest priority) and include the launcher activity/application block there.
-  Cost if wrong: the launcher declaration is duplicated and could drift from
-  `quickstep/AndroidManifest-launcher.xml`.
-- The guard checks the full §7 list (accessibility + feed/foreground-sync) even though P1a does not
-  remove those yet. Ruling: make the guard fail until P1b lands. Cost if wrong: the guard is red
-  on Play until P1b, which is the intended signal.
-- P1b settings gating uses the existing `isPlayStoreFlavor()` (`BuildConfig.FLAVOR_channel`) rather
-  than a `play/res` boolean. Reason: flavor resource priority follows dimension order, so a
-  `play`-flavor resource would lose to `lawnchair/res` (`lawn` dimension); a variant-only resource
-  would also miss `lawnPlay`. Cost if wrong: if a future build adds a non-`play` channel that still
-  lacks the service, its settings would show dead accessibility options.
-- P1b hides `Recents`, `OpenNotifications` and `OpenQuickSettings` in Play, not just the explicit
-  "Accessibility service" sleep option, because all three either require or fall back to the
-  removed service and would otherwise prompt for a service that cannot be enabled. Cost if wrong:
-  Play loses the reflection-based notification/Quick Settings gesture shortcut.
+- P1c search filter uses `AppInfo.runtimeStatusFlags & FLAG_DISABLED_QUIET_USER` rather than a
+  per-result `UserManager.isQuietModeEnabled` binder call. `LoaderTask` and
+  `PackageUpdatedTask.OP_USER_AVAILABILITY_CHANGE` keep that flag in sync, so the filter is
+  current and cheap. Cost if wrong: if a future code path creates `AppInfo` without the quiet
+  flag, locked-profile apps could still surface in search.
+- P1c recents is covered by the platform: `getRecentTasks` is scoped to `currentUserId`, so no
+  app-side filter is needed. Cost if wrong: a future recents source that queries all users would
+  need its own locked-profile filter.
+- The guard now *requires* `ACCESS_HIDDEN_PROFILES`, which changes it from a pure forbidden-entry
+  check to also assert a Play invariant. The clean-manifest fixture was updated accordingly.
+  Cost if wrong: the guard fails on any manifest (e.g. a non-Play one) that legitimately omits the
+  permission.
+- Prior P1a/P1b rulings retained (play overlay wired as variant manifest; guard red until P1b;
+  settings gating via `isPlayStoreFlavor()`).
+
 ## log
-- 2026-11-21: P1b complete (accessibility + bug-report foreground service removed from Play)
+- 2026-11-21: P1c complete (private-space permission + locked-profile search filter + bug-report
+  receiver/provider removal)
