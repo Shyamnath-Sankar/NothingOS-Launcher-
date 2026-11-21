@@ -3,19 +3,53 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10a — real grid settings and widget-picker smoke (harness correction)**. The P10a
-  smoke was corrected against the actual `grid-settings-attempt-6` hierarchy and pixels: the preview
-  is validated from its `/workspace` bounds instead of a nonexistent preview class, Apply is matched
-  as a non-clickable label inside a non-clickable Button, the last failed readiness PNG is captured,
-  and the HOME long-press no longer falls back to an occupied centre. Read-only: no feature, styling,
-  preference write, app source, SDK, workflow, Gradle, manifest, permission or signing change.
+- current_phase: **P10a — real grid settings and widget-picker smoke (popup readiness correction)**.
+  The popup readiness no longer guesses `OptionsPopupView`/`DeepShortcutView` classes; it requires the
+  actual `popup_container` and multiple clickable `system_shortcut` rows whose `bubble_text` labels
+  include `Widgets` plus a home-level option. The Widgets tap uses the clickable parent bounds
+  (`472 322 1039 459` on the captured hierarchy), and a failed popup readiness captures its last PNG
+  before BACK. Read-only: no feature, styling, preference write, app source, SDK, workflow, Gradle,
+  manifest, permission or signing change.
 - branch: `agent/p10-grid-widget-smoke`
-- head: `f51fcb3` (`fix(smoke): validate the actual grid preview and non-clickable Apply`) on base
-  `main` `55a25a2`; prior harness commit `7b9f966`, docs commits `4b98e45`, `d9a8b71`, `b98cbb5`.
-- pr: **none yet** — main owns PR creation/CI approval for this branch. PR13 is merged at `55a25a2`
+- head: `61adb30` (`fix(smoke): detect the actual HOME popup hierarchy`) on base `main` `55a25a2`;
+  prior harness commits `f51fcb3`, `7b9f966`, docs commits `4b98e45`, `d9a8b71`, `b98cbb5`,
+  `369c626`.
+- pr: **PR14** for `agent/p10-grid-widget-smoke`; main owns CI approval. PR13 is merged at `55a25a2`
   and the APK104/APK102 fallbacks remain `main` `55a25a2`.
 
-## done (this run — P10a grid/widget harness correction)
+## done (this run — P10a popup readiness correction)
+
+- **Evidence read, not guessed:** CI108 (`10844960564539`) proved the grid settings pass: three
+  sliders, grey non-clickable Apply, and the actual preview pixels. The real HOME long-press 540/834
+  opened all three attempts, but `home_popup_is_ready` rejected the actual
+  `home-popup-attempt-1-1.xml`/`-1-6.xml` because it required classes that are not present.
+- **Actual popup shape:** `pkg:id/popup_container` class `android.widget.LinearLayout` bounds
+  `[472,180][1039,743]`, with four clickable `pkg:id/system_shortcut` FrameLayouts at
+  `[472,180][1039,317]`, `[472,322][1039,459]`, `[472,464][1039,601]` and `[472,606][1039,743]`.
+  Each contains a `pkg:id/bubble_text` TextView labelled Wallpapers, Widgets, Apps list and Home
+  settings; the Widgets label itself is not clickable and shares its parent's bounds.
+- **Readiness fix:** `home_popup_is_ready` now parses nesting, requires `popup_container`, at least
+  two clickable `system_shortcut` rows, a `Widgets` label inside a clickable row and a
+  `Home settings`/`Wallpapers` label inside a clickable row. It no longer accepts a page that merely
+  contains the text or an item menu.
+- **Tap bounds:** `ui_clickable_label_bounds` was inspected against the actual nested shape; it
+  already returns the nearest clickable ancestor, so the Widgets tap resolves to
+  `472 322 1039 459`. Fixtures now lock that behaviour, including a non-clickable label and its
+  clickable parent.
+- **Failure evidence:** the popup-not-ready branch captures
+  `home-popup-attempt-<N>-last.png` before pressing BACK. The genuine long-press gesture, measured
+  target and real route are unchanged; no coordinates are hard-coded.
+- **Fixtures:** the positive popup is the actual `popup_container`/`system_shortcut`/`bubble_text`
+  shape. New negatives cover the real HOME, English-only text without the real ids, an item menu with
+  Widgets but no home-level option, a popup without Widgets, and a single clickable shortcut with a
+  home option outside any clickable shortcut. `widget_picker_is_ready` is unchanged until device
+  evidence exists.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass (including
+  every new positive/negative); `emulator-smoke-drawer-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. This is source/fixture verification only, not a runtime claim.
+
+## done (previous run — P10a grid/widget harness correction)
 
 - **Evidence read, not guessed:** CI106 (`10644959244281`) passed assembly/style/units and the real
   grid editor opened, but the new readiness failed on class assumptions. The actual
@@ -532,8 +566,8 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` at head `f51fcb3`. PR13 is
-  merged into `main` (`55a25a2`) and the APK104/APK102 fallbacks remain `main` `55a25a2`.
+- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` (PR14) at head `61adb30`.
+  PR13 is merged into `main` (`55a25a2`) and the APK104/APK102 fallbacks remain `main` `55a25a2`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
 - Inspect the runtime artifacts after the run:
@@ -546,7 +580,10 @@ when no task input is given, and continues from "next".
   - `grid-settings.txt` and `grid-settings-launch.txt`: the deep link launched `Status: ok` and no
     grid change was applied.
   - `home-before-widgets-attempt-N.xml` / `.png`: the actual HOME before the long press.
-  - `home-popup.xml` / `.png`: the real `OptionsPopupView` with `Widgets` and a home-level option.
+  - `home-popup.xml` / `.png`: the real `popup_container` with clickable `system_shortcut` rows,
+    `Widgets` and a home-level option. If the ids differ, update from the captured XML; do not return
+    to a class-name guess.
+  - `home-popup-attempt-N-last.png`: the last failed popup attempt captured before BACK.
   - `widgets-picker.xml` / `.png`: the native picker search/list and not the pre-long-press HOME.
   - `widgets-longpress-log.txt`: the measured long-press point, duration 1000 and any bounded retry.
 - The real grid preview currently shows the inherited welcome surface instead of the Doto header.
