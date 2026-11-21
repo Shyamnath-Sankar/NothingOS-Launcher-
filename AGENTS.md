@@ -18,7 +18,7 @@ It is **not affiliated with, endorsed by, or sponsored by Nothing Technology Lim
 |---|---|---|
 | Base codebase | **DECIDED** | Fork Lawnchair 16 `16-dev` (**Apache 2.0**). Inherit its `lawn` / `withQuickstep` / `play` flavors and rebrand before the first release. |
 | Public Play name | **OPEN — release blocker** | "NothingUI" is a working codename only. It contains a third-party mark and cannot ship as the Play listing name or repo name without clearance. "NothingOS" is strictly off-limits. |
-| `applicationId` | **OPEN** | Must be neutral, unique and permanent once published. `com.nothing.*` belongs to Nothing Technology. |
+| `applicationId` | **DECIDED** | Play channel only: `com.launchernos.dotwellabs` (owner-approved 2026-11-21). github/nightly keep `app.lawnchair` / `app.lawnchair.nightly`. Permanent once published. `com.nothing.*` belongs to Nothing Technology. |
 | Monetization | OPEN | Default assumption: free + one-time Pro via Play Billing. No ads. |
 
 **Agent rule:** stop and ask the human before changing any OPEN item or any of the values in §7.

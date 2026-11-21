@@ -34,7 +34,7 @@ Android 17 problem.
 
 ## P2 — Rebrand
 
-- [ ] `applicationId dev.shyamnath.launcher` for the Play channel only.
+- [ ] `applicationId com.launchernos.dotwellabs` for the Play channel only.
 - [ ] app label, launcher activity label, icon, `mipmap-*`, default strings.
 - [ ] keep `NOTICE` and Apache headers; add our `NOTICE` entry.
 - [ ] **Gate:** `assembleLawnPlayDebug` installs and becomes default home on emulator.

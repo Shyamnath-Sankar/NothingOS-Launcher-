@@ -277,7 +277,7 @@ android {
         }
 
         play {
-            applicationId "app.lawnchair.play"
+            applicationId "com.launchernos.dotwellabs"
             dimension "channel"
             isDefault true
         }
