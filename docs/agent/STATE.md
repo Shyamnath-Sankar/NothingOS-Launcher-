@@ -3,11 +3,11 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P3a (theme foundation only) — repair and visual-evidence slice. The CI53
-  `nothingui-theme-guard` false positive is fixed, a regression suite now covers it, and a
-  DEBUG+Play-only diagnostic route plus emulator-smoke capture for the dark/light sample is in
-  place. No Gradle build or emulator run happened in this environment; PR10 CI and screenshot
-  review are pending.
+- current_phase: P3a (theme foundation only) — system-bar contrast repair for the DEBUG+Play theme
+  sample. CI62 run `44909523145` on `e359a9a` was green (actual JUnit XML: 7 token + 4 predicate
+  tests, 0 skipped), but coordinator inspection of the real `theme-sample-dark`/`theme-sample-light`
+  PNGs found the dark sample keeping dark status/nav icons on the dark surface. Root cause is fixed
+  this run; CI and pixel re-review on the new head are pending. P3a is not complete.
 - branch: agent/p3a-theme-foundation-only-star
 - pr: #10 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/10
@@ -15,6 +15,32 @@ when no task input is given, and continues from "next".
 
 ## done
 
+- This run (P3a system-bar repair, root cause): `PreferenceActivity` called the inherited no-arg
+  `enableEdgeToEdge()` before `setContent`, then called the inherited `EdgeToEdge()` composable in
+  the sample branch. That composable derives system-bar appearance from `isSelectedThemeDark` (the
+  launcher theme preference), not from the requested sample mode. On a light-system emulator the
+  dark sample therefore kept dark status/nav icons, and its nav scrim was light while the sample
+  surface was dark.
+- This run (fix): `ComponentActivity.EdgeToEdge` now accepts
+  `darkTheme: Boolean = isSelectedThemeDark`. The normal settings path still calls the no-arg
+  default and keeps the early inherited `enableEdgeToEdge()`. The diagnostic branch passes
+  `themeSampleDark` and skips the early inherited call, so its window is configured only from the
+  requested sample mode: dark sample gets light bar icons and a dark nav scrim; light sample gets
+  dark icons and a light scrim. This is per-window only; no global setting, preference, manifest,
+  component, workflow, SDK or applicationId changed.
+- This run (regression): the theme guard now asserts the explicit `EdgeToEdge` override, the
+  `LaunchedEffect(darkTheme)` key, the sample branch passing `themeSampleDark`, and the normal path
+  still using `EdgeToEdge()`. The fixture suite adds missing-sample-mode and
+  missing-explicit-override negatives (now 9/9).
+- This run, verification actually run (no Gradle, no emulator): `nothingui-theme-guard.sh "$PWD"`
+  OK; `nothingui-theme-guard-test.sh` 9/9; `play-brand-guard.sh` OK and its tests pass;
+  `play-identity-guard.sh` OK and its tests pass; `manifest-guard-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. No local Gradle build or emulator run was performed; the existing smoke must produce the
+  dark/light PNGs for pixel review.
+- Scope reminder: this is the theme sample only. The actual HOME surface is not restyled. The
+  private-space runtime UI, the in-app `RoleManager.ROLE_HOME` prompt and the non-Play runtime
+  control remain pending.
 - This run (P3a repair, root cause reproduced): `scripts/nothingui-theme-guard.sh` scanned the
   full path from `find`, so CI's checkout parent `.../NothingOS-Launcher-/...` matched the
   `nothing` token and the guard falsely reported a Nothing font asset. Running the guard with the
@@ -82,15 +108,16 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- PR10 CI must be approved and run. Confirm:
-  - `verify-play-build` passes with the theme guard no longer treating the checkout parent as a
-    font asset;
-  - the unit-test XML contains all 7 `NothingUiTokenTest` tests, and the workflow's existing
-    4-predicate `LockedProfilePredicateTest` assertion still passes;
+- PR10 CI must be approved and run on the new head. Confirm:
+  - `verify-play-build` passes with the theme guard at 9/9;
+  - the unit-test XML still contains all 7 `NothingUiTokenTest` tests and the workflow's existing
+    4-predicate `LockedProfilePredicateTest` assertion, with 0 skipped;
   - `api37-emulator-evidence` contains `theme-sample-dark.xml` + `.png` and
     `theme-sample-light.xml` + `.png`, each XML exposing `DOTWEL`.
-- Visually review the dark/light PNGs for the monochrome palette, Doto display/numeric text, sans
-  body text, spacing and the red accent. Static guards cannot prove the rendering.
+- Visually re-review the dark/light PNGs: the dark sample must now show light status/nav icons on
+  the dark surface, the light sample must show dark icons, and the smoke's existing
+  `return_home theme-sample` check must still resume the launcher (bar state is per-window, so HOME
+  keeps its own bars). Static guards cannot prove the rendered contrast.
 - P3b (home/grid), the next slice:
   - derive a 4×6 `DeviceProfile` override from `WindowMetrics` (Android 17 large-screen rule), with
     no `resources.displayMetrics` math;
@@ -105,7 +132,8 @@ when no task input is given, and continues from "next".
   - CI on PR10 must run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play unit tests
     (including `NothingUiTokenTest`), `verify-play-build.sh` (including the theme guard), and the
     API 37 emulator smoke. None of those Gradle/emulator runs happened here.
-  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed.
+  - The dark/light sample PNGs and XML must exist in the CI artifacts and be visually reviewed for
+    system-bar contrast as well as palette/typography.
   - A non-Play control build is still pending.
   - P1 private-space runtime UI (drawer/search/recents) is still unverified.
   - P2 in-app `RoleManager.ROLE_HOME` onboarding prompt is still unverified; the emulator `cmd
@@ -113,9 +141,12 @@ when no task input is given, and continues from "next".
 
 ## blockers
 
-- P3a CI/visual evidence: no Gradle build or emulator run was allowed in this environment, so the
-  branch is statically verified only. The dark/light screenshots are not produced yet; do not call
-  P3a green or claim a rendered preview until PR10 CI uploads the artifacts.
+- P3a CI/visual evidence: CI62 (`44909523145`) on `e359a9a` produced the dark/light sample PNGs and
+  was green, but the dark sample had insufficient system-bar contrast. The fix is pushed on
+  `9d1e56e`; a new CI run must produce the PNGs and a coordinator must re-review them. No Gradle
+  build or emulator run was allowed in this environment, so the branch is statically verified only.
+- Scope: theme sample only; the actual HOME surface is not restyled. Private-space runtime UI,
+  the in-app `RoleManager` prompt and the non-Play runtime control remain pending.
 - PR10 approval: `gh` is unauthenticated here, so the pushed commits need a maintainer to approve
   and run the PR workflow.
 - P1 runtime private-space validation: pending device/emulator UI evidence (drawer, search,
@@ -161,6 +192,12 @@ when no task input is given, and continues from "next".
 - P3a: the new theme guard is called from `verify-play-build.sh` rather than a workflow edit,
   because `.github/workflows/` is off-limits. Cost if wrong: a future CI refactor that stops
   calling `verify-play-build.sh` also drops the theme guard.
+- P3a system-bar repair: the diagnostic sample passes its own dark flag into `EdgeToEdge` and skips
+  the inherited early `enableEdgeToEdge()` call, so bar contrast follows the requested sample mode
+  and never the inherited system/preference theme. Normal settings keep the inherited path. Cost if
+  wrong: the sample's window setup is not byte-for-byte the settings sequence, so a settings-only
+  regression must still be caught by the normal-path guard and the smoke's `return_home
+  theme-sample` resume check.
 
 ## prior rulings still binding (P2c)
 
@@ -180,6 +217,13 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-21: P3a system-bar repair: CI62 (`44909523145`) on `e359a9a` was green (7 token + 4
+  predicate JUnit tests, 0 skipped) but the real dark sample kept dark status/nav icons. Root
+  cause: the sample branch used the inherited `EdgeToEdge()`/`enableEdgeToEdge()` theme preference
+  instead of the requested sample mode. Added an explicit `darkTheme` parameter, passed
+  `themeSampleDark` from the diagnostic branch, skipped the inherited early call there, and added
+  guard fixtures (9/9). Scope is the theme sample only; HOME is not restyled. New CI/pixel review
+  pending.
 - 2026-11-21: P3a repair/visual-evidence slice: reproduced and fixed the CI53 guard false positive
   (full-path vs basename scan), added the `NothingOS-Launcher`/ndot regression suite, added the
   DEBUG+Play diagnostic sample route, and extended the API 37 smoke to capture dark/light sample
