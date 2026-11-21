@@ -190,6 +190,35 @@ run_expect_fail_contains \
     "$forbidden_root" \
     'READ_CONTACTS'
 
+both_stages_root="$TMP_DIR/both-stages"
+new_root "$both_stages_root"
+write_merged \
+    "$both_stages_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings' \
+    '<uses-permission android:name="android.permission.READ_CONTACTS" />'
+write_merged \
+    "$both_stages_root/build/intermediates/merged_manifests/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings'
+run_expect_pass 'final merged_manifests wins when both AGP stages exist' "$both_stages_root"
+
+both_stages_forbidden_root="$TMP_DIR/both-stages-forbidden"
+new_root "$both_stages_forbidden_root"
+write_merged \
+    "$both_stages_forbidden_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings'
+write_merged \
+    "$both_stages_forbidden_root/build/intermediates/merged_manifests/lawnWithQuickstepPlayDebug/AndroidManifest.xml" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings' \
+    '<uses-permission android:name="android.permission.READ_CONTACTS" />'
+run_expect_fail_contains \
+    'final merged_manifests is guarded when both AGP stages exist' \
+    "$both_stages_forbidden_root" \
+    'READ_CONTACTS'
+
 if [ "$failures" -ne 0 ]; then
     printf '\n%d test(s) failed\n' "$failures" >&2
     exit 1

@@ -301,6 +301,11 @@ android {
             }
         }
 
+        test {
+            java.srcDirs = ['tests/unit/java']
+            kotlin.directories.addAll('tests/unit/java')
+        }
+
         lawn {
             java.srcDirs = ['src_flags', 'src_shortcuts_overrides', 'lawnchair/src', 'tests/shared']
             kotlin.directories.addAll('src_flags', 'src_shortcuts_overrides', 'lawnchair/src', 'tests/shared')
@@ -505,6 +510,29 @@ dependencies {
 
     debugImplementation libs.leakcanary.android
     debugImplementation libs.leakcanary.androidstudio
+
+    // Plain JVM unit tests for pure predicates; no Robolectric/Android runtime needed.
+    testImplementation libs.junit
+}
+
+// The CI unit-test job invokes testLawnWithQuickstepPlayDebugUnitTest directly. Gradle exits 0
+// with NO-SOURCE when a source set is empty, so fail closed if the locked-profile test stops
+// being part of that task's test source set.
+def lockedProfileTestFile = file('tests/unit/java/app/lawnchair/search/algorithms/LockedProfilePredicateTest.kt')
+def lockedProfileTestSourceDirs = android.sourceSets.test.java.srcDirs.collect { it.canonicalFile }
+tasks.register('verifyLockedProfileTestWiring') {
+    doLast {
+        if (!lockedProfileTestFile.isFile()) {
+            throw new GradleException("Missing locked-profile unit test: ${lockedProfileTestFile}")
+        }
+        def canonicalTestFile = lockedProfileTestFile.canonicalFile
+        if (!lockedProfileTestSourceDirs.any { dir -> canonicalTestFile.path.startsWith(dir.path + File.separator) }) {
+            throw new GradleException("Locked-profile unit test is not in the test source set: ${canonicalTestFile}")
+        }
+    }
+}
+tasks.matching { it.name == 'testLawnWithQuickstepPlayDebugUnitTest' }.configureEach {
+    dependsOn 'verifyLockedProfileTestWiring'
 }
 
 ksp {

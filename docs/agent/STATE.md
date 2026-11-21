@@ -3,59 +3,94 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: P2b (Play label + verification prep) — complete; P2 icon slice deferred
-- branch: agent/p2b-focused-label-and-verifica
-- pr: pending (agent-dev workflow opens it after this run)
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/p2b-focused-label-and-verifica
+- current_phase: P2b (Play label + verification) — PR8 CI27 repair pushed; waiting on CI re-run
+- branch: agent/verification-slice-after-pr7-n
+- pr: #8 (existing; do not open another)
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/8
 
 ## done
-- P2b label: Play-only `play_app_name` = **DotWel Launcher** (single l) in
-  `play/res/values/strings.xml`; the Play `<application>` and launcher `<activity>` labels reference
-  it. `github`/`nightly` keep the inherited `derived_app_name` ("Lawnchair"). Icons/`mipmap-*` were
-  deliberately not touched; they are a separate visually-reviewed slice.
-- P2b NOTICE: added a restrained original-contribution entry and stated the display label is not a
-  name-clearance claim. The public Play listing name remains OPEN.
-- P2b docs: `AGENTS.md` §2 has a DECIDED Play display-label row (listing name still OPEN); spec §7
-  and plan P2 record the label and the icon deferral.
-- P2b verification: added `scripts/verify-play-build.sh` (+ `scripts/verify-play-build-test.sh`).
-  It runs the existing identity/manifest fixture suites, locates the Gradle-merged
-  `lawnWithQuickstepPlayDebug` manifest under `build/intermediates/merged_manifest(s)`, fails closed
-  on zero or more than one candidate, runs `manifest-guard.sh` on it, then checks the merged
-  `package` equals the Play applicationId plus the existing debug `applicationIdSuffix` (`.debug`)
-  and that every provider authority equals or is prefixed by that resolved id. Workflows were not
-  touched; the coordinator wires it into CI.
-- P2b tests actually run (no Gradle): `sh scripts/play-identity-guard-test.sh` → 8/8;
-  `sh scripts/manifest-guard-test.sh` → 31/31; `sh scripts/verify-play-build-test.sh` → 7/7;
-  `sh -n` clean on all four scripts; `sh scripts/play-identity-guard.sh .` → OK.
-- P2b `LockedProfileSearchFilterTest`: not mirrored into Gradle. Exact blocker recorded below.
+- This run (PR8 CI27 repair): moved `LockedProfilePredicateTest.kt` from `src/test/java` to
+  `tests/unit/java`. The production `main` source root includes `src` recursively, so the JUnit test
+  was compiled into the app and `assemble` failed on unresolved JUnit. Updated both `test`
+  source-set entries and the `verifyLockedProfileTestWiring` path in `build.gradle`; all four tests
+  and the predicate semantics are unchanged and JUnit stays `testImplementation` only.
+- This run: fixed the CI27 `check-style` failure. ktlint 1.8.0 rule `standard:function-signature`
+  required the predicate body expression on the signature line. The exact edit was verified with the
+  repo ktlint 1.8.0 CLI and `.editorconfig` (`ktlint_exit=0`); no Gradle run.
+- This run: `scripts/emulator-smoke.sh` now reads `ro.kernel.qemu` and fails closed unless it equals
+  `1`, before any install/uninstall, so a physical device cannot be installed to or uninstalled.
+- This run, no Gradle: `sh scripts/verify-play-build-test.sh` all pass;
+  `sh scripts/manifest-guard-test.sh` all pass; `sh scripts/play-identity-guard-test.sh` all pass;
+  `sh scripts/play-identity-guard.sh .` OK; `sh -n` clean on every script.
+- This run: CI27 (`44895301305`) failed all three jobs: `check-style` on the ktlint
+  `function-signature` violation, and `unit-tests`/`build-debug-apk` because the test under
+  `src/test/java` was also compiled as production source. The repair is pushed but CI has not been
+  re-run yet; emulator lane status is still pending/not run.
+- PR7 merged to `main`: Play-only `play_app_name` = **DotWel Launcher** (single l); Play
+  `<application>` and launcher `<activity>` labels reference it. `github`/`nightly` keep the
+  inherited "Lawnchair" branding. Icons/`mipmap-*` remain deferred to a visual-review slice.
+- PR7 merged: `scripts/verify-play-build.sh` runs the identity/manifest fixture suites, selects the
+  final AGP `merged_manifests` output (falling back to the older `merged_manifest` stage), fails
+  closed on zero/ambiguous candidates, runs `manifest-guard.sh`, checks the resolved Play debug
+  package and provider authorities, and accepts only the exact debug LeakCanary application-scoped
+  authority.
+- CI24 on PR7 and post-merge CI25 on `main` passed the real merged-manifest guard after the AGP-stage selection fix
+  (`e8f9503`) and exact debug LeakCanary handling (`ee3662f`). This clears the P1 merged-manifest
+  verification blocker; it is not runtime/device evidence.
+- This run: extracted `isLockedProfile(runtimeStatusFlags)` into
+  `lawnchair/src/app/lawnchair/search/algorithms/LockedProfilePredicate.kt`; `SearchUtils` and
+  `AppSearchProvider` keep the same `FLAG_DISABLED_QUIET_USER` behaviour through
+  `filterLockedProfiles()`. Added `tests/unit/java/.../LockedProfilePredicateTest.kt` (plain JUnit 4,
+  no Robolectric; originally under `src/test/java`, moved this run) and `testImplementation libs.junit`. A `verifyLockedProfileTestWiring` task runs
+  before `testLawnWithQuickstepPlayDebugUnitTest` and fails if the test file is missing or outside
+  the `test` source set, so CI cannot silently pass NO-SOURCE.
+- This run: added `scripts/emulator-smoke.sh`. It locates exactly one Play debug APK, requires API
+  37, clean-installs only `com.launchernos.dotwellabs.debug`, verifies the installed package and
+  installed app/launcher-activity label `DotWel Launcher`, resolves/launches HOME, grants and verifies
+  `android.app.role.HOME` via `cmd role`, presses HOME, and captures screenshot/logcat/dumpsys/aapt
+  evidence. It fails on install, launch, ANR or crash-stack problems.
+- This run: added `scripts/private-space-check.sh` plus `docs/agent/emulator-verification.md`. The
+  check detects an `android.os.usertype.profile.PRIVATE` user and its locked/quiet state, exits 77
+  when the prerequisite is absent, and explicitly does not claim drawer/search/recents validation.
+  It never creates profiles or accounts.
+- This run: `scripts/verify-play-build-test.sh` now covers both AGP stages coexisting: the final
+  `merged_manifests` output wins over the older `merged_manifest` stage, and a forbidden permission
+  in the final stage still fails (no fallback to the clean old stage).
+- This run, tests actually run (no Gradle): `sh scripts/verify-play-build-test.sh` → 11/11;
+  `sh scripts/manifest-guard-test.sh` → all 31 pass; `sh scripts/play-identity-guard-test.sh` → 8/8;
+  `sh -n` clean on all scripts; `sh scripts/play-identity-guard.sh .` → OK. The JUnit test was run
+  with `kotlinc` + JUnit 4.13.2 against a stub `ItemInfoWithIcon` constant → 4/4 pass. The emulator
+  scripts were exercised end-to-end with a local fake adb/aapt2 harness (success, wrong label,
+  crash log, non-debug APK, no/locked/unlocked private profile) but not against a real emulator.
+- Prior P2b: Play-only label and merged-manifest verification (see PR7/CI24 above).
 - Prior P2a: Play-only applicationId `com.launchernos.dotwellabs`; static identity/authority guard.
 - Prior P1a/P1b/P1c: Play manifest overlay, accessibility/bug-report/feed removal,
   `ACCESS_HIDDEN_PROFILES`, locked-profile search filter, guard updates.
 
 ## next
+- PR8 CI re-run requested after repair review: confirm `check-style`, `unit-tests` (all four predicate tests)
+  and `build-debug-apk` pass. CI is not green yet.
+- Coordinator: run `scripts/emulator-smoke.sh` on the API 37 emulator lane after
+  `assembleLawnWithQuickstepPlayDebug`; upload its artifact directory. The new `ro.kernel.qemu=1`
+  guard means the lane must be a real emulator.
+- Private-space runtime gate: provision a private space manually, run
+  `scripts/private-space-check.sh` to confirm the locked prerequisite, then record the manual/UI
+  drawer/search/recents assertions. Keep the gate pending until that evidence exists.
 - P2 remaining: original icon / `mipmap-*` slice with visual review (no Nothing assets).
-- P9: wire `scripts/verify-play-build.sh` (and its fixture suites) into CI after
-  `assembleLawnWithQuickstepPlayDebug`; keep workflows as the only execution hook.
-- P1/P2 runtime gates still pending (do not mark passed): merged-manifest guard on the real CI
-  build; install + default-home on emulator; private-space locked-profile validation.
+- P9: keep the merged-manifest guard and fixture suites wired in CI (already present in `ci.yml`);
+  the coordinator wires the emulator lane separately.
 
 ## blockers
-- No Gradle run in this coding session, so no APK or merged manifest exists locally. Running
-  `scripts/verify-play-build.sh` in this checkout correctly fails closed until CI assembles the APK.
-- P1 merged-manifest guard verification: pending the real CI-merged manifest run.
+- PR8 CI27 is red and this repair has not been re-run through CI. No Gradle run in this coding
+  session; `check-style` was reproduced with the ktlint 1.8.0 CLI and `.editorconfig`, not
+  `spotlessCheck`. The JUnit test was not re-executed by `testLawnWithQuickstepPlayDebugUnitTest`
+  here. The emulator scripts were not run against a real API 37 emulator.
 - P1 runtime private-space validation: pending device/emulator check (drawer, search, recents).
-- P2 default-home gate: pending emulator install and `RoleManager.ROLE_HOME` request.
-- `LockedProfileSearchFilterTest` Gradle mirror blocked: the repo has no Gradle unit-test source set
-  (root `build.gradle` has no `testOptions` / `testImplementation` / `src/test`), and the test lives
-  in the Soong-only `tests/multivalentTests/src/app/lawnchair/search/algorithms/` tree. It needs
-  `@RunWith(AndroidJUnit4::class)`, `androidx.test.ext:junit`, Truth and Android framework classes
-  (`ComponentName`, `UserHandle`). `libs.versions.toml` has junit/truth/androidx-junit but **no
-  Robolectric**, which `AndroidJUnit4` requires on the JVM and which `UserHandle.of()` needs to
-  avoid the "not mocked" error. Adding it means a new dependency plus `testOptions.unitTests` and a
-  test source dir — not safe/small for this run. Exact future path:
-  `src/test/java/app/lawnchair/search/algorithms/LockedProfileSearchFilterTest.kt` with
-  `testImplementation` junit/truth/androidx-junit and `org.robolectric:robolectric`, or extract the
-  status-flag predicate into a pure function and test that.
+  A private space needs a secure lock screen and explicit provisioning; do not auto-create it.
+- P2 default-home gate: pending emulator install and `RoleManager.ROLE_HOME` request. The smoke
+  script's `cmd role` grant is a disposable-emulator stand-in, not the in-app onboarding flow.
+- `LockedProfileSearchFilterTest` remains Soong-only (Robolectric/AndroidJUnit4). The new Gradle
+  test deliberately covers only the extracted pure flag predicate with plain JUnit.
 
 ## decisions locked
 - applicationId for the Play rebrand: com.launchernos.dotwellabs (approved by the owner 2026-11-21).
@@ -73,13 +108,34 @@ when no task input is given, and continues from "next".
   explicit and merge-safe. Cost if wrong: harmless duplicate of the inherited marker.
 - P2b: `verify-play-build.sh` fails closed on more than one merged-manifest candidate rather than
   picking one. Cost if wrong: a future AGP emitting two identical paths needs the search narrowed.
-- P2b: did not add Robolectric or a Gradle test source set just to mirror one test. Cost if wrong:
-  `filterLockedProfiles` remains covered by the Soong multivalent suite, not Gradle CI.
-- Prior P1/P2a rulings retained (see git history).
+- This run: added only `testImplementation libs.junit`; no Robolectric. The extracted predicate has
+  no Android runtime dependency, so a plain JVM test is sufficient. Cost if wrong: the full
+  `AppInfo`-level filter still relies on the Soong multivalent test.
+- This run: added a fail-closed `verifyLockedProfileTestWiring` dependency instead of relying on the
+  test task's NO-SOURCE behaviour. Cost if wrong: a future test-source-set rename needs the guard
+  path updated, but it fails loudly rather than silently skipping.
+- PR8 repair: moved the test to `tests/unit/java` because the `main` source root includes `src`
+  recursively, so `src/test/java` was also compiled as production. Cost if wrong: a future upstream
+  source-root change needs the path moved again, but the wiring guard fails loudly.
+- PR8 repair: `emulator-smoke.sh` accepts only `ro.kernel.qemu=1` before install/uninstall. Cost if
+  wrong: a device farm that omits the property is refused until the guard is deliberately widened.
+- This run: emulator default-home uses `cmd role add-role-holder` because it is supported on the
+  disposable API 37 emulator and verifies the real system role. It does not exercise the in-app
+  `RoleManager` onboarding prompt; that remains manual.
+- This run: private space is a separate prerequisite probe, not auto-provisioned. Creating it needs
+  a secure lock screen and may add profile data/accounts; the script only detects and reports.
+- Prior P1/P2a/P2b rulings retained (see git history).
 
 ## log
-- 2026-11-21: P2b complete (Play-only DotWel Launcher label + NOTICE/docs + merged-manifest
-  verification script; icons deferred; no Gradle run)
+- 2026-11-21: PR8 CI27 repair: moved the predicate JUnit test to `tests/unit/java` (+ both test
+  source-set entries and the wiring guard path), fixed the ktlint `function-signature` failure, and
+  added a fail-closed `ro.kernel.qemu=1` guard before install/uninstall. Non-Gradle suites green;
+  CI re-run and emulator lane still pending.
+- 2026-11-21: verification slice (emulator smoke + private-space probe + pure locked-profile JUnit
+  test + AGP-stage coexistence tests; no Gradle/emulator run here). Follow-ups: parenthesized the
+  predicate bit test and added the `/usr/local/lib/android/sdk` aapt2 lookup fallback for CI.
+- 2026-11-21: PR7 merged; CI24 merged-manifest guard passed (AGP stage selection + exact debug
+  LeakCanary authority); P2b label complete; icons deferred
 - 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + static identity/
   authority guard + docs; no Gradle run)
 - 2026-11-21: P1c complete (private-space permission + locked-profile search filter + bug-report
