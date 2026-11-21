@@ -364,6 +364,16 @@ androidComponents {
             output.outputFileName.set("Lawnchair.${output.versionName.get()}.$channel.${variant.buildType}.apk")
         }
 
+        // Play-only display label for in-app About/dialog strings. The build-type
+        // resValue for derived_app_name outranks flavor resources, so the override
+        // has to be variant-level to stay scoped to the Play channel.
+        if (channel == "play") {
+            variant.resValues.put(
+                variant.makeResValueKey("string", "derived_app_name"),
+                new com.android.build.api.variant.ResValue("DotWel Launcher", "Play display label")
+            )
+        }
+
         // Lawnchair-TODO: A better way to sync proto file to the IDE preventing missing or outdated result. Please remove if this is the best solution we have right now
         def capitalizedVariantName = variant.name.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + variant.name.substring(1)
         def generatedProtoJavaDir = layout.buildDirectory
