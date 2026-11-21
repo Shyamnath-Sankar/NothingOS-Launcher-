@@ -52,11 +52,21 @@ data class NothingUiIconPolicy(val useThemedIcons: Boolean, val forceMonochromeF
 }
 EOF
 
+    write_file "$root/lawnchair/src/app/nothingui/icons/NothingUiIconColors.kt" <<'EOF'
+package app.nothingui.icons
+
+object NothingUiIconColors {
+    fun forLightSurface(lightSurface: Boolean): IntArray = intArrayOf(NothingUiPalette.Ink.toArgb(), NothingUiPalette.White.toArgb())
+
+    fun forContext(context: Context): IntArray = forLightSurface(!Utilities.isDarkTheme(context))
+}
+EOF
+
     write_file "$root/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt" <<'EOF'
 package app.nothingui.icons
 
 class NothingUiIconThemeController {
-    private val normal = MonoIconThemeController()
+    private val normal = MonoIconThemeController(colorProvider = NothingUiIconColors::forContext)
 
     override val themeID = "nothingui-theme"
 
@@ -72,7 +82,7 @@ class NothingUiIconThemeController {
     private fun createForcedThemedBitmap(icon: AdaptiveIconDrawable) {
         if (icon.monochrome != null || sourceHint?.isFileDrawable == true) return
         val monoDrawable = MonochromeIconFactory(info.icon.width).wrap(icon, shapePath)
-        return MonoThemedBitmap(bitmap, factory.whiteShadowLayer)
+        return MonoThemedBitmap(bitmap, factory.whiteShadowLayer, NothingUiIconColors::forContext)
     }
 
     override fun decode() {
@@ -127,6 +137,56 @@ class LawnchairThemeManager {
         } else {
             iconControllerFactory.createThemeController()
         }
+        val themedColorsKey = if (themeController != null) {
+            if (NothingUiFeature.homeEnabled) {
+                NothingUiIconColors.forContext(context).joinToString(",")
+            } else {
+                ThemedIconDrawable.getColors(context).joinToString(",")
+            }
+        } else {
+            ""
+        }
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt" <<'EOF'
+package app.lawnchair
+
+import app.nothingui.icons.NothingUiIconColors
+import app.nothingui.theme.NothingUiFeature
+import com.android.launcher3.Utilities
+import com.android.launcher3.icons.mono.ThemedIconDrawable
+
+class LawnchairProcessInitializer {
+    fun init() {
+        ThemedIconDrawable.COLORS_LOADER = {
+            if (NothingUiFeature.homeEnabled) {
+                NothingUiIconColors.forContext(it)
+            } else if (Utilities.isDarkTheme(it)) {
+                intArrayOf(ColorTokens.Accent2_800.resolveColor(it), ColorTokens.Accent1_200.resolveColor(it))
+            } else {
+                intArrayOf(ColorTokens.Accent1_100.resolveColor(it), ColorTokens.Accent1_700.resolveColor(it))
+            }
+        }
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/qsb/QsbIconUtil.kt" <<'EOF'
+package app.lawnchair.qsb
+
+import app.nothingui.home.NothingUiHomeChrome
+import app.nothingui.theme.NothingUiFeature
+
+fun setThemedIconResource(context: Context, themed: Boolean, method: ThemingMethod) {
+    val playNeutral = NothingUiFeature.homeEnabled
+    val neutralColor = if (playNeutral) NothingUiHomeChrome.textColor(context) else 0
+    val primary = if (playNeutral) neutralColor else ColorTokens.QsbIconTintPrimary.resolveColor(context)
+    val tint = if (NothingUiFeature.homeEnabled) {
+        NothingUiHomeChrome.textColor(context)
+    } else {
+        ColorTokens.ColorAccent.resolveColor(context)
     }
 }
 EOF
@@ -184,6 +244,41 @@ write_fixture "$TMP_DIR"
 sed -i '/nothingUiThemeController/d' \
     "$TMP_DIR/lawnchair/src/app/lawnchair/icons/LawnchairThemeManager.kt"
 run_fail 'the theme manager must install the Play controller'
+
+write_fixture "$TMP_DIR"
+sed -i '/NothingUiPalette.Ink/d' \
+    "$TMP_DIR/lawnchair/src/app/nothingui/icons/NothingUiIconColors.kt"
+run_fail 'the neutral palette must keep the original ink'
+
+write_fixture "$TMP_DIR"
+sed -i '/NothingUiIconColors::forContext/d' \
+    "$TMP_DIR/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt"
+run_fail 'the controller must supply the neutral palette to the renderer'
+
+write_fixture "$TMP_DIR"
+sed -i '/NothingUiIconColors.forContext(context)/d' \
+    "$TMP_DIR/lawnchair/src/app/lawnchair/icons/LawnchairThemeManager.kt"
+run_fail 'the Play icon cache key must use the neutral palette'
+
+write_fixture "$TMP_DIR"
+sed -i '/ThemedIconDrawable.getColors(context)/d' \
+    "$TMP_DIR/lawnchair/src/app/lawnchair/icons/LawnchairThemeManager.kt"
+run_fail 'non-Play must keep the inherited wallpaper colors in the cache key'
+
+write_fixture "$TMP_DIR"
+sed -i '/val playNeutral = NothingUiFeature.homeEnabled/d' \
+    "$TMP_DIR/lawnchair/src/app/lawnchair/qsb/QsbIconUtil.kt"
+run_fail 'the QSB glyph must gate its neutral palette'
+
+write_fixture "$TMP_DIR"
+sed -i '/NothingUiIconColors.forContext(it)/d' \
+    "$TMP_DIR/lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt"
+run_fail 'the Play themed-icon loader must use the neutral palette'
+
+write_fixture "$TMP_DIR"
+sed -i '/ColorTokens.Accent1_700.resolveColor(it)/d' \
+    "$TMP_DIR/lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt"
+run_fail 'the non-Play themed-icon loader must keep the inherited accent colors'
 
 if [ "$failures" -ne 0 ]; then
     printf '%s nothingui-icon-render-guard test(s) failed\n' "$failures" >&2

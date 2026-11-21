@@ -49,7 +49,7 @@ class NothingUiIconThemeController(
     private val prefs: PreferenceManager,
     private val overrideRepo: IconOverrideRepository,
 ) : IconThemeController {
-    private val normal = MonoIconThemeController()
+    private val normal = MonoIconThemeController(colorProvider = NothingUiIconColors::forContext)
 
     override val themeID = "nothingui-theme"
 
@@ -58,13 +58,12 @@ class NothingUiIconThemeController(
         return key != null && overrideRepo.overridesMap.containsKey(key)
     }
 
-    private fun policyFor(key: ComponentKey?): NothingUiIconPolicy =
-        NothingUiIconPolicy.resolve(
-            playEnabled = true,
-            themedIconsEnabled = prefs.themedIcons.get(),
-            forceFallbackEnabled = prefs.forceIconMonochrome.get(),
-            customIconSelected = isCustomIcon(key),
-        )
+    private fun policyFor(key: ComponentKey?): NothingUiIconPolicy = NothingUiIconPolicy.resolve(
+        playEnabled = true,
+        themedIconsEnabled = prefs.themedIcons.get(),
+        forceFallbackEnabled = prefs.forceIconMonochrome.get(),
+        customIconSelected = isCustomIcon(key),
+    )
 
     /**
      * Builds the grayscale/threshold fallback with the inherited [MonochromeIconFactory].
@@ -87,6 +86,7 @@ class NothingUiIconThemeController(
         return MonoThemedBitmap(
             factory.createIconBitmap(monoDrawable, ICON_VISIBLE_AREA_FACTOR, MODE_ALPHA),
             factory.whiteShadowLayer,
+            NothingUiIconColors::forContext,
         )
     }
 

@@ -6,6 +6,8 @@
 # - the Play path can force the inherited monochrome fallback per icon;
 # - explicit icon-pack and per-app choices bypass the forced fallback;
 # - native/fallback/off cache state is part of the icon freshness key;
+# - the Play renderer draws the original neutral black/white pair, never wallpaper accents;
+# - the QSB glyph follows the same neutral ink only behind the Play gate;
 # - non-Play keeps the inherited icon controller and force preference behaviour.
 #
 # Usage: scripts/nothingui-icon-render-guard.sh [repo-root]
@@ -32,11 +34,14 @@ fail() {
 }
 
 POLICY="$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconPolicy.kt"
+COLORS="$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconColors.kt"
 CONTROLLER="$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt"
 PROVIDER="$ROOT/lawnchair/src/app/lawnchair/icons/LawnchairIconProvider.kt"
 THEME_MANAGER="$ROOT/lawnchair/src/app/lawnchair/icons/LawnchairThemeManager.kt"
+QSB_ICON="$ROOT/lawnchair/src/app/lawnchair/qsb/QsbIconUtil.kt"
+PROCESS_INITIALIZER="$ROOT/lawnchair/src/app/lawnchair/LawnchairProcessInitializer.kt"
 
-for file in "$POLICY" "$CONTROLLER" "$PROVIDER" "$THEME_MANAGER"; do
+for file in "$POLICY" "$COLORS" "$CONTROLLER" "$PROVIDER" "$THEME_MANAGER" "$QSB_ICON" "$PROCESS_INITIALIZER"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -55,8 +60,18 @@ grep -Fq 'MonoThemedBitmap(' "$CONTROLLER" ||
     fail "the Play icon controller does not create the inherited themed bitmap"
 grep -Fq 'sourceHint?.isFileDrawable == true' "$CONTROLLER" ||
     fail "the Play icon controller does not preserve file drawables"
-grep -Fq 'MonoIconThemeController()' "$CONTROLLER" ||
-    fail "the Play icon controller has no native themed renderer"
+grep -Fq 'MonoIconThemeController(colorProvider = NothingUiIconColors::forContext)' "$CONTROLLER" ||
+    fail "the Play native themed renderer does not use the neutral palette"
+grep -Fq 'NothingUiIconColors::forContext' "$CONTROLLER" ||
+    fail "the Play icon controller does not supply the neutral palette"
+grep -Fq 'NothingUiPalette.Ink' "$COLORS" ||
+    fail "the neutral icon palette does not use the original ink"
+grep -Fq 'NothingUiPalette.White' "$COLORS" ||
+    fail "the neutral icon palette does not use black/white"
+grep -Fq 'fun forLightSurface(' "$COLORS" ||
+    fail "the neutral icon palette has no testable light/dark resolver"
+grep -Fq 'fun forContext(' "$COLORS" ||
+    fail "the neutral icon palette has no context resolver"
 grep -Fq 'isCustomIcon(key)' "$CONTROLLER" ||
     fail "the Play icon controller does not preserve custom selections"
 grep -Fq 'ThemedBitmap.NOT_SUPPORTED' "$CONTROLLER" ||
@@ -91,5 +106,29 @@ grep -Fq 'nothingUiThemeController' "$THEME_MANAGER" ||
     fail "the theme manager does not install the Play controller"
 grep -Fq 'iconControllerFactory.createThemeController()' "$THEME_MANAGER" ||
     fail "the inherited non-Play controller path was removed"
+grep -Fq 'NothingUiIconColors.forContext(context).joinToString(",")' "$THEME_MANAGER" ||
+    fail "the Play icon cache key does not use the neutral palette"
+grep -Fq 'ThemedIconDrawable.getColors(context).joinToString(",")' "$THEME_MANAGER" ||
+    fail "the non-Play icon cache key lost the inherited wallpaper colors"
+
+grep -Fq 'import app.nothingui.home.NothingUiHomeChrome' "$QSB_ICON" ||
+    fail "the QSB glyph does not use the neutral chrome ink"
+grep -Fq 'import app.nothingui.theme.NothingUiFeature' "$QSB_ICON" ||
+    fail "the QSB glyph is not Play-gated"
+grep -Fq 'val playNeutral = NothingUiFeature.homeEnabled' "$QSB_ICON" ||
+    fail "the QSB glyph does not gate its neutral palette"
+grep -Fq 'if (playNeutral) neutralColor else ColorTokens.QsbIconTintPrimary.resolveColor(context)' "$QSB_ICON" ||
+    fail "the QSB primary glyph can lose the neutral palette"
+grep -Fq 'ColorTokens.ColorAccent.resolveColor(context)' "$QSB_ICON" ||
+    fail "the non-Play QSB tint fallback was removed"
+
+grep -Fq 'ThemedIconDrawable.COLORS_LOADER = {' "$PROCESS_INITIALIZER" ||
+    fail "the inherited themed-icon color loader was removed"
+grep -Fq 'if (NothingUiFeature.homeEnabled)' "$PROCESS_INITIALIZER" ||
+    fail "the inherited themed-icon color loader is not Play-gated"
+grep -Fq 'NothingUiIconColors.forContext(it)' "$PROCESS_INITIALIZER" ||
+    fail "the Play themed-icon loader does not use the neutral palette"
+grep -Fq 'ColorTokens.Accent1_700.resolveColor(it)' "$PROCESS_INITIALIZER" ||
+    fail "the non-Play themed-icon loader lost the inherited accent colors"
 
 printf 'nothingui-icon-render-guard: OK\n'

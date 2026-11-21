@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.res.ResourcesCompat
 import app.lawnchair.theme.color.tokens.ColorTokens
+import app.nothingui.home.NothingUiHomeChrome
+import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.R
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 
@@ -36,10 +38,12 @@ fun setThemedIconResource(
     }
 
     if (method == ThemingMethod.THEME_BY_LAYER_ID && drawable is LayerDrawable) {
-        val primary = ColorTokens.QsbIconTintPrimary.resolveColor(context)
-        val secondary = ColorTokens.QsbIconTintSecondary.resolveColor(context)
-        val tertiary = ColorTokens.QsbIconTintTertiary.resolveColor(context)
-        val quaternary = ColorTokens.QsbIconTintQuaternary.resolveColor(context)
+        val playNeutral = NothingUiFeature.homeEnabled
+        val neutralColor = if (playNeutral) NothingUiHomeChrome.textColor(context) else 0
+        val primary = if (playNeutral) neutralColor else ColorTokens.QsbIconTintPrimary.resolveColor(context)
+        val secondary = if (playNeutral) neutralColor else ColorTokens.QsbIconTintSecondary.resolveColor(context)
+        val tertiary = if (playNeutral) neutralColor else ColorTokens.QsbIconTintTertiary.resolveColor(context)
+        val quaternary = if (playNeutral) neutralColor else ColorTokens.QsbIconTintQuaternary.resolveColor(context)
 
         for (i in (0 until drawable.numberOfLayers)) {
             val color = when (drawable.getId(i)) {
@@ -54,7 +58,12 @@ fun setThemedIconResource(
             drawable.getDrawable(i).setTint(color)
         }
     } else {
-        drawable.setTint(ColorTokens.ColorAccent.resolveColor(context))
+        val tint = if (NothingUiFeature.homeEnabled) {
+            NothingUiHomeChrome.textColor(context)
+        } else {
+            ColorTokens.ColorAccent.resolveColor(context)
+        }
+        drawable.setTint(tint)
     }
 
     return drawable

@@ -10,6 +10,7 @@ import app.lawnchair.preferences.PreferenceManager
 import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.ThemeProvider
+import app.nothingui.icons.NothingUiIconColors
 import app.nothingui.icons.NothingUiIconThemeController
 import app.nothingui.theme.NothingUiFeature
 import com.android.launcher3.LauncherPrefs
@@ -167,7 +168,11 @@ constructor(
         }
         val themedColorsKey =
             if (themeController != null) {
-                ThemedIconDrawable.getColors(context).joinToString(",")
+                if (NothingUiFeature.homeEnabled) {
+                    NothingUiIconColors.forContext(context).joinToString(",")
+                } else {
+                    ThemedIconDrawable.getColors(context).joinToString(",")
+                }
             } else {
                 ""
             }
