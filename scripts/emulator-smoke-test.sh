@@ -375,8 +375,8 @@ assert_true 'the drawer target rejects a header by deriving the QSB after the do
     grep -Fq 'qsb_top=$(ui_qsb_top "$xml" "$dock_bottom")' "$target_body"
 assert_true 'the drawer swipe logs its duration' \
     grep -Fq 'duration=%s' "$open_body"
-assert_true 'the drawer swipe uses a 500 ms duration for MOVE delivery' \
-    grep -Fq 'swipe_duration=500' "$open_body"
+assert_true 'the drawer swipe uses a bounded 1500 ms duration for MOVE delivery' \
+    grep -Fq 'swipe_duration=1500' "$open_body"
 assert_true 'the drawer swipe passes the logged duration to adb' \
     grep -Fq 'input swipe "$1" "$2" "$3" "$4" "$swipe_duration"' "$open_body"
 

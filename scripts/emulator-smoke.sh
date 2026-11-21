@@ -491,10 +491,10 @@ open_app_drawer() {
 
     : > "$ARTIFACTS/appdrawer-swipe-log.txt"
     max_attempts=4
-    # adb delivers move samples over the swipe duration; 300 ms left the
-    # zero-velocity gesture with only a partial displacement, so use 500 ms
-    # and record it with every attempt.
-    swipe_duration=500
+    # adb delivers move samples over the swipe duration. The 500 ms gesture was
+    # observed with only a partial displacement, so use a bounded 1500 ms
+    # gesture and record it with every attempt.
+    swipe_duration=1500
     attempt=1
     while [ "$attempt" -le "$max_attempts" ]; do
         wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt" 10 ||

@@ -228,12 +228,12 @@ else
 fi
 
 bad_durations=$(awk -F'[ =,]' '
-    /^attempt=.* start=/ && $10 != 500 { print }
+    /^attempt=.* start=/ && $10 != 1500 { print }
 ' "$ARTIFACTS/appdrawer-swipe-log.txt")
 if [ -z "$bad_durations" ]; then
-    pass 'every attempt logs the 500 ms swipe duration'
+    pass 'every attempt logs the bounded 1500 ms swipe duration'
 else
-    fail "an attempt did not log a 500 ms duration: $bad_durations"
+    fail "an attempt did not log a 1500 ms duration: $bad_durations"
 fi
 
 if grep -Fq 'emulator-smoke: FAIL: app drawer did not expose' "$TMP_DIR/runner.err"; then
