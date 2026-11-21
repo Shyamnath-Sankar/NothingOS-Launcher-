@@ -11,7 +11,7 @@ when no task input is given, and continues from "next".
   permission, SDK, applicationId, signing or workflow change. Runtime drawer evidence is still
   pending; P3b is not done.
 - branch: `agent/p3b-actual-home-visual-slice-n`
-- head: `411ba6a` plus this compile-fix commit (base `main` at `0df97ff`)
+- head: `a5161ef` (compile fix; base `main` at `0df97ff`)
 - pr: #11 (existing PR for this branch; resume it, do not open a duplicate):
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/11
 
