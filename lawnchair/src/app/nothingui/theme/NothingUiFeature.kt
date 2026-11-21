@@ -21,6 +21,7 @@ import com.android.launcher3.BuildConfig
 
 object NothingUiFeature {
     val themeEnabled: Boolean = BuildConfig.NOTHINGUI_THEME_ENABLED
+    val homeEnabled: Boolean = BuildConfig.NOTHINGUI_HOME_ENABLED
 }
 
 @Composable

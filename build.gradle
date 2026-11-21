@@ -161,6 +161,7 @@ android {
         buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
         buildConfigField "boolean", "ENABLE_AUTO_INSTALLS_LAYOUT", "false"
         buildConfigField "boolean", "NOTHINGUI_THEME_ENABLED", "false"
+        buildConfigField "boolean", "NOTHINGUI_HOME_ENABLED", "false"
 
         manifestPlaceholders.quickstepMinSdk = quickstepMinSdk
         manifestPlaceholders.quickstepMaxSdk = quickstepMaxSdk
@@ -282,6 +283,7 @@ android {
             dimension "channel"
             isDefault true
             buildConfigField "boolean", "NOTHINGUI_THEME_ENABLED", "true"
+            buildConfigField "boolean", "NOTHINGUI_HOME_ENABLED", "true"
         }
 
         configureEach {
