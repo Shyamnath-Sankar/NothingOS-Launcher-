@@ -102,7 +102,8 @@ when no task input is given, and continues from "next".
 
 ## log
 - 2026-11-21: verification slice (emulator smoke + private-space probe + pure locked-profile JUnit
-  test + AGP-stage coexistence tests; no Gradle/emulator run here)
+  test + AGP-stage coexistence tests; no Gradle/emulator run here). Follow-ups: parenthesized the
+  predicate bit test and added the `/usr/local/lib/android/sdk` aapt2 lookup fallback for CI.
 - 2026-11-21: PR7 merged; CI24 merged-manifest guard passed (AGP stage selection + exact debug
   LeakCanary authority); P2b label complete; icons deferred
 - 2026-11-21: P2a complete (Play applicationId `com.launchernos.dotwellabs` + static identity/
