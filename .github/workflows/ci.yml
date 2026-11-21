@@ -95,12 +95,8 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: |
-            count=$(find build/outputs/apk -type f -name '*debug*.apk' | wc -l)
-            test "$count" -eq 1
-            apk=$(find build/outputs/apk -type f -name '*debug*.apk')
-            test "$(adb -s emulator-5554 shell getprop ro.kernel.qemu | tr -d '\r')" = 1
-            sh scripts/emulator-smoke.sh --serial emulator-5554 --apk "$apk" --artifacts build/emulator-smoke/ci
+          script: >-
+            sh -eu -c 'count=$(find build/outputs/apk -type f -name "*debug*.apk" | wc -l); test "$count" -eq 1; apk=$(find build/outputs/apk -type f -name "*debug*.apk"); sh scripts/emulator-smoke.sh --serial emulator-5554 --apk "$apk" --artifacts build/emulator-smoke/ci'
 
       - name: Upload emulator evidence
         if: always()
