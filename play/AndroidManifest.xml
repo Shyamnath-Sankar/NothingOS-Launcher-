@@ -84,7 +84,7 @@
         android:largeHeap="@bool/config_largeHeap"
         android:restoreAnyVersion="true"
         android:supportsRtl="true"
-        tools:replace="android:label">
+        tools:replace="android:label,android:icon">
 
         <!-- Launcher activity, inherited from quickstep/AndroidManifest-launcher.xml. -->
         <activity
