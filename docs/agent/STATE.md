@@ -34,7 +34,7 @@ when no task input is given, and continues from "next".
   closed on zero/ambiguous candidates, runs `manifest-guard.sh`, checks the resolved Play debug
   package and provider authorities, and accepts only the exact debug LeakCanary application-scoped
   authority.
-- CI24 on `main` passed the real merged-manifest guard after the AGP-stage selection fix
+- CI24 on PR7 and post-merge CI25 on `main` passed the real merged-manifest guard after the AGP-stage selection fix
   (`e8f9503`) and exact debug LeakCanary handling (`ee3662f`). This clears the P1 merged-manifest
   verification blocker; it is not runtime/device evidence.
 - This run: extracted `isLockedProfile(runtimeStatusFlags)` into
@@ -68,7 +68,7 @@ when no task input is given, and continues from "next".
   `ACCESS_HIDDEN_PROFILES`, locked-profile search filter, guard updates.
 
 ## next
-- PR8 CI re-run after this repair: confirm `check-style`, `unit-tests` (all four predicate tests)
+- PR8 CI re-run requested after repair review: confirm `check-style`, `unit-tests` (all four predicate tests)
   and `build-debug-apk` pass. CI is not green yet.
 - Coordinator: run `scripts/emulator-smoke.sh` on the API 37 emulator lane after
   `assembleLawnWithQuickstepPlayDebug`; upload its artifact directory. The new `ro.kernel.qemu=1`
