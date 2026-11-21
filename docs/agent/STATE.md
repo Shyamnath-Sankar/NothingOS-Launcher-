@@ -45,8 +45,10 @@ when no task input is given, and continues from "next".
 - This run, non-Gradle verification actually run: `play-brand-guard.sh .` OK; brand guard tests 14/14;
   `play-identity-guard-test.sh` all pass; `manifest-guard-test.sh` all pass;
   `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
-  clean. No local Gradle build or emulator run was performed; CI must prove the merged resource
-  selection and the runtime screens.
+  clean. The new guard run against the real pre-fix tree (`git archive 293f96e`) exits 1 with
+  `lawnWithQuickstepPlay source set does not own play/res`, so it catches the exact CI42 state.
+  No local Gradle build or emulator run was performed; CI must prove the merged resource selection
+  and the runtime screens.
 - This run (P2c repair): CI37 run `44900708538` failed
   `processLawnWithQuickstepPlayDebugMainManifest` because the Play overlay set
   `android:icon="@mipmap/ic_launcher_home"` while the base manifest still set
