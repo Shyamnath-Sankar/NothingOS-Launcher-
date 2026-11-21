@@ -106,7 +106,7 @@ fi
 authorities=$(
     grep -oE 'android:authorities="[^"]*"' "$merged" |
         sed -E 's/android:authorities="([^"]*)"/\1/' |
-        tr ',' '\n' |
+        tr ',;' '\n' |
         sed 's/^[[:space:]]*//; s/[[:space:]]*$//' |
         sed '/^$/d' || true
 )
@@ -115,6 +115,9 @@ violations=0
 for authority in $authorities; do
     case "$authority" in
         "$expected_id" | "$expected_id".*) ;;
+        # LeakCanary is debugImplementation and namespaces its provider with
+        # the full app id as a suffix. No arbitrary suffix patterns allowed.
+        "com.squareup.leakcanary.fileprovider.$expected_id") ;;
         *)
             printf 'verify-play-build: provider authority is not derived from %s: %s\n' \
                 "$expected_id" "$authority" >&2
