@@ -46,7 +46,7 @@ check component 'app\.lawnchair\.smartspace\.SmartspaceAppWidgetProvider'
 check component 'app\.lawnchair\.smartspace\.SmartspacePreferencesShortcut'
 
 # Accessibility and feed / foreground-sync components (AGENTS.md section 7).
-# Removed from the Play variant in P1b; the guard flags them until then.
+# P1b removes these from the Play variant; the guard flags any that survive merging.
 check component 'app\.lawnchair\.LawnchairAccessibilityService'
 check component 'app\.lawnchair\.bugreport\.UploaderService'
 check component 'app\.lawnchair\.feed\.[A-Za-z0-9_.]+'

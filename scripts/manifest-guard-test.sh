@@ -94,6 +94,37 @@ do
     expect_fail_contains "forbidden component $component" "$manifest" "$component"
 done
 
+# The Play overlay must remove the inherited accessibility service and the
+# bug-report foreground-sync service (AGENTS.md section 7). The merged-manifest
+# guard can only run after Gradle merges the overlay, so assert the overlay
+# itself declares the removals.
+overlay="$SCRIPT_DIR/../play/AndroidManifest.xml"
+
+expect_overlay_remove_service() {
+    name=$1
+    component=$2
+    if [ ! -f "$overlay" ]; then
+        fail "$name (overlay missing: $overlay)"
+        return
+    fi
+    if awk -v component="$component" '
+        BEGIN { RS = "<service" }
+        index($0, "android:name=\"" component "\"") && index($0, "tools:node=\"remove\"") { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$overlay"; then
+        pass "$name"
+    else
+        fail "$name (overlay does not remove $component)"
+    fi
+}
+
+expect_overlay_remove_service \
+    'play overlay removes accessibility service' \
+    'app.lawnchair.LawnchairAccessibilityService'
+expect_overlay_remove_service \
+    'play overlay removes bug-report foreground-sync service' \
+    'app.lawnchair.bugreport.UploaderService'
+
 if sh "$GUARD" > "$TMP_DIR/out" 2> "$TMP_DIR/err"; then
     fail 'missing argument exits non-zero'
 else
