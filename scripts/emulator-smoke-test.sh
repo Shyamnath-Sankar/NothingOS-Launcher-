@@ -152,10 +152,75 @@ assert_eq 'no Settings node yields no bounds' \
     '' \
     "$(ui_clickable_label_bounds "$none_xml" Settings)"
 
+# --- HOME geometry / drawer readiness fixtures ------------------------------
+
+home_xml="$TMP_DIR/home.xml"
+cat > "$home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
+    <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
+    <node index="2" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1400][240,1460]" />
+    <node index="3" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[300,1400][420,1460]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the UIAutomator root bounds are the measured display' \
+    '0 0 1080 1920' \
+    "$(ui_root_bounds "$home_xml")"
+assert_eq 'the dock top comes from the lowest labelled row' \
+    '1400' \
+    "$(ui_dock_top "$home_xml" "$(ui_root_bounds "$home_xml")")"
+assert_eq 'the drawer swipe starts above the measured dock, not at 75 percent' \
+    '540 1208 540 384' \
+    "$(drawer_swipe_target 1080 1920 1400)"
+assert_eq 'the drawer swipe falls back to 55 percent without a dock measurement' \
+    '540 1056 540 384' \
+    "$(drawer_swipe_target 1080 1920 '')"
+assert_eq 'a high dock still keeps the swipe above it' \
+    '540 1608 540 384' \
+    "$(drawer_swipe_target 1080 1920 1800)"
+assert_false 'an invalid display width cannot produce a swipe target' \
+    drawer_swipe_target 0 1920 1400
+
+assert_false 'a closed HOME is not a ready app drawer' \
+    drawer_is_ready "$home_xml"
+
+input_drawer_xml="$TMP_DIR/input-drawer.xml"
+cat > "$input_drawer_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/input" class="app.lawnchair.allapps.FallbackSearchInputView" bounds="[40,100][1040,200]" />
+</hierarchy>
+EOF
+assert_true 'a drawer search input makes the drawer ready' \
+    drawer_is_ready "$input_drawer_xml"
+
+list_drawer_xml="$TMP_DIR/list-drawer.xml"
+cat > "$list_drawer_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/apps_list_view" class="androidx.recyclerview.widget.RecyclerView" bounds="[0,300][1080,1920]" />
+</hierarchy>
+EOF
+assert_true 'an app list container makes the drawer ready' \
+    drawer_is_ready "$list_drawer_xml"
+
+unrelated_xml="$TMP_DIR/unrelated.xml"
+cat > "$unrelated_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Browser" class="android.widget.TextView" bounds="[0,1400][200,1460]" />
+</hierarchy>
+EOF
+assert_false 'an unrelated label does not make the drawer ready' \
+    drawer_is_ready "$unrelated_xml"
+
 # --- static regression on the smoke flow -----------------------------------
 
 drawer_body="$TMP_DIR/exercise_app_drawer.sh"
 sed -n '/^exercise_app_drawer() {/,/^}/p' "$SMOKE" > "$drawer_body"
+
+open_body="$TMP_DIR/open_app_drawer.sh"
+sed -n '/^open_app_drawer() {/,/^}/p' "$SMOKE" > "$open_body"
 
 assert_true 'the drawer search taps the clickable Settings result node' \
     grep -Fq "ui_clickable_label_bounds \"\$ARTIFACTS/appdrawer-search.xml\" 'Settings'" "$drawer_body"
@@ -165,6 +230,20 @@ assert_false 'the drawer flow never launches Settings directly with am start' \
     grep -Fq 'am start' "$drawer_body"
 assert_false 'the Settings foreground check never greps the whole activity dump' \
     grep -Fq 'grep -Fq '"'"'com.android.settings/'"'"' "$ARTIFACTS/activities-app-launch.txt"' "$drawer_body"
+assert_true 'the drawer opens with a bounded attempt loop' \
+    grep -Fq 'max_attempts=4' "$open_body"
+assert_true 'each drawer attempt waits for launcher idle' \
+    grep -Fq 'wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt"' "$open_body"
+assert_true 'each drawer attempt computes the measured target' \
+    grep -Fq 'drawer_target_for_dump' "$open_body"
+assert_true 'each drawer attempt polls the real drawer state' \
+    grep -Fq 'drawer_is_ready "$ARTIFACTS/appdrawer-attempt-$attempt.xml"' "$open_body"
+assert_true 'each drawer attempt records its swipe and artifacts' \
+    grep -Fq 'appdrawer-swipe-log.txt' "$open_body"
+assert_true 'each drawer attempt captures before XML and PNG' \
+    grep -Fq 'appdrawer-attempt-$attempt-before' "$open_body"
+assert_false 'the drawer swipe no longer starts at the old 75 percent dock hit region' \
+    grep -Fq 'height * 3 / 4' "$open_body"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

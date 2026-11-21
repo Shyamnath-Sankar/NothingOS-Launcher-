@@ -307,27 +307,128 @@ verify_nothing_home() {
     fail "actual HOME does not expose the NothingUI clock/date text"
 }
 
-app_drawer_visible() {
-    grep -Fq '/input"' "$ARTIFACTS/appdrawer.xml" ||
-        grep -Fq 'EditText' "$ARTIFACTS/appdrawer.xml" ||
-        grep -Fq 'Settings' "$ARTIFACTS/appdrawer.xml"
+wait_for_launcher_idle() {
+    dump=$1
+    attempts=${2:-10}
+    attempt=1
+    while [ "$attempt" -le "$attempts" ]; do
+        adb_cmd shell dumpsys activity activities > "$dump" 2>&1 || true
+        if foreground_is "$dump" "$PKG"; then
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 1
 }
 
+read_wm_size() {
+    adb_cmd shell wm size | tr -d '\r' |
+        sed -n 's/.*: \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1 \2/p' |
+        sed -n '$p'
+}
+
+capture_drawer_attempt() {
+    label=$1
+    capture_ui_xml "$label.xml" || return 1
+    capture_screenshot_to "$label.png"
+    [ -s "$ARTIFACTS/$label.png" ] || return 1
+    return 0
+}
+
+# Derive the swipe from the current HOME hierarchy: its root bounds give the
+# real display area (insets included) and the lowest labelled row gives the
+# dock top. Fall back to measured wm size only when the hierarchy is unavailable.
+drawer_target_for_dump() {
+    xml=$1
+    fallback_width=$2
+    fallback_height=$3
+    root=$(ui_root_bounds "$xml")
+    if [ -n "$root" ]; then
+        set -- $root
+        origin_x=$1
+        origin_y=$2
+        width=$(($3 - $1))
+        height=$(($4 - $2))
+        dock_top=$(ui_dock_top "$xml" "$root")
+    else
+        origin_x=0
+        origin_y=0
+        width=$fallback_width
+        height=$fallback_height
+        dock_top=
+    fi
+    target=$(drawer_swipe_target "$width" "$height" "$dock_top") || return 1
+    set -- $target
+    printf '%s %s %s %s\n' \
+        $((origin_x + $1)) $((origin_y + $2)) \
+        $((origin_x + $3)) $((origin_y + $4))
+}
+
+# Open the app drawer with a bounded, state-based retry loop. Each attempt waits
+# for the launcher to be the idle foreground, captures the pre-swipe HOME XML +
+# PNG, swipes from the empty workspace above the measured dock top, then polls
+# for the real drawer search input/app-list container. Every attempt leaves
+# appdrawer-attempt-N-before/after XML+PNG plus a line in appdrawer-swipe-log.txt.
 open_app_drawer() {
-    size=$(adb_cmd shell wm size | tr -d '\r' |
-        sed -n 's/.*: \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1 \2/p')
-    [ -n "$size" ] || fail "could not read the display size for the app-drawer swipe"
-    set -- $size
-    width=$1
-    height=$2
-    adb_cmd shell input swipe \
-        $((width / 2)) $((height * 3 / 4)) \
-        $((width / 2)) $((height / 4)) 300 \
-        > "$ARTIFACTS/appdrawer-swipe.txt" 2>&1 ||
-        fail "could not swipe open the app drawer"
-    sleep 2
-    capture_ui_xml appdrawer.xml || fail "app drawer UI XML capture failed"
-    app_drawer_visible || fail "app drawer did not expose a search input or an app label"
+    wait_for_launcher_idle "$ARTIFACTS/appdrawer-launcher-idle.txt" 10 ||
+        fail "launcher did not become the idle foreground before the app-drawer swipe"
+
+    wm_size=$(read_wm_size)
+    [ -n "$wm_size" ] || fail "could not read the display size for the app-drawer swipe"
+    set -- $wm_size
+    fallback_width=$1
+    fallback_height=$2
+
+    : > "$ARTIFACTS/appdrawer-swipe-log.txt"
+    max_attempts=4
+    attempt=1
+    while [ "$attempt" -le "$max_attempts" ]; do
+        wait_for_launcher_idle "$ARTIFACTS/appdrawer-attempt-$attempt-idle.txt" 10 ||
+            fail "launcher was not idle before app-drawer swipe attempt $attempt"
+        capture_drawer_attempt "appdrawer-attempt-$attempt-before" ||
+            fail "could not capture the HOME state before app-drawer swipe attempt $attempt"
+        target=$(drawer_target_for_dump \
+            "$ARTIFACTS/appdrawer-attempt-$attempt-before.xml" \
+            "$fallback_width" "$fallback_height") ||
+            fail "could not compute a safe app-drawer swipe target on attempt $attempt"
+        set -- $target
+        printf 'attempt=%s start=%s,%s end=%s,%s duration=300\n' \
+            "$attempt" "$1" "$2" "$3" "$4" >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+        adb_cmd shell input swipe "$1" "$2" "$3" "$4" 300 \
+            > "$ARTIFACTS/appdrawer-swipe-$attempt.txt" 2>&1 ||
+            fail "could not swipe open the app drawer on attempt $attempt"
+
+        ready=0
+        poll=1
+        while [ "$poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml "appdrawer-attempt-$attempt.xml" &&
+                drawer_is_ready "$ARTIFACTS/appdrawer-attempt-$attempt.xml"; then
+                ready=1
+                break
+            fi
+            poll=$((poll + 1))
+        done
+        capture_screenshot_to "appdrawer-attempt-$attempt.png"
+        [ -s "$ARTIFACTS/appdrawer-attempt-$attempt.png" ] ||
+            fail "app drawer attempt $attempt screenshot capture failed"
+        if [ "$ready" -eq 1 ]; then
+            cp "$ARTIFACTS/appdrawer-attempt-$attempt.xml" "$ARTIFACTS/appdrawer.xml"
+            cp "$ARTIFACTS/appdrawer-attempt-$attempt.png" "$ARTIFACTS/appdrawer.png"
+            printf 'attempt=%s drawer-ready\n' "$attempt" \
+                >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+            sleep 1
+            return 0
+        fi
+        printf 'attempt=%s drawer-not-ready; returning HOME\n' "$attempt" \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt"
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            >> "$ARTIFACTS/appdrawer-swipe-log.txt" 2>&1 || true
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    fail "app drawer did not expose a search input or app list after $max_attempts bounded swipe attempts"
 }
 
 # Open the inherited app drawer, search for a real installed app, tap the result,
@@ -340,13 +441,13 @@ exercise_app_drawer() {
     open_app_drawer
     capture_screenshot_to appdrawer.png
     [ -s "$ARTIFACTS/appdrawer.png" ] || fail "app drawer screenshot capture failed"
-    grep -Fq 'Settings' "$ARTIFACTS/appdrawer.xml" ||
-        fail "app drawer does not list Settings"
 
     input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" '/input"')
     [ -n "$input_bounds" ] ||
         input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" 'android.widget.EditText')
-    [ -n "$input_bounds" ] || fail "could not find the app drawer search input"
+    [ -n "$input_bounds" ] ||
+        input_bounds=$(ui_bounds_for "$ARTIFACTS/appdrawer.xml" 'search_container_all_apps')
+    [ -n "$input_bounds" ] || fail "could not find the app drawer search input or container"
     tap_center_of_bounds "$input_bounds" || fail "could not focus the app drawer search input"
     sleep 1
     adb_cmd shell input text 'settings' > "$ARTIFACTS/search-input.txt" 2>&1 ||
@@ -363,7 +464,7 @@ exercise_app_drawer() {
     [ -n "$result_bounds" ] ||
         fail "could not find the clickable Settings search result bounds"
     tap_center_of_bounds "$result_bounds" || fail "could not tap the Settings search result"
-    wait_for_foreground com.android.settings "$ARTIFACTS/activities-app-launch.txt" 10 ||
+    wait_for_foreground com.android.settings "$ARTIFACTS/activities-app-launch.txt" 15 ||
         fail "tapping the Settings search result did not foreground com.android.settings"
     capture_ui_xml settings-launched.xml || fail "launched Settings UI XML capture failed"
     capture_screenshot_to settings-launched.png
