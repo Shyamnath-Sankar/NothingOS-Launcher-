@@ -439,3 +439,358 @@ ui_clickable_label_bounds() (
             }
         '
 )
+
+# Print the bottom y of the workspace header search container above the measured
+# dock. This is the smartspace/header band on the actual HOME; the empty central
+# workspace starts below it. Prints nothing when no such container is exposed.
+ui_header_bottom() (
+    xml=$1
+    dock_top=${2:-}
+    [ -s "$xml" ] || return 0
+    case "$dock_top" in '' | *[!0-9]*) return 0 ;; esac
+    tr '>' '\n' < "$xml" |
+        awk -v dock_top="$dock_top" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                if (rid !~ /(^|\/)search_container_workspace$/) next
+                bounds = attr($0, "bounds")
+                if (bounds == "") next
+                y1 = y_of(bounds, 2)
+                y2 = y_of(bounds, 4)
+                if (y1 < dock_top && y2 > best) best = y2
+            }
+            END {
+                if (best > 0) print best
+            }
+        '
+)
+
+# Succeed when the point ($2,$3) is not inside a labelled clickable node. This
+# keeps the HOME long-press on empty workspace instead of an app icon, folder or
+# widget that would open an item-specific menu.
+ui_point_is_free() (
+    xml=$1
+    px=$2
+    py=$3
+    [ -s "$xml" ] || return 1
+    case "$px" in '' | *[!0-9]*) return 1 ;; esac
+    case "$py" in '' | *[!0-9]*) return 1 ;; esac
+    occupied=$(tr '>' '\n' < "$xml" |
+        awk -v px="$px" -v py="$py" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "clickable") != "true") next
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text == "" && desc == "") next
+                bounds = attr($0, "bounds")
+                if (bounds == "") next
+                x1 = v_of(bounds, 1)
+                y1 = v_of(bounds, 2)
+                x2 = v_of(bounds, 3)
+                y2 = v_of(bounds, 4)
+                if (px >= x1 && px <= x2 && py >= y1 && py <= y2) {
+                    print "occupied"
+                    exit
+                }
+            }
+        ')
+    [ -z "$occupied" ]
+)
+
+# Compute a real long-press point in the empty central HOME workspace. The band
+# is bounded by the measured header bottom and dock top, so it never lands on the
+# header, dock icons or the bottom QSB. Candidate points walk away from the exact
+# centre when a labelled clickable item occupies it. Prints "x y".
+home_longpress_target() (
+    xml=$1
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 1
+    set -- $root
+    rx1=$1
+    ry1=$2
+    rx2=$3
+    ry2=$4
+    width=$((rx2 - rx1))
+    height=$((ry2 - ry1))
+    [ "$width" -gt 0 ] && [ "$height" -gt 0 ] || return 1
+    dock_top=$(ui_dock_top "$xml" "$root")
+    [ -n "$dock_top" ] || dock_top=$((ry1 + height * 85 / 100))
+    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
+    [ -n "$header_bottom" ] || header_bottom=$((ry1 + height * 15 / 100))
+    margin=$((height * 4 / 100))
+    band_top=$((header_bottom + margin))
+    band_bottom=$((dock_top - margin))
+    [ "$band_bottom" -gt "$band_top" ] || return 1
+    x=$((rx1 + width / 2))
+    band=$((band_bottom - band_top))
+    for pct in 50 60 70 40 30 80 20; do
+        y=$((band_top + band * pct / 100))
+        if ui_point_is_free "$xml" "$x" "$y"; then
+            printf '%s %s\n' "$x" "$y"
+            return 0
+        fi
+    done
+    # Every measured candidate is occupied. Returning the band centre here would
+    # long-press an app icon or widget and open an item-specific menu, so fail
+    # instead of producing an unsafe fallback point.
+    return 1
+)
+
+# Succeed only when the grid preview exposes a real workspace ViewGroup whose
+# bounds sit above every slider and strictly inside the window root, with a
+# hotseat/search container inside it. The inherited screen renders the preview
+# as an AndroidViewHolder/ViewGroup, so the check is bounds-based and never
+# depends on a LauncherPreviewView class name.
+grid_preview_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                cls = attr($0, "class")
+                rid = attr($0, "resource-id")
+                bounds = attr($0, "bounds")
+                if (root == "" && bounds != "") root = bounds
+                if (preview == "" && rid ~ /(^|\/)workspace$/ && bounds != "") {
+                    preview = bounds
+                }
+                if (cls == "android.widget.SeekBar" && bounds != "") {
+                    top = v_of(bounds, 2)
+                    if (control_top == "" || top < control_top) control_top = top
+                }
+                if (bounds != "" &&
+                    rid ~ /(^|\/)(hotseat|search_container_workspace)$/) {
+                    hot[++hot_count] = bounds
+                }
+            }
+            END {
+                if (root == "" || preview == "" || control_top == "") exit 1
+                px1 = v_of(preview, 1); py1 = v_of(preview, 2)
+                px2 = v_of(preview, 3); py2 = v_of(preview, 4)
+                rx1 = v_of(root, 1); ry1 = v_of(root, 2)
+                rx2 = v_of(root, 3); ry2 = v_of(root, 4)
+                if (px1 < 0 || py1 < 0 || px2 <= px1 || py2 <= py1) exit 1
+                if (px1 < rx1 || py1 < ry1 || px2 > rx2 || py2 > ry2) exit 1
+                if (px2 - px1 >= rx2 - rx1) exit 1
+                if (py2 - py1 >= ry2 - ry1) exit 1
+                if (py2 >= control_top) exit 1
+                inside = 0
+                for (i = 1; i <= hot_count; i++) {
+                    hx1 = v_of(hot[i], 1); hy1 = v_of(hot[i], 2)
+                    hx2 = v_of(hot[i], 3); hy2 = v_of(hot[i], 4)
+                    if (hx1 >= px1 && hy1 >= py1 && hx2 <= px2 && hy2 <= py2) {
+                        inside = 1
+                        break
+                    }
+                }
+                exit (inside ? 0 : 1)
+            }
+        '
+)
+
+# Succeed only when the captured Home screen grid preferences expose the real
+# preview, the Columns/Rows/Dock icons controls and Apply. The sliders must be
+# actual accessibility SeekBar nodes, not merely the English labels.
+grid_settings_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    grep -Fq 'text="Home screen grid"' "$xml" || return 1
+    for label in Columns Rows 'Dock icons' Apply; do
+        grep -Fq "text=\"$label\"" "$xml" || return 1
+    done
+    sliders=$(grep -o 'class="android.widget.SeekBar"' "$xml" | wc -l | tr -d ' ')
+    [ "$sliders" -ge 3 ] || return 1
+    grid_preview_is_ready "$xml" || return 1
+    return 0
+)
+
+# Succeed only when Apply is still the greyed, non-clickable control that the
+# inherited screen renders. The label is a separate TextView and the disabled
+# state is visual, so the accessibility enabled flag stays true; the reliable
+# signal is that the label is not clickable and a non-clickable Button contains
+# its bounds. A clickable Apply or a missing containing Button is rejected.
+grid_apply_is_unchanged() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                text = attr($0, "text")
+                cls = attr($0, "class")
+                click = attr($0, "clickable")
+                bounds = attr($0, "bounds")
+                if (text == "Apply" && bounds != "" && apply == "") {
+                    apply = bounds
+                    apply_click = click
+                }
+                if (cls == "android.widget.Button" && bounds != "") {
+                    btn[++btn_count] = bounds
+                    btn_click[btn_count] = click
+                }
+            }
+            END {
+                if (apply == "") exit 1
+                if (apply_click == "true") exit 1
+                ax1 = v_of(apply, 1); ay1 = v_of(apply, 2)
+                ax2 = v_of(apply, 3); ay2 = v_of(apply, 4)
+                for (i = 1; i <= btn_count; i++) {
+                    if (btn_click[i] == "true") continue
+                    bx1 = v_of(btn[i], 1); by1 = v_of(btn[i], 2)
+                    bx2 = v_of(btn[i], 3); by2 = v_of(btn[i], 4)
+                    if (ax1 >= bx1 && ay1 >= by1 && ax2 <= bx2 && ay2 <= by2) {
+                        exit 0
+                    }
+                }
+                exit 1
+            }
+        '
+)
+
+# Succeed only when the real HOME long-press options popup is open. The actual
+# hierarchy exposes pkg:id/popup_container with several clickable
+# pkg:id/system_shortcut rows whose pkg:id/bubble_text labels include Widgets
+# plus a home-level option. Class names are not reliable, so readiness comes
+# from the real resource ids and the clickable shortcut rows; an item menu or a
+# page that merely contains the word "Widgets" is rejected.
+home_popup_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                click = attr($0, "clickable")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                is_shortcut = (rid ~ /(^|\/)system_shortcut$/ && click == "true")
+                inside = is_shortcut
+                for (i = 1; i <= sp && !inside; i++) {
+                    if (stack[i] == 1) inside = 1
+                }
+                if (rid ~ /(^|\/)popup_container$/) has_container = 1
+                if (is_shortcut) shortcuts++
+                if (inside && text == "Widgets") has_widgets = 1
+                if (inside && (text == "Home settings" || text == "Wallpapers")) {
+                    has_home_option = 1
+                }
+                if (!selfclose) {
+                    sp++
+                    stack[sp] = is_shortcut ? 1 : 0
+                }
+            }
+            END {
+                exit !(has_container && shortcuts >= 2 && has_widgets && has_home_option)
+            }
+        '
+)
+
+# Succeed only when the native widget picker search/list is visible and differs
+# from the pre-long-press HOME. The refactored Compose picker exposes the
+# widgets_catalog test tag; the inherited picker exposes its search bar and
+# widget list resource ids. A HOME page that happens to contain "Search" is not
+# accepted.
+widget_picker_is_ready() (
+    xml=$1
+    reference=${2:-}
+    [ -s "$xml" ] || return 1
+    if [ -n "$reference" ] && cmp -s "$reference" "$xml"; then
+        return 1
+    fi
+    if grep -Fq 'com.android.launcher3.widgetpicker:id/widgets_catalog' "$xml"; then
+        if grep -Fq 'text="Search"' "$xml" ||
+            grep -Fq 'text="Featured"' "$xml" ||
+            grep -Fq 'text="Browse"' "$xml"; then
+            return 0
+        fi
+    fi
+    if grep -Eq 'resource-id="[^"]*/(widgets_search_bar|search_bar_container)"' "$xml" &&
+        grep -Eq 'resource-id="[^"]*/(primary_widgets_list_view|search_widgets_list_view)"' "$xml"; then
+        return 0
+    fi
+    return 1
+)
