@@ -1525,13 +1525,61 @@ assert_false 'the settings theme capture never passes the sample extra' \
 assert_false 'the settings theme capture never writes a preference' \
     grep -Eq 'settings put|putString|putBoolean|editSp' "$settings_theme_body"
 
+# --- static regression on the real Play native popup/drawer captures ---------
+
+native_theme_body="$TMP_DIR/capture_native_surfaces_theme.sh"
+sed -n '/^capture_native_surfaces_theme() {/,/^}/p' "$SMOKE" > "$native_theme_body"
+
+native_popup_body="$TMP_DIR/capture_native_home_popup.sh"
+sed -n '/^capture_native_home_popup() {/,/^}/p' "$SMOKE" > "$native_popup_body"
+
+assert_true 'the native surfaces capture uses the system night yes/no modes' \
+    grep -Fq 'for _cnst_mode in yes no; do' "$native_theme_body"
+assert_true 'the native surfaces capture switches the emulator night mode' \
+    grep -Fq 'cmd uimode night "$_cnst_mode"' "$native_theme_body"
+assert_true 'the native surfaces capture requires the SYSTEM theme choice' \
+    grep -Fq 'assert_settings_theme_choice_system' "$native_theme_body"
+assert_true 'the native surfaces capture opens the real HOME popup' \
+    grep -Fq 'capture_native_home_popup "$_cnst_name"' "$native_theme_body"
+assert_true 'the native surfaces capture opens the real app drawer' \
+    grep -Fq 'open_app_drawer' "$native_theme_body"
+assert_true 'the native surfaces capture stores dark and light popup XML evidence' \
+    grep -Fq 'native-popup-$_cnhp_name.xml' "$native_popup_body"
+assert_true 'the native surfaces capture stores dark and light popup PNG evidence' \
+    grep -Fq 'native-popup-$_cnhp_name.png' "$native_popup_body"
+assert_true 'the native surfaces capture stores dark and light drawer XML evidence' \
+    grep -Fq 'native-drawer-$_cnst_name.xml' "$native_theme_body"
+assert_true 'the native surfaces capture stores dark and light drawer PNG evidence' \
+    grep -Fq 'native-drawer-$_cnst_name.png' "$native_theme_body"
+assert_true 'the native popup capture uses the real HOME long-press target' \
+    grep -Fq 'home_longpress_target' "$native_popup_body"
+assert_true 'the native popup capture requires the real popup hierarchy' \
+    grep -Fq 'home_popup_is_ready' "$native_popup_body"
+assert_true 'the native popup capture uses a real long-press gesture' \
+    grep -Fq 'input swipe' "$native_popup_body"
+assert_true 'the native popup capture requires the Widgets option' \
+    grep -Fq 'Widgets' "$native_popup_body"
+assert_true 'the native surfaces capture restores the previous night mode' \
+    grep -Fq 'cmd uimode night "$_cnst_night_value"' "$native_theme_body"
+assert_true 'the native surfaces capture returns HOME' \
+    grep -Fq 'return_home native-surfaces' "$native_theme_body"
+assert_false 'the native surfaces capture never passes the sample extra' \
+    grep -Fq 'THEME_SAMPLE_EXTRA' "$native_theme_body"
+assert_false 'the native surfaces capture never writes a preference' \
+    grep -Eq 'settings put|putString|putBoolean|editSp' "$native_theme_body"
+assert_false 'the native surfaces capture never starts a popup activity directly' \
+    grep -Eq 'am start.*(popup|Popup)' "$native_theme_body"
+
 settings_theme_call_line=$(grep -n '^capture_settings_theme$' "$SMOKE" | sed -n '1s/:.*//p')
+native_surfaces_call_line=$(grep -n '^capture_native_surfaces_theme$' "$SMOKE" | sed -n '1s/:.*//p')
 sample_call_line=$(grep -n '^capture_theme_sample dark$' "$SMOKE" | sed -n '1s/:.*//p')
-if [ -n "$settings_theme_call_line" ] && [ -n "$sample_call_line" ] &&
-    [ "$settings_theme_call_line" -lt "$sample_call_line" ]; then
-    pass 'the real settings theme capture runs before the diagnostic sample'
+if [ -n "$settings_theme_call_line" ] && [ -n "$native_surfaces_call_line" ] &&
+    [ -n "$sample_call_line" ] &&
+    [ "$settings_theme_call_line" -lt "$native_surfaces_call_line" ] &&
+    [ "$native_surfaces_call_line" -lt "$sample_call_line" ]; then
+    pass 'the real settings and native surface captures run before the diagnostic sample'
 else
-    fail 'the real settings theme capture runs before the diagnostic sample'
+    fail 'the real settings and native surface captures run before the diagnostic sample'
 fi
 
 if [ "$failures" -ne 0 ]; then
