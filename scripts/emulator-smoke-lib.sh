@@ -135,6 +135,13 @@ ui_root_bounds() (
         sed -n '1p'
 )
 
+# Print "x1 y1 x2 y2" for a UIAutomator bounds string "[x1,y1][x2,y2]". Prints
+# nothing for a malformed value.
+ui_bounds_values() (
+    printf '%s\n' "${1:-}" |
+        sed -n 's/^\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]$/\1 \2 \3 \4/p'
+)
+
 # Print one attribute of the first UIAutomator node whose resource-id ends with
 # /<suffix>. The dump may be a single physical line, so it is split into node
 # records first. Prints nothing when the child is not exposed.
@@ -1609,6 +1616,76 @@ home_widget_bounds() (
                 }
             }
         '
+)
+
+# Succeed only when a placed widget's bounds sit inside the workspace that is
+# actually visible on the page it was found on and do not overlap a launcher
+# header or the dock that is actually present there. The first-page header is
+# never inherited: a genuine later page may expose no
+# search_container_workspace header, so its upper workspace is valid. Missing or
+# malformed workspace/dock geometry fails closed rather than inventing a band.
+# The labelled-row ui_dock_top is deliberately not used here because on a later
+# page ordinary app icons can make it report a row above the real hotseat.
+home_widget_page_geometry_ok() (
+    xml=$1
+    widget_bounds=$2
+    [ -s "$xml" ] || return 1
+    set -- $widget_bounds
+    [ "$#" -eq 4 ] || return 1
+    for field in "$@"; do
+        case "$field" in '' | *[!0-9]*) return 1 ;; esac
+    done
+    bx1=$1
+    by1=$2
+    bx2=$3
+    by2=$4
+    [ "$bx1" -lt "$bx2" ] && [ "$by1" -lt "$by2" ] || return 1
+
+    ws_bounds=$(ui_node_attribute "$xml" workspace bounds)
+    [ -n "$ws_bounds" ] || ws_bounds=$(ui_node_attribute "$xml" workspace_right bounds)
+    [ -n "$ws_bounds" ] || ws_bounds=$(ui_node_attribute "$xml" workspace_grid bounds)
+    ws=$(ui_bounds_values "$ws_bounds")
+    [ -n "$ws" ] || return 1
+    set -- $ws
+    ws_x1=$1
+    ws_y1=$2
+    ws_x2=$3
+    ws_y2=$4
+    [ "$ws_x1" -lt "$ws_x2" ] && [ "$ws_y1" -lt "$ws_y2" ] || return 1
+
+    dock=$(ui_bounds_values "$(ui_node_attribute "$xml" hotseat bounds)")
+    [ -n "$dock" ] || return 1
+    set -- $dock
+    dock_top=$2
+    [ "$dock_top" -gt "$ws_y1" ] || return 1
+
+    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
+
+    [ "$bx1" -ge "$ws_x1" ] || return 1
+    [ "$by1" -ge "$ws_y1" ] || return 1
+    [ "$bx2" -le "$ws_x2" ] || return 1
+    [ "$by2" -le "$ws_y2" ] || return 1
+    if [ -n "$header_bottom" ]; then
+        [ "$by1" -ge "$header_bottom" ] || return 1
+    fi
+    [ "$by2" -le "$dock_top" ] || return 1
+    return 0
+)
+
+# Succeed only when $xml still yields the exact selected provider host at
+# $placed_bounds and that host's geometry is valid on the actual page. This keeps
+# absent, foreign and picker-preview hosts from satisfying the check and then
+# applies the page-local workspace/header/dock bounds.
+placed_widget_page_is_safe() (
+    xml=$1
+    reference=${2:-}
+    expected=${3:-}
+    placed_bounds=${4:-}
+    [ -n "$expected" ] || return 1
+    [ -n "$placed_bounds" ] || return 1
+    actual=$(home_widget_bounds "$xml" "$reference" "$expected")
+    [ "$actual" = "$placed_bounds" ] || return 1
+    home_widget_page_geometry_ok "$xml" "$placed_bounds"
 )
 
 # Print "<x1> <y> <x2> <y>" for a bounded horizontal workspace page swipe in the

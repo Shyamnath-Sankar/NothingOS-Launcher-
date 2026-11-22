@@ -1848,21 +1848,14 @@ capture_widgets_picker() {
                 [ -s "$ARTIFACTS/widgets-home-placed.png" ] ||
                     fail "placed-widget screenshot capture failed"
 
-                # Keep the widget out of the measured header and dock bands so
-                # it cannot cover the later drawer swipe start.
-                _cwp_ref_root=$(ui_root_bounds "$_cwp_ref")
-                _cwp_ref_dock_top=$(ui_dock_top "$_cwp_ref" "$_cwp_ref_root")
-                _cwp_ref_header_bottom=$(ui_header_bottom \
-                    "$_cwp_ref" "$_cwp_ref_dock_top")
-                [ -n "$_cwp_ref_dock_top" ] ||
-                    fail "could not measure the pre-widget dock top"
-                [ -n "$_cwp_ref_header_bottom" ] ||
-                    fail "could not measure the pre-widget header bottom"
-                set -- $_cwp_placed_bounds
-                if [ "$2" -lt "$_cwp_ref_header_bottom" ] ||
-                    [ "$4" -gt "$_cwp_ref_dock_top" ]; then
-                    fail "the placed widget overlaps the header or dock band ($_cwp_placed_bounds outside $_cwp_ref_header_bottom..$_cwp_ref_dock_top)"
-                fi
+                # Validate the widget against the workspace/header/dock that is
+                # actually visible on the page where it was found. A later page
+                # may legitimately have no first-page search_container_workspace
+                # header, so never inherit the reference page's header band.
+                placed_widget_page_is_safe \
+                    "$_cwp_placed" "$_cwp_ref" "$_cwp_provider_title" \
+                    "$_cwp_placed_bounds" ||
+                    fail "the placed $_cwp_provider_title widget is not a genuine workspace host inside the actual page's workspace, header and dock bounds ($_cwp_placed_bounds)"
 
                 # The new widget id must be bound and owned by this launcher,
                 # not merely an installed provider or another host's widget.

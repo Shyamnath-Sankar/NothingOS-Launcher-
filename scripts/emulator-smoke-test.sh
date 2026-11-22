@@ -1011,6 +1011,107 @@ assert_eq 'the provider-label mode still finds a real Calendar after two own hos
     '38 770 524 1401' \
     "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml" Calendar)"
 
+# CI159: a third-party Calendar placed on a later page has no launcher
+# search_container_workspace header there, so its y=107 top is valid even though
+# the first page's header bottom is 312. The check must use the actual placed
+# page's workspace/header/dock geometry, not inherit the first-page header.
+placed_ci159_first_xml="$TMP_DIR/placed-ci159-first.xml"
+cat > "$placed_ci159_first_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[22,91][1058,312]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,328][524,738]" />
+    </node>
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]">
+      <node index="0" text="Phone" class="android.widget.TextView" clickable="true" bounds="[22,1481][281,1674]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+placed_ci159_later_xml="$TMP_DIR/placed-ci159-later.xml"
+cat > "$placed_ci159_later_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,107][524,738]" />
+      <node index="1" text="Gallery" class="android.widget.TextView" clickable="true" bounds="[38,1196][524,1400]" />
+      <node index="2" text="Settings" class="android.widget.TextView" clickable="true" bounds="[556,1196][1042,1400]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]">
+      <node index="0" text="Phone" class="android.widget.TextView" clickable="true" bounds="[22,1481][281,1674]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_true 'the CI159 first-page Calendar sits below the real header and above the dock' \
+    home_widget_page_geometry_ok "$placed_ci159_first_xml" '38 328 524 738'
+assert_true 'the CI159 no-header later-page Calendar at y=107 is accepted' \
+    home_widget_page_geometry_ok "$placed_ci159_later_xml" '38 107 524 738'
+assert_eq 'the later-page Gallery/Settings row makes ui_dock_top report 1196' \
+    '1196' \
+    "$(ui_dock_top "$placed_ci159_later_xml" "$(ui_root_bounds "$placed_ci159_later_xml")")"
+assert_false 'a widget that starts inside a real first-page header is rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_first_xml" '38 107 524 738'
+assert_false 'a widget that crosses the actual dock top is rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_first_xml" '38 328 524 1500'
+assert_false 'a widget outside the actual workspace is rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_later_xml" '38 107 1100 738'
+
+placed_ci159_no_hotseat_xml="$TMP_DIR/placed-ci159-no-hotseat.xml"
+cat > "$placed_ci159_no_hotseat_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,107][524,738]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_false 'missing actual hotseat geometry fails closed' \
+    home_widget_page_geometry_ok "$placed_ci159_no_hotseat_xml" '38 107 524 738'
+
+placed_ci159_no_workspace_xml="$TMP_DIR/placed-ci159-no-workspace.xml"
+cat > "$placed_ci159_no_workspace_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,328][524,738]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'missing actual workspace geometry fails closed' \
+    home_widget_page_geometry_ok "$placed_ci159_no_workspace_xml" '38 328 524 738'
+assert_false 'malformed placed bounds are rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_later_xml" '38 107 524'
+assert_false 'non-numeric placed bounds are rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_later_xml" '38 107 524 x'
+assert_false 'empty placed bounds are rejected' \
+    home_widget_page_geometry_ok "$placed_ci159_later_xml" ''
+
+assert_true 'the CI159 first-page Calendar is a genuine selected-provider workspace host' \
+    placed_widget_page_is_safe "$placed_ci159_first_xml" "$multi_host_ref_xml" \
+    Calendar '38 328 524 738'
+assert_true 'the CI159 no-header later-page Calendar is a genuine selected-provider workspace host' \
+    placed_widget_page_is_safe "$placed_ci159_later_xml" "$multi_host_ref_xml" \
+    Calendar '38 107 524 738'
+assert_false 'an absent provider host is not a safe placed widget' \
+    placed_widget_page_is_safe "$provider_page_ref_xml" "$multi_host_ref_xml" \
+    Calendar '38 328 524 738'
+assert_false 'a foreign provider label is not a safe placed widget' \
+    placed_widget_page_is_safe "$placed_ci159_later_xml" "$multi_host_ref_xml" \
+    Weather '38 107 524 738'
+assert_false 'a picker preview host is not a safe placed widget' \
+    placed_widget_page_is_safe "$provider_preview_xml" "$provider_page_ref_xml" \
+    Calendar '38 770 524 1401'
+assert_false 'a mismatched placed bounds value is not a safe placed widget' \
+    placed_widget_page_is_safe "$placed_ci159_later_xml" "$multi_host_ref_xml" \
+    Calendar '38 200 524 738'
+
 # --- pending own-widget fixtures -------------------------------------------
 #
 # After a denied automatic bind, the fresh layout keeps each own slot as a
@@ -2181,10 +2282,14 @@ assert_true 'the widgets capture proves a new real workspace AppWidgetHostView' 
     grep -Fq 'home_widget_bounds' "$widgets_body"
 assert_true 'the widgets capture proves a new bound app widget provider' \
     grep -Fq 'appwidget_new_providers' "$widgets_body"
-assert_true 'the widgets capture keeps the placed widget above the measured dock' \
-    grep -Fq 'ui_dock_top' "$widgets_body"
-assert_true 'the widgets capture keeps the placed widget below the measured header' \
-    grep -Fq 'ui_header_bottom' "$widgets_body"
+assert_true 'the widgets capture validates the widget on the actual placed page geometry' \
+    grep -Fq 'placed_widget_page_is_safe' "$widgets_body"
+assert_true 'the widgets capture passes the placed page, reference, provider label and bounds' \
+    grep -Fq '"$_cwp_placed" "$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
+assert_false 'the widgets capture never inherits the first-page header band' \
+    grep -Fq '_cwp_ref_header_bottom' "$widgets_body"
+assert_false 'the widgets capture never inherits the first-page dock band' \
+    grep -Fq '_cwp_ref_dock_top' "$widgets_body"
 assert_true 'the widgets capture focuses the real picker search input' \
     grep -Fq 'widget_picker_search_bar_bounds' "$widgets_body"
 assert_true 'the widgets capture types Clock into the real picker search' \

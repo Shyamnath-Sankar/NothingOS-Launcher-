@@ -163,8 +163,15 @@ a view.
   satisfying a new third-party Clock placement. It saves `widgets-placement-page-N.xml`/`.png`,
   `widgets-survival-page-N.xml`/`.png`, the activities/swipe logs and `widgets-page-log.txt` for every
   page visited, and captures `widgets-home-placed.xml`/`.png` only for the exact matched host. The
-  placed widget must sit between the measured header bottom and dock top, so it cannot cover the
-  later drawer swipe start. It then launches Settings with
+  placed widget is validated against the geometry actually visible on the page where it was found:
+  its bounds must sit inside that page's workspace and below any launcher
+  `search_container_workspace` header that is really present, and above the actual `hotseat` dock.
+  A genuine later page without the first-page header is valid; the reference page's header band is
+  never inherited. Missing or malformed workspace/dock geometry fails closed, and the labelled-row
+  `ui_dock_top` is not used because later-page app icons can make it report a row above the real
+  dock. The check also re-proves the exact selected-provider workspace host, so absent, foreign and
+  picker-preview hosts cannot pass. This keeps the widget off the later drawer swipe start. It then
+  launches Settings with
   `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
   captures `widgets-settings-launched.xml`/`.png`, presses HOME, and searches the same bounded pages
   by provider label plus the exact placed bounds. It captures `widgets-home-after-home.xml`/`.png`
