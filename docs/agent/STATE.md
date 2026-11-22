@@ -3,21 +3,240 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10a — real grid settings and widget-picker smoke (popup readiness correction)**.
-  The popup readiness no longer guesses `OptionsPopupView`/`DeepShortcutView` classes; it requires the
-  actual `popup_container` and multiple clickable `system_shortcut` rows whose `bubble_text` labels
-  include `Widgets` plus a home-level option. The Widgets tap uses the clickable parent bounds
-  (`472 322 1039 459` on the captured hierarchy), and a failed popup readiness captures its last PNG
-  before BACK. Read-only: no feature, styling, preference write, app source, SDK, workflow, Gradle,
-  manifest, permission or signing change.
-- branch: `agent/p10-grid-widget-smoke`
-- head: `61adb30` (`fix(smoke): detect the actual HOME popup hierarchy`) on base `main` `55a25a2`;
-  prior harness commits `f51fcb3`, `7b9f966`, docs commits `4b98e45`, `d9a8b71`, `b98cbb5`,
-  `369c626`.
-- pr: **PR14** for `agent/p10-grid-widget-smoke`; main owns CI approval. PR13 is merged at `55a25a2`
-  and the APK104/APK102 fallbacks remain `main` `55a25a2`.
+- current_phase: **P10b harness correction — safe Add intersection and API37 ProviderId parsing**.
+  CI120 exposed Add at `[434,1755][645,1881]` with the navigation bar from about 1800; tapping the
+  original centre 1818 opened Android HOME. The smoke now remeasures the viewport from the exposed
+  Add hierarchy, intersects the enabled clickable Add with it, pulls the intersection 32 px above the
+  viewport bottom, and taps only a safe intersection of at least 24x24 px. If no safe box remains it
+  performs up to three genuine measured list scrolls and re-resolves, then fails with pixels. The
+  `dumpsys appwidget` parser now accepts API37 `ProviderId{cmp:ComponentInfo{...}}` only inside a
+  real widget-id block owned by this launcher and rejects provider catalogs and other hosts. APK110 is
+  frozen. Harness/fixtures/docs only: no app source, preference/DB/widget binding, SDK, workflow,
+  Gradle, manifest, permission, applicationId, paid, signing or asset change.
+- branch: `agent/p10b-widget-placement`
+- head: `694d943` (`fix(smoke): tap a safe Add intersection and parse API37 providers`) on base
+  `6cf242c`; prior head `d18ad89`/`871f351`.
+- pr: **PR15** for `agent/p10b-widget-placement` at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/15; main/supervisor owns approval.
+  APK110 is frozen and independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
 
-## done (this run — P10a popup readiness correction)
+## done (this run — P10b safe Add tap and API37 ProviderId parser)
+
+- **Root cause from CI120, not guessed:** the real picker exposed Add at `[434,1755][645,1881]`
+  while the navigation bar begins around 1800. `tap_center_of_bounds` used the original centre 1818,
+  which is inside the navigation bar, so the tap opened Android HOME. The existing viewport was never
+  applied to Add.
+- **Safe intersection:** `widget_picker_add_button_bounds` now requires `enabled="true"` as well as
+  `clickable="true"`. New `widget_add_safe_bounds` intersects the Add with the viewport remeasured
+  from the exposed Add hierarchy, subtracts a 32 px navigation-bar inset from the bottom, and prints
+  bounds only when the result is at least 24 px in both dimensions. The CI120 box becomes
+  `434 1755 645 1788`; the original 1818 centre is never tapped.
+- **Bounded re-scroll:** if no safe box remains, `capture_widgets_picker` performs up to three
+  genuine `input swipe` scrolls inside the measured real list, re-captures and re-resolves the Add
+  after each, and logs every target. If Add disappears or the safe box never appears, it saves
+  `widgets-add.xml`, `widgets-add-last.xml`/`.png` and fails with the original Add and viewport pixels
+  instead of guessing a coordinate.
+- **API37 provider wrapper:** `appwidget_new_providers` now accepts
+  `provider=ProviderId{cmp:ComponentInfo{...}}` in addition to direct `provider=ComponentInfo{...}`.
+  The wrapper is parsed only while a real `[N] id=N`/`AppWidgetId=N` block is active, and the same
+  block must name this launcher in `host=HostId{... pkg:...}` or `hostPackage=`. Section headers
+  flush the block, and a second provider line ends it, so provider catalogs and other hosts cannot be
+  attributed to an old widget id.
+- **Preserved:** real long-press, measured Widgets tap, native-picker readiness, search/scroll
+  viewport, preview visibility, bind consent, new workspace host, launcher-owned appwidget id,
+  header/dock band and HOME survival checks are unchanged. No direct picker/config start, fake drag,
+  fixed coordinate, preference/DB write or direct binding was added.
+- **Fixtures:** the actual CI120 Add bounds are covered as a partially hidden Add with a safe
+  `434 1755 645 1788` intersection; a fully visible Add, a fully hidden Add, a barely visible Add and
+  a horizontally outside Add are covered; a disabled Add is rejected. API37 fixtures cover a wrapped
+  provider in a current launcher-owned `[N] id=N`/`HostId` block, a legacy `AppWidgetId`/`hostPackage`
+  block, another launcher's host, an installed-provider catalog with and without a section header,
+  and a wrapper outside any widget-id block.
+- **Docs:** `docs/agent/emulator-verification.md` records the safe Add intersection, the bounded
+  re-scroll and the API37 `ProviderId` rules.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 269/269;
+  `emulator-smoke-drawer-test.sh` 38/38; `verify-play-build-test.sh` 11/11; `sh -n` clean on every
+  edited script; `git diff --check` clean. This is source/fixture verification only, not a runtime
+  claim. APK110 fallback is unchanged.
+
+## done (previous run — P10b bind consent label-case review correction)
+
+- **Root cause from the CI116 actual XML, not guessed:** `android:id/button1` is rendered with an
+  uppercase `CREATE` label, while both helpers matched `text="Create"`/`text != "Create"` exactly.
+  The old readiness also grepped the whole tree for the title, `Application:`/`Widget:` and the
+  launcher/widget names, so unrelated text could satisfy it.
+- **Case normalization:** `widget_bind_consent_is_ready` and `widget_bind_create_button_bounds` now
+  compare the button label with `tolower(...) == "create"`, so `CREATE` and `Create` both work.
+- **Identity retained:** both helpers require `package="com.android.settings"` on the dialog nodes,
+  the exact `android:id/alertTitle` title, and an enabled (`enabled="true"`) clickable
+  (`clickable="true"`) `android:id/button1`; readiness also requires `android:id/alwaysUse`.
+- **Message scoping:** the launcher and selected widget must appear in the `android:id/message` text
+  as `Application: <launcher>` and `Widget: <widget>` (case-insensitive). Text elsewhere in the tree
+  is rejected. `widget_bind_create_button_bounds` now takes the launcher/widget arguments, and the
+  smoke passes `"$EXPECTED_LABEL" "$_cwp_provider_title"`.
+- **Fixtures:** the pretty and compact titlecase positives now carry the Settings package and enabled
+  controls. A new compact platform fixture matches the actual shape (system package, `alertTitle`,
+  message naming DotWel Launcher and Calendar, unchecked `alwaysUse`, uppercase `CREATE`/`CANCEL`).
+  New negatives cover wrong launcher, wrong widget, wrong package, loose launcher/widget text outside
+  the message, a generic Create dialog, and a disabled Create button; the checked `alwaysUse` case
+  still fails closed. Positive and negative bounds resolution is asserted.
+- **Docs:** `docs/agent/emulator-verification.md` records the case-insensitive label, Settings
+  package, message-scoped identity and disabled-button rejection.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 249/249;
+  `emulator-smoke-drawer-test.sh` 38/38; `verify-play-build-test.sh` 11/11; `sh -n` clean on every
+  edited script; `git diff --check` clean. This is source/fixture verification only, not a runtime
+  claim. APK110 fallback is unchanged; the grid preview task was not started.
+
+## done (previous run — P10b bind consent and Settings survival)
+
+- **Evidence read, not guessed:** CI116 stopped after the Calendar preview Add on the genuine Android
+  `AllowBindAppWidgetActivity`; the previous harness polled only for a workspace host and never
+  handled the dialog. The actual AOSP dialog is an `AlertActivity` titled
+  `Create widget and allow access?` with `Application:`/`Widget:` message text, the
+  `android:id/alwaysUse` checkbox, `android:id/button1` Create and `android:id/button2` Cancel.
+- **Exact consent gate:** `widget_bind_consent_is_ready` requires the exact title, `Application:` and
+  `Widget:` labels, the launcher label, the selected provider title, the `button1` Create control and
+  the `alwaysUse` checkbox. A generic Create dialog, another launcher, another widget, a missing
+  button1 or a compact single-line dump is handled; only the exact dialog is accepted.
+- **Safe Create route:** the flow captures the consent XML and PNG, refuses to continue if
+  `Always allow` is already checked, measures `android:id/button1` and taps its centre. A second
+  Create tap is suppressed while the dialog is still visible, and a dismissed dialog is never treated
+  as success. The route and unchecked state are recorded in `widgets-add-log.txt`.
+- **Launcher-owned instance:** `appwidget_new_providers` now parses current
+  `Widgets:`/`[N] id=N`/`host=HostId{..., pkg:...}` dumps as well as legacy
+  `AppWidgetId=N`/`hostPackage=` dumps, and accepts the new instance only when its host package is
+  `$PKG`. The smoke polls `dumpsys appwidget` five times, so an installed provider or another
+  launcher's host cannot satisfy placement.
+- **Settings survival:** after placement it launches `android.settings.SETTINGS`, waits for the
+  exact `com.android.settings` foreground, captures `widgets-settings-launched.xml/.png`, presses
+  HOME, captures `widgets-home-after-home.xml/.png`, and requires the same widget bounds as before
+  the app switch.
+- **Fixtures:** modern launcher-owned, other-launcher and missing-ownership dumps, unchanged modern
+  dump, legacy `hostPackage` positive/negative, pretty/compact consent, unrelated dialog, other
+  launcher, other widget, missing button1, checked Always allow, and measured Create bounds. Static
+  checks now require the consent/Settings path and only reject picker-specific direct starts.
+- **Preserved:** the real long-press, measured Widgets tap, picker readiness, search/scroll viewport
+  correction, no fake drag, no direct picker/config start, no preference/DB write and no direct
+  widget binding. APK110 remains frozen.
+- **Docs:** `docs/agent/emulator-verification.md` records the consent, launcher-owned appwidget and
+  Settings-survival phases and artifacts.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 237/237;
+  `emulator-smoke-drawer-test.sh` 38/38; `verify-play-build-test.sh` all pass;
+  `verify-play-build.sh` passes every source guard and stops only at the expected missing
+  `build/intermediates`; `sh -n` clean on every edited script; `git diff --check` clean. This is
+  source/fixture verification only, not a runtime claim.
+
+## done (previous run — P10b FINAL native picker viewport correction)
+
+- **Evidence read, not guessed (CI114 / `11444966646679`):** the Calendar `widgets_list_header`
+  expanded at `[29,1592][1051,1827]`; the `widget_preview_container` was `[297,1869][783,1920]`,
+  only 51 px tall and below the navigation top 1794. The preview tap never reached the real preview,
+  Add was never exposed, and the ordinary workspace swipe from `540,1894` to `810,834` hit the
+  navigation bar and opened the drawer. The app itself was unchanged.
+- **Viewport gate:** added `widget_picker_search_bar_bounds` (real
+  `widgets_search_bar_edit_text`, falling back to `search_bar_container`/`widgets_search_bar`),
+  `widget_picker_viewport_bounds` (root bounds, top below the search bar, bottom = root bottom -
+  100), and `widget_picker_preview_is_visible` (height >= 100, fully inside the viewport, bottom
+  strictly above root bottom - 100). A clipped preview is rejected even with a valid resource id.
+- **Bring into view before selection:** the smoke focuses the real search input, types `Clock`, and
+  polls the search results for a Clock `widgets_list_header`; if the query yields no header it clears
+  the text and uses the measured list. It then selects Clock/Calendar only when the header's
+  `widget_preview_container` is fully visible. If the preview is clipped or off-screen it performs up
+  to three genuine vertical swipes inside the measured widget list
+  (`primary_widgets_list_view`/`search_widgets_list_view`/`widgets_catalog`), clamped between the
+  search-bar bottom and root bottom - 100, re-resolving the header and preview after every scroll.
+  It expands a header only when no preview exists yet; a clipped preview is never re-tapped.
+- **No fake drag:** the ordinary `input swipe` workspace fallback and the `widget_drop_target` helper
+  are removed. If the measured `widget_add_button` is not exposed after tapping the fully visible
+  preview, the run captures `widgets-add-last.xml`/`.png` and fails.
+- **Preserved:** the placement proof still requires a new workspace `AppWidgetHostView`, a new bound
+  `AppWidgetId`/provider in `dumpsys appwidget`, and the same widget bounds after HOME. The real
+  long-press, measured Widgets tap, picker readiness, role consent, grid read-only checks and
+  Settings/drawer flow are untouched. APK110 remains frozen.
+- **Fixtures:** the actual CI114 clipped `[297,1869][783,1920]` preview is rejected; a fully visible
+  preview is accepted; a preview above the search bar and a >=100 px preview whose bottom crosses
+  the navigation margin are rejected; the search input bounds, viewport and clamped scroll target
+  are asserted; static checks require the search/scroll path and reject the removed drag fallback.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 208/208;
+  `emulator-smoke-drawer-test.sh` all pass; `verify-play-build-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. This is source/fixture verification only, not a
+  runtime claim.
+
+## done (previous run — P10b widget placement review correction)
+
+- **Compact hierarchy, not a line guess:** `home_widget_bounds` previously read attributes from the
+  first `<node` on each physical line. A CI110-style UIAutomator dump is one line, so it could see
+  only the root/first node and miss a nested workspace host. Both reference and current files are now
+  split into node records (`tr '>' '\n'`) and tagged `R`/`C`; explicit markers preserve the
+  reference/current distinction even when the reference is empty. A missing reference still means
+  "no previous hosts", not "treat the current tree as the reference".
+- **Workspace vs sheet preview:** the comparison tracks node nesting. A host inside
+  `widget_preview_container`, `widgets_list_header`, `widgets_catalog`, a picker list, `WidgetCell`,
+  `WidgetsListHeader`, a bottom sheet or an add-widget sheet is rejected. When the current hierarchy
+  exposes a `workspace`/`Workspace` ancestor, only a host inside it is accepted; a workspace host is
+  preferred over any non-workspace host.
+- **New bound instance, not just a provider:** `appwidget_new_providers` now associates each
+  `provider=ComponentInfo{...}` with its enclosing `AppWidgetId=N` block and reports only providers
+  for AppWidgetIds absent from the before dump. An installed-provider list or a provider name that
+  was already present cannot satisfy placement; a new AppWidgetId for an already-installed provider
+  still can.
+- **Expanded provider association:** after tapping a provider header, the smoke re-runs
+  `widget_picker_provider_bounds` on the expanded capture by the selected `Clock`/`Calendar` title,
+  then passes that fresh header to `widget_picker_preview_bounds`. A stale collapsed header cannot
+  skip the real preview and select a later provider's preview. The next-header boundary still comes
+  from the same expanded capture.
+- **Add route preserved:** `widget_add_button` was verified in the inherited source
+  (`res/layout/widget_cell_content.xml` and `src/com/android/launcher3/widget/WidgetCell.java`) and
+  is unchanged.
+- **Fixtures:** compact single-line positive host, pretty reference, unchanged compact reference,
+  empty reference, no-host compact HOME, compact preview-only host, compact mixed preview/workspace
+  host, host outside a present workspace, new AppWidgetId for an already-installed provider,
+  installed-provider-only list and empty before dump; expanded-header stale/updated preview cases.
+- **Limitation recorded:** if the actual hierarchy exposes no workspace node at all, the helper can
+  only reject known picker/sheet preview containers, not prove workspace membership. The CI110
+  `widgets-home-placed*.xml` / `widgets-home-after-home.xml` artifacts must be inspected; if the real
+  `dumpsys appwidget` uses a different bound-instance shape, the helper fails closed and the
+  captured dump must drive the update.
+
+## done (previous run — P10b widget placement and HOME survival)
+
+- **Evidence read, not guessed:** CI110's picker hierarchy (as reported in the task) has a clickable
+  `widgets_list_header` with `app_title` Calendar and subtitle `1 widget`, Clock next, a
+  long-clickable `widget_preview_container` inside a WidgetCell, and a DotWel row with only
+  `1 shortcut`. The flow therefore selects only a header whose subtitle reports a positive widget
+  count; a shortcut-only header is never eligible.
+- **Provider selection:** `widget_picker_provider_bounds` parses the real nested
+  `widgets_list_header`/`app_title`/`app_subtitle` nodes and returns the measured header bounds for
+  Clock then Calendar. It does not use a class-name guess or a fixed coordinate.
+- **Expansion and preview:** `widget_picker_preview_bounds` requires a clickable/long-clickable
+  `widget_preview_container` below the selected header and above the next header. If the provider is
+  already expanded the preview is used directly; otherwise the measured header is tapped and polled
+  for up to five captures per attempt, bounded to two taps.
+- **Add route:** `widget_picker_add_button_bounds` selects the exposed Add button by its real
+  `widget_add_button` resource id (icon-only safe). The flow taps the measured preview, captures
+  `widgets-add-attempt-N.xml`, then taps the measured Add. If Add is not exposed it uses a genuine
+  measured drag to `widget_drop_target` (right-hand workspace, between the measured header and dock).
+- **Placement proof:** the flow polls the real workspace for a new `AppWidgetHostView`-suffixed node
+  against the pre-widget HOME and for a new `provider=ComponentInfo{...}` entry in
+  `dumpsys appwidget`. A configuration activity or an unbound provider fails with
+  `widgets-add-last.xml`/`.png` and the last resumed component recorded, rather than a fake pass.
+- **HOME survival:** it captures `widgets-home-placed.xml`/`.png`, requires the widget bounds to stay
+  between the measured header bottom and dock top (away from the later drawer swipe start), presses
+  HOME through the existing `return_home widgets-picker`, captures
+  `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to remain.
+- **Preserved:** the real HOME long-press, measured Widgets tap, native-picker readiness, role
+  consent Cancel, grid read-only checks, 1500 ms/four-attempt drawer, Settings search/tap and exact
+  foreground checks are unchanged. No direct picker/config `am start`, preference/DB write, or widget
+  binding was added.
+- **Docs:** `docs/agent/emulator-verification.md` records the new provider/add/placement/survival
+  phases and artifact names.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass
+  (including the new provider/preview/Add/placed-widget/appwidget provider fixtures and negatives);
+  `emulator-smoke-drawer-test.sh` all pass; `verify-play-build-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. This is source/fixture verification only; the CI
+  API 37 run and pixels are still the runtime gate.
+
+## done (previous run — P10a popup readiness correction)
 
 - **Evidence read, not guessed:** CI108 (`10844960564539`) proved the grid settings pass: three
   sliders, grey non-clickable Apply, and the actual preview pixels. The real HOME long-press 540/834
@@ -550,61 +769,91 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the actual-shape workspace
-  preview positive, the missing-preview / preview-not-above-controls / preview-without-hotseat
-  negatives, the non-clickable Apply positive, the clickable-Apply and missing-containing-Button
-  negatives, and the fully-occupied long-press band failure.
-- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass; the genuine 1500 ms / 4-attempt
-  drawer assertions are unchanged.
-- This run: `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh scripts/emulator-smoke-test.sh` -> 269/269 pass, including the CI120 partially hidden
+  Add safe intersection, the fully visible / fully hidden / barely visible / horizontally outside Add
+  cases, the disabled Add reject, the API37 wrapped-provider positive, legacy/other-host/catalog
+  negatives, and the static safe-Add/scroll checks.
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> 38/38 pass; the genuine 1500 ms /
+  4-attempt drawer assertions are unchanged.
+- This run: `sh scripts/verify-play-build-test.sh` -> 11/11 pass.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
-- Prior run: both smoke suites, `verify-play-build-test.sh` and the repo-level identity, brand,
-  theme, home, home-role, icon and drawer-trace guards passed; `verify-play-build.sh` stopped only at
-  the expected missing `build/intermediates` because no Gradle/APK run happens here.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. This is
   source/fixture verification only; it is not a runtime or pixel claim.
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` (PR14) at head `61adb30`.
-  PR13 is merged into `main` (`55a25a2`) and the APK104/APK102 fallbacks remain `main` `55a25a2`.
+- Main/supervisor owns PR15 approval for `agent/p10b-widget-placement` at head `694d943`.
+  APK110 is frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
-- Inspect the runtime artifacts after the run:
-  - `grid-settings-attempt-N.xml` / `.png`: the preview `/workspace` bounds above the controls and
-    inside the root, with `hotseat`/`search_container_workspace`, and Apply as a non-clickable label
-    inside a non-clickable Button. If the actual hierarchy differs, update the bounds check from the
-    captured XML; do not return to a class-name check.
-  - `grid-settings.xml` / `.png`: the real Home screen grid screen with the preview,
-    `Columns`/`Rows`/`Dock icons`, three `SeekBar` controls and a grey non-clickable `Apply`.
-  - `grid-settings.txt` and `grid-settings-launch.txt`: the deep link launched `Status: ok` and no
-    grid change was applied.
-  - `home-before-widgets-attempt-N.xml` / `.png`: the actual HOME before the long press.
-  - `home-popup.xml` / `.png`: the real `popup_container` with clickable `system_shortcut` rows,
-    `Widgets` and a home-level option. If the ids differ, update from the captured XML; do not return
-    to a class-name guess.
-  - `home-popup-attempt-N-last.png`: the last failed popup attempt captured before BACK.
-  - `widgets-picker.xml` / `.png`: the native picker search/list and not the pre-long-press HOME.
-  - `widgets-longpress-log.txt`: the measured long-press point, duration 1000 and any bounded retry.
-- The real grid preview currently shows the inherited welcome surface instead of the Doto header.
-  That is a later app-source slice; do not fix it in this harness branch.
+- Inspect the new runtime artifacts after the run:
+  - `widgets-bind-consent.xml` / `.png`: the real `com.android.settings` dialog with
+    `android:id/alertTitle`, an `android:id/message` naming DotWel Launcher and the selected widget,
+    an unchecked `android:id/alwaysUse`, and `android:id/button1` labelled `CREATE` or `Create` with
+    `enabled="true" clickable="true"`. If the actual XML differs, update the helper from that capture;
+    do not return to a whole-tree text grep.
+  - `widgets-search-N.xml` / `widgets-search.xml` and `widgets-picker-cleared.xml`: whether the real
+    `widgets_search_bar_edit_text` accepted `Clock` and exposed a Clock `widgets_list_header`; the
+    cleared dump is the fallback list when the query matched nothing.
+  - `widgets-scroll-N.xml` and `widgets-add-log.txt`: the measured scroll target and the re-resolved
+    header/preview after each genuine swipe. If the picker still clips the preview, update the
+    viewport/search/scroll from the captured XML; never tap a preview whose bottom is under the
+    navigation margin.
+  - `widgets-provider.xml` / `.png`: the selected Clock/Calendar header re-resolved by title with a
+    fully visible `widget_preview_container` below it and above the next header.
+  - `widgets-add.xml` / `.png` and `widgets-add-log.txt`: the exposed enabled clickable
+    `widget_add_button`, the remeasured viewport, the original and safe intersection, and any
+    `add-scroll=` re-resolve. CI120 expects a safe box like `434 1755 645 1788` and a tap centre
+    above 1800, never the original 1818. If no safe box remains the flow saves
+    `widgets-add-last.xml`/`.png` and fails; there is no drag fallback or fixed coordinate.
+  - `widgets-home-placed.xml` / `.png` and `widgets-home-after-home.xml` / `.png`: a new
+    `AppWidgetHostView`-suffixed node inside the real workspace, its bounds between the measured
+    header bottom and dock top, unchanged after KEYCODE_HOME. If these dumps are compact single-line
+    XML, the node-record parser must find the nested host; if they expose no workspace node, record
+    that limitation from the actual XML rather than weakening the check.
+  - `widgets-appwidget-before.txt` / `widgets-appwidget-after.txt` /
+    `widgets-appwidget-providers.txt`: a new `AppWidgetId=N` with its provider, either direct
+    `provider=ComponentInfo{...}` or API37 `provider=ProviderId{cmp:ComponentInfo{...}}`, in a block
+    whose host is this launcher. An installed-provider catalog or another host must not satisfy it.
+  - Existing grid/popup/drawer artifacts remain unchanged and must still pass.
+- If the actual picker exposes a different provider header or Add route, update the helpers from the
+  captured XML; do not weaken the assertions or fall back to fixed coordinates.
 - P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
   onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `f51fcb3`.
-- No PR exists yet for `agent/p10-grid-widget-smoke`; a maintainer must create/approve it.
+  API 37 emulator run are unverified until CI runs on `694d943`.
+- Main/supervisor must approve PR15 for `agent/p10b-widget-placement`.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
-- The grid readiness now assumes the preview exposes a `/workspace` resource-id inside the
-  `AndroidViewHolder` and a `hotseat`/`search_container_workspace` node. The captured
-  `grid-settings-attempt-N.xml` drives any future adjustment; the smoke fails closed rather than
-  accepting a class-name or English-only approximation.
 - The picker readiness assumes one of the two known native picker markers. If the API 37 image
   exposes a different marker, the captured `widgets-picker-attempt-N-P.xml` must drive the update;
   do not accept a closed HOME with incidental English text.
+- The viewport gate assumes the real picker exposes `widgets_search_bar_edit_text` (or
+  `search_bar_container`/`widgets_search_bar`) and a list resource id. If the actual picker omits the
+  search bar, the flow fails closed with `widgets-add-last.xml`/`.png`; the captured XML must drive
+  an update, not a guessed coordinate.
+- Widget placement assumes the picker exposes a Clock or Calendar header with a positive widget
+  count and the real `widget_add_button`. If the provider is absent, the flow fails with
+  `widgets-add-last.xml`/`.png` rather than selecting a shortcut. If Add auto-places the widget
+  outside the measured header/dock band, the captured `widgets-home-placed.xml` drives a later
+  placement change; do not relax the band assertion.
+- The compact HOME parser rejects known picker/sheet preview ancestors and, when a workspace node is
+  present, requires the host inside that workspace. If the actual HOME dump exposes no workspace
+  node, workspace membership cannot be proven from the hierarchy alone; inspect the captured CI110
+  XML instead of treating a non-preview host as workspace evidence.
+- The bound-instance proof accepts `AppWidgetId=N`/`[N] id=N` blocks containing either a direct
+  `provider=ComponentInfo{...}` or API37 `provider=ProviderId{cmp:ComponentInfo{...}}` line, and
+  requires the same block to name this launcher. If the real dump shape differs, the helper fails
+  closed; the captured before/after dumps must drive the update, not an installed-provider list.
+- The Add safety gate assumes the exposed Add hierarchy still exposes the picker search bar so
+  `widget_picker_viewport_bounds` can remeasure a viewport. If it does not, the flow scrolls only
+  when a measured list target exists and otherwise fails with `widgets-add-last.xml`/`.png`; the
+  captured XML must drive any update, never the unsafe original centre.
+- The local branch `agent/p10b-widget-placement-verifica` was a stale pre-existing branch with no
+  commits; the work is on the correctly named `agent/p10b-widget-placement`.
 
 ## decisions locked
 
@@ -615,6 +864,25 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P10b harness correction: the exposed Add is tapped only through its intersection with the
+  remeasured viewport, pulled 32 px above the viewport bottom and at least 24x24 px. The original Add
+  centre is never used. Cost if wrong: an Add that is mostly under the navigation bar causes a
+  bounded measured scroll and then a fail with pixels instead of opening Android HOME.
+- P10b harness correction: an API37 `ProviderId{cmp:ComponentInfo{...}}` provider is accepted only
+  inside an active widget-id block whose host is this launcher; a section header or a second provider
+  line ends the block. Cost if wrong: an unusual dump shape fails closed rather than accepting a
+  provider catalog or another launcher's widget as placement.
+- P10b review correction: both HOME hierarchies are normalised to node records with explicit R/C
+  markers before comparison, and the helper rejects known picker/sheet preview ancestors. When a
+  workspace node exists, the host must be inside it. Cost if wrong: a real widget host that the
+  hierarchy does not nest under a workspace fails closed, and the captured CI110 XML must drive the
+  next change; a picker preview can never be counted as placement.
+- P10b review correction: placement proof requires a new `AppWidgetId` with a provider, not just a
+  provider name in the installed-provider list. Cost if wrong: an unusual `dumpsys appwidget` shape
+  fails closed rather than accepting an already-installed provider as a newly bound widget.
+- P10b review correction: after expansion the provider header is re-resolved by its `app_title`
+  before measuring the preview. Cost if wrong: a provider whose title disappears after expansion
+  fails closed instead of associating a later provider's preview with the selected one.
 - P10a harness correction: the grid preview is accepted from a `/workspace` ViewGroup whose bounds
   are above every slider, inside the root and smaller than it, with a `hotseat`/`search_container_workspace`
   child. Cost if wrong: a future preview without that resource-id fails closed; the captured XML

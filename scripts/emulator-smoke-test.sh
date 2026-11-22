@@ -550,6 +550,599 @@ sed '/primary_widgets_list_view/d' "$picker_old_xml" > "$picker_old_no_list"
 assert_false 'an inherited search bar without the widget list is rejected' \
     widget_picker_is_ready "$picker_old_no_list" "$home_xml"
 
+# --- widget placement fixtures ---------------------------------------------
+# Shape copied from the CI110 picker dump: a clickable widgets_list_header with
+# app_title/app_subtitle, a widget_preview_container inside a WidgetCell, and a
+# DotWel header that exposes only a shortcut. The helper must select a provider
+# with a positive widget count and must never select the shortcut-only row.
+
+widget_headers_xml="$TMP_DIR/widget-headers.xml"
+cat > "$widget_headers_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,400][1080,520]">
+      <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,420][300,460]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,465][300,500]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,540][1080,660]">
+      <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,560][300,600]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,605][300,640]" />
+    </node>
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[80,700][500,1000]" />
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,1100][1080,1220]">
+      <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,1120][300,1160]" />
+      <node index="1" text="1 shortcut" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,1165][300,1200]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a real Clock provider header is selected by its measured bounds' \
+    '0 540 1080 660' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Clock)"
+assert_eq 'a real Calendar provider header is selected by its measured bounds' \
+    '0 400 1080 520' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Calendar)"
+assert_eq 'a shortcut-only provider header is not selected as a widget' \
+    '' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" 'DotWel Launcher')"
+assert_eq 'a missing provider header yields no bounds' \
+    '' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Weather)"
+assert_eq 'the widget preview below the expanded Clock header is measured' \
+    '80 700 500 1000' \
+    "$(widget_picker_preview_bounds "$widget_headers_xml" '0 540 1080 660')"
+assert_eq 'a preview above the selected header is rejected' \
+    '' \
+    "$(widget_picker_preview_bounds "$widget_headers_xml" '0 1100 1080 1220')"
+assert_eq 'a HOME without a widget preview yields no preview bounds' \
+    '' \
+    "$(widget_picker_preview_bounds "$home_xml" '0 540 1080 660')"
+
+# Expanding a provider can move its header and the following header. The
+# expanded hierarchy must be re-resolved by title, or a stale header can skip
+# the real preview and associate a later provider's preview instead.
+widget_headers_expanded_xml="$TMP_DIR/widget-headers-expanded.xml"
+cat > "$widget_headers_expanded_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,200][1080,320]">
+      <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,220][300,260]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,265][300,300]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,360][500,660]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,1100][1080,1220]">
+      <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,1120][300,1160]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,1165][300,1200]" />
+    </node>
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,1300][500,1600]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the expanded title header is re-resolved by title' \
+    '0 200 1080 320' \
+    "$(widget_picker_provider_bounds "$widget_headers_expanded_xml" Clock)"
+assert_eq 'a stale collapsed header does not select an expanded provider preview' \
+    '' \
+    "$(widget_picker_preview_bounds "$widget_headers_expanded_xml" '0 540 1080 660')"
+assert_eq 'the expanded title header associates the preview with the selected provider' \
+    '80 360 500 660' \
+    "$(widget_picker_preview_bounds "$widget_headers_expanded_xml" '0 200 1080 320')"
+
+widget_add_xml="$TMP_DIR/widget-add.xml"
+cat > "$widget_add_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" content-desc="Add Clock widget" clickable="true" enabled="true" bounds="[200,800][400,900]" />
+</hierarchy>
+EOF
+assert_eq 'the exposed enabled widget Add button is selected by its resource id' \
+    '200 800 400 900' \
+    "$(widget_picker_add_button_bounds "$widget_add_xml")"
+assert_eq 'an English Add label without the add-button id is rejected' \
+    '' \
+    "$(widget_picker_add_button_bounds "$home_xml")"
+
+widget_add_disabled_xml="$TMP_DIR/widget-add-disabled.xml"
+cat > "$widget_add_disabled_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" clickable="true" enabled="false" bounds="[200,800][400,900]" />
+</hierarchy>
+EOF
+assert_eq 'a disabled Add button is not a safe tap target' \
+    '' \
+    "$(widget_picker_add_button_bounds "$widget_add_disabled_xml")"
+
+# CI120 exposed Add at [434,1755][645,1881] on the real picker while the
+# navigation bar begins around 1800. The root-100 viewport bottom is 1820, so the
+# original Add centre 1818 is unsafe. The safe intersection must be pulled above
+# the navigation bar and only tapped when it is still large enough.
+widget_add_low_xml="$TMP_DIR/widget-add-low.xml"
+cat > "$widget_add_low_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]" />
+    <node index="2" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" clickable="true" enabled="true" bounds="[434,1755][645,1881]" />
+  </node>
+</hierarchy>
+EOF
+widget_add_low_viewport=$(widget_picker_viewport_bounds "$widget_add_low_xml")
+assert_eq 'the CI120 Add viewport is remeasured from the exposed Add hierarchy' \
+    '0 350 1080 1820' \
+    "$widget_add_low_viewport"
+assert_eq 'the CI120 partially hidden Add has a safe intersection above the navigation bar' \
+    '434 1755 645 1788' \
+    "$(widget_add_safe_bounds '434 1755 645 1881' "$widget_add_low_viewport")"
+assert_eq 'a fully visible Add keeps a safe tappable intersection' \
+    '200 800 400 868' \
+    "$(widget_add_safe_bounds '200 800 400 900' "$widget_add_low_viewport")"
+assert_eq 'a fully hidden Add below the viewport has no safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '434 1830 645 1881' "$widget_add_low_viewport")"
+assert_eq 'a barely visible Add leaves no large-enough safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '434 1775 645 1881' "$widget_add_low_viewport")"
+assert_eq 'an Add outside the horizontal viewport has no safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '1100 1755 1300 1881' "$widget_add_low_viewport")"
+
+# A real CI114 picker: the Calendar header sits near the bottom and its preview
+# is clipped to 51 px under the navigation bar. The usable viewport is below the
+# search bar and 100 px above the root bottom, so the clipped preview must be
+# rejected even though its resource id is valid.
+widget_picker_clipped_xml="$TMP_DIR/widget-picker-clipped.xml"
+cat > "$widget_picker_clipped_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[29,1592][1051,1827]">
+        <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,1620][300,1680]" />
+        <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,1690][300,1740]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[297,1869][783,1920]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the real widgets_search_bar_edit_text bounds are measured' \
+    '40 310 1040 350' \
+    "$(widget_picker_search_bar_bounds "$widget_picker_clipped_xml")"
+assert_eq 'the viewport starts below the search bar and ends 100 px above the root bottom' \
+    '0 350 1080 1820' \
+    "$(widget_picker_viewport_bounds "$widget_picker_clipped_xml")"
+assert_false 'the CI114 clipped 51 px preview is rejected even with a valid id' \
+    widget_picker_preview_is_visible '297 1869 783 1920' \
+    "$(widget_picker_viewport_bounds "$widget_picker_clipped_xml")"
+assert_eq 'the genuine scroll stays inside the measured list above the navigation margin' \
+    '540 1528 652' \
+    "$(widget_picker_scroll_target "$widget_picker_clipped_xml")"
+
+widget_picker_visible_xml="$TMP_DIR/widget-picker-visible.xml"
+cat > "$widget_picker_visible_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[29,400][1051,480]">
+        <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,420][300,460]" />
+        <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,465][300,500]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[297,500][783,800]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_true 'a fully visible Clock preview above the navigation margin is accepted' \
+    widget_picker_preview_is_visible '297 500 783 800' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+assert_false 'a preview above the search bar is rejected' \
+    widget_picker_preview_is_visible '297 200 783 400' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+assert_false 'a tall preview whose bottom is under the navigation margin is rejected' \
+    widget_picker_preview_is_visible '297 1750 783 1850' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+
+placed_home_xml="$TMP_DIR/placed-home.xml"
+cat > "$placed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
+    <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" content-desc="" clickable="false" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" />
+    </node>
+    <node index="3" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1400][240,1460]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a new workspace AppWidgetHostView is detected against the pre-widget HOME' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$placed_home_xml" "$home_xml")"
+assert_eq 'the same AppWidgetHostView already present in the reference is not new' \
+    '' \
+    "$(home_widget_bounds "$placed_home_xml" "$placed_home_xml")"
+assert_eq 'a HOME without an AppWidgetHostView yields no placed-widget bounds' \
+    '' \
+    "$(home_widget_bounds "$home_xml" "$home_xml")"
+
+# UIAutomator can emit the whole hierarchy on one line, so the host must be
+# found from node records, not from the first attribute on the file line.
+compact_home_xml="$TMP_DIR/home-compact.xml"
+cat > "$compact_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="Phone" class="android.widget.TextView" clickable="true" bounds="[120,1400][240,1460]" /></node></hierarchy>
+EOF
+assert_eq 'a compact HOME without a host yields no placed-widget bounds' \
+    '' \
+    "$(home_widget_bounds "$compact_home_xml" "$compact_home_xml")"
+
+compact_placed_home_xml="$TMP_DIR/placed-home-compact.xml"
+cat > "$compact_placed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" /></node><node index="1" text="Phone" class="android.widget.TextView" clickable="true" bounds="[120,1400][240,1460]" /></node></hierarchy>
+EOF
+assert_eq 'a compact single-line workspace host is detected against a pretty reference' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$compact_placed_home_xml" "$home_xml")"
+assert_eq 'the same compact host is not new against an identical reference' \
+    '' \
+    "$(home_widget_bounds "$compact_placed_home_xml" "$compact_placed_home_xml")"
+assert_eq 'an empty reference still treats the current hierarchy as current' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$compact_placed_home_xml" '')"
+
+compact_preview_home_xml="$TMP_DIR/placed-home-preview-compact.xml"
+cat > "$compact_preview_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,400][1080,520]"><node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,420][300,460]" /><node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,465][300,500]" /></node><node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,540][500,840]"><node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[80,540][500,840]" /></node></node></hierarchy>
+EOF
+assert_eq 'a compact sheet-preview host is not a workspace widget' \
+    '' \
+    "$(home_widget_bounds "$compact_preview_home_xml" "$home_xml")"
+
+compact_mixed_home_xml="$TMP_DIR/placed-home-mixed-compact.xml"
+cat > "$compact_mixed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,200][1080,320]"><node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,220][300,260]" /></node><node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,360][500,660]"><node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[80,360][500,660]" /></node><node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,700][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,900][500,1200]" /></node></node></hierarchy>
+EOF
+assert_eq 'a compact preview host is ignored in favour of the workspace host' \
+    '40 900 500 1200' \
+    "$(home_widget_bounds "$compact_mixed_home_xml" "$home_xml")"
+
+compact_outside_ws_xml="$TMP_DIR/placed-home-outside-workspace-compact.xml"
+cat > "$compact_outside_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]" /><node index="1" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,900][500,1200]" /></node></hierarchy>
+EOF
+assert_eq 'a host outside a workspace that is present is rejected' \
+    '' \
+    "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
+
+appwidget_before="$TMP_DIR/appwidget-before.txt"
+cat > "$appwidget_before" <<'EOF'
+AppWidgets:
+  AppWidgetId=1:
+    provider=ComponentInfo{com.example.one/.One}
+EOF
+appwidget_after="$TMP_DIR/appwidget-after.txt"
+cat > "$appwidget_after" <<'EOF'
+AppWidgets:
+  AppWidgetId=1:
+    provider=ComponentInfo{com.example.one/.One}
+  AppWidgetId=2:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a newly bound app widget provider is reported after placement' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_before" "$appwidget_after")"
+assert_eq 'no new provider is reported when the dump is unchanged' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_after" "$appwidget_after")"
+
+appwidget_installed="$TMP_DIR/appwidget-installed.txt"
+cat > "$appwidget_installed" <<'EOF'
+AppWidgets:
+  Installed providers:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+appwidget_new_instance="$TMP_DIR/appwidget-new-instance.txt"
+cat > "$appwidget_new_instance" <<'EOF'
+AppWidgets:
+  Installed providers:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+  AppWidgetId=7:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a new bound instance is reported even when its provider is already installed' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_installed" "$appwidget_new_instance")"
+assert_eq 'an installed provider list without a bound AppWidgetId is not a new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_installed" "$appwidget_installed")"
+assert_eq 'a bound widget instance is found when the before dump is empty' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_new_instance")"
+
+# Current Android prints each widget as "[N] id=N" with the host package in a
+# "host=HostId{..., pkg:<package>}" line. The smoke must prove the new id is
+# owned by this launcher, not just that some provider appeared.
+appwidget_modern_before="$TMP_DIR/appwidget-modern-before.txt"
+cat > "$appwidget_modern_before" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    provider=ComponentInfo{com.example.one/.One}
+Hosts:
+  [0] hostId=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    widgets.size=1
+EOF
+appwidget_modern_after="$TMP_DIR/appwidget-modern-after.txt"
+cat > "$appwidget_modern_after" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    provider=ComponentInfo{com.example.one/.One}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+Hosts:
+  [0] hostId=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    widgets.size=1
+  [1] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=1
+EOF
+assert_eq 'a current-format widget id owned by this launcher is reported' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.launchernos.dotwellabs.debug)"
+assert_eq 'a new widget id owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.other.launcher)"
+assert_eq 'a current-format new id without an ownership match fails closed' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.launchernos.dotwellabs.debug.extra)"
+assert_eq 'an unchanged current-format dump reports no new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_after" "$appwidget_modern_after" com.launchernos.dotwellabs.debug)"
+
+appwidget_hostpackage="$TMP_DIR/appwidget-hostpackage.txt"
+cat > "$appwidget_hostpackage" <<'EOF'
+AppWidgets:
+  AppWidgetId=9:
+    hostPackage=com.launchernos.dotwellabs.debug
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a hostPackage line also proves launcher ownership' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_hostpackage" com.launchernos.dotwellabs.debug)"
+assert_eq 'a hostPackage owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_hostpackage" com.other.launcher)"
+
+# API 37 wraps the provider in ProviderId{cmp:ComponentInfo{...}}. The wrapper is
+# only accepted inside a real widget-id block, and the block must still be owned
+# by this launcher. Provider catalogs and other hosts must never satisfy placement.
+appwidget_api37_before="$TMP_DIR/appwidget-api37-before.txt"
+cat > "$appwidget_api37_before" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=1
+EOF
+appwidget_api37_after="$TMP_DIR/appwidget-api37-after.txt"
+cat > "$appwidget_api37_after" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=2
+EOF
+assert_eq 'an API37 ProviderId wrapper inside a launcher-owned widget-id block is reported' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_after" com.launchernos.dotwellabs.debug)"
+assert_eq 'an API37 ProviderId wrapper owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_after" com.other.launcher)"
+
+appwidget_api37_other_host="$TMP_DIR/appwidget-api37-other-host.txt"
+cat > "$appwidget_api37_other_host" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper in another launcher host block is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_other_host" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_catalog="$TMP_DIR/appwidget-api37-catalog.txt"
+cat > "$appwidget_api37_catalog" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+Installed providers:
+  provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+  provider=ProviderId{cmp:ComponentInfo{com.example.two/.Two}, profile:0}
+EOF
+assert_eq 'an API37 provider catalog without a new widget id is not a new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_catalog" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_loose_catalog="$TMP_DIR/appwidget-api37-loose-catalog.txt"
+cat > "$appwidget_api37_loose_catalog" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  Provider catalog:
+    provider=ProviderId{cmp:ComponentInfo{com.example.two/.Two}, profile:0}
+EOF
+assert_eq 'an API37 provider catalog after a widget block is not attributed to the old id' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_loose_catalog" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_legacy="$TMP_DIR/appwidget-api37-legacy.txt"
+cat > "$appwidget_api37_legacy" <<'EOF'
+AppWidgets:
+  AppWidgetId=9:
+    hostPackage=com.launchernos.dotwellabs.debug
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper also works in a legacy AppWidgetId block with hostPackage' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_api37_legacy" com.launchernos.dotwellabs.debug)"
+assert_eq 'a legacy API37 wrapper owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_api37_legacy" com.other.launcher)"
+
+appwidget_api37_no_block="$TMP_DIR/appwidget-api37-no-block.txt"
+cat > "$appwidget_api37_no_block" <<'EOF'
+Installed providers:
+  provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper outside any widget-id block is not a bound widget' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_api37_no_block" com.launchernos.dotwellabs.debug)"
+
+# --- widget bind consent fixtures ------------------------------------------
+
+widget_bind_consent_xml="$TMP_DIR/widget-bind-consent.xml"
+cat > "$widget_bind_consent_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]">
+    <node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" />
+    <node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" />
+    <node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" />
+    <node index="3" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[100,1100][500,1200]" />
+    <node index="4" text="Create" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'the real launcher/widget bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_consent_xml" 'DotWel Launcher' Calendar
+assert_eq 'the titlecase consent Create control is measured by android:id/button1' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_xml" 'DotWel Launcher' Calendar)"
+assert_false 'the consent Always allow checkbox starts unchecked' \
+    widget_bind_always_allow_is_checked "$widget_bind_consent_xml"
+
+widget_bind_consent_compact_xml="$TMP_DIR/widget-bind-consent-compact.xml"
+cat > "$widget_bind_consent_compact_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="Application: DotWel Launcher&#10;Widget: Clock" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" /><node index="3" text="Create" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_true 'a compact single-line titlecase bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_consent_compact_xml" 'DotWel Launcher' Clock
+assert_eq 'a compact titlecase consent Create control is measured' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_compact_xml" 'DotWel Launcher' Clock)"
+
+# The actual platform dialog (AllowBindAppWidgetActivity) is a compact dump from
+# com.android.settings with all-caps CREATE/CANCEL button labels.
+widget_bind_platform_xml="$TMP_DIR/widget-bind-platform.xml"
+cat > "$widget_bind_platform_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" /><node index="3" text="CANCEL" resource-id="android:id/button2" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[100,1100][500,1200]" /><node index="4" text="CREATE" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_true 'the actual uppercase platform bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_platform_xml" 'DotWel Launcher' Calendar
+assert_eq 'the uppercase platform Create control resolves its measured bounds' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_platform_xml" 'DotWel Launcher' Calendar)"
+assert_false 'the platform consent Always allow checkbox starts unchecked' \
+    widget_bind_always_allow_is_checked "$widget_bind_platform_xml"
+
+widget_bind_unrelated_xml="$TMP_DIR/widget-bind-unrelated.xml"
+cat > "$widget_bind_unrelated_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Delete this widget?" class="android.widget.TextView" bounds="[80,600][1000,700]" />
+  <node index="1" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" />
+</hierarchy>
+EOF
+assert_false 'a generic dialog with a Create button is not bind consent' \
+    widget_bind_consent_is_ready "$widget_bind_unrelated_xml" 'DotWel Launcher' Calendar
+assert_eq 'a generic Create dialog exposes no consent Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_unrelated_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_other_launcher_xml="$TMP_DIR/widget-bind-other-launcher.xml"
+sed 's/Application: DotWel Launcher/Application: Other Launcher/' \
+    "$widget_bind_platform_xml" > "$widget_bind_other_launcher_xml"
+assert_false 'bind consent whose message names another launcher is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_other_launcher_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-launcher consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_other_launcher_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_other_widget_xml="$TMP_DIR/widget-bind-other-widget.xml"
+sed 's/Widget: Calendar/Widget: Weather/' "$widget_bind_platform_xml" \
+    > "$widget_bind_other_widget_xml"
+assert_false 'bind consent whose message names another widget is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_other_widget_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-widget consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_other_widget_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_wrong_package_xml="$TMP_DIR/widget-bind-wrong-package.xml"
+sed 's/package="com.android.settings"/package="com.example.fake"/g' \
+    "$widget_bind_platform_xml" > "$widget_bind_wrong_package_xml"
+assert_false 'bind consent outside the system Settings package is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_wrong_package_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-package consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_wrong_package_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_loose_text_xml="$TMP_DIR/widget-bind-loose-text.xml"
+cat > "$widget_bind_loose_text_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="After you create the widget, the application can access everything displayed." resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Application: DotWel Launcher" class="android.widget.TextView" package="com.android.settings" bounds="[80,1000][1000,1040]" /><node index="3" text="Widget: Calendar" class="android.widget.TextView" package="com.android.settings" bounds="[80,1040][1000,1080]" /><node index="4" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1100][1000,1160]" /><node index="5" text="CREATE" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_false 'launcher/widget text outside the dialog message is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_loose_text_xml" 'DotWel Launcher' Calendar
+assert_eq 'loose launcher/widget text exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_loose_text_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_no_create_xml="$TMP_DIR/widget-bind-no-create.xml"
+sed '/android:id\/button1/d' "$widget_bind_consent_xml" > "$widget_bind_no_create_xml"
+assert_false 'bind consent without android:id/button1 is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_no_create_xml" 'DotWel Launcher' Calendar
+assert_eq 'bind consent without android:id/button1 has no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_no_create_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_checked_xml="$TMP_DIR/widget-bind-checked.xml"
+sed 's/checked="false"/checked="true"/' "$widget_bind_consent_xml" \
+    > "$widget_bind_checked_xml"
+assert_true 'a checked Always allow control is detected so the flow can fail closed' \
+    widget_bind_always_allow_is_checked "$widget_bind_checked_xml"
+
+widget_bind_disabled_xml="$TMP_DIR/widget-bind-disabled.xml"
+sed 's/\(resource-id="android:id\/button1"[^>]*\)enabled="true"/\1enabled="false"/' \
+    "$widget_bind_platform_xml" > "$widget_bind_disabled_xml"
+assert_false 'bind consent with a disabled Create control is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_disabled_xml" 'DotWel Launcher' Calendar
+assert_eq 'a disabled Create control exposes no tap target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_disabled_xml" 'DotWel Launcher' Calendar)"
+
+
 # --- HOME long-press geometry fixtures -------------------------------------
 
 assert_eq 'the HOME long-press target is the empty centre between header and dock' \
@@ -764,7 +1357,7 @@ assert_true 'the widgets capture stores home-popup.png evidence' \
 assert_true 'the widgets capture stores widgets-picker.png evidence' \
     grep -Fq 'widgets-picker.png' "$widgets_body"
 assert_false 'the widgets capture never starts the picker activity directly' \
-    grep -Fq 'am start' "$widgets_body"
+    grep -Eq 'am start.*(AppWidgetPickActivity|ACTION_APPWIDGET_PICK|widgetpicker)' "$widgets_body"
 assert_false 'the widgets capture never writes a preference' \
     grep -Eq 'settings put|shared_prefs|onChange|prefs\.' "$widgets_body"
 assert_true 'the widgets capture returns HOME after the picker' \
@@ -773,6 +1366,108 @@ assert_true 'the widgets capture re-verifies the actual HOME' \
     grep -Fq 'verify_nothing_home' "$widgets_body"
 assert_true 'the widgets capture is bounded' \
     grep -Fq '_cwp_max_attempts=3' "$widgets_body"
+assert_true 'the widgets capture selects a real provider header with widgets' \
+    grep -Fq 'widget_picker_provider_bounds' "$widgets_body"
+assert_true 'the widgets capture prefers the system Clock/Calendar providers' \
+    grep -Fq 'for _cwp_title in Clock Calendar' "$widgets_body"
+assert_true 'the widgets capture measures the expanded provider preview' \
+    grep -Fq 'widget_picker_preview_bounds' "$widgets_body"
+assert_true 'the widgets capture re-resolves the expanded provider header by title' \
+    grep -Fq '_cwp_candidate_header=$(widget_picker_provider_bounds' "$widgets_body"
+assert_true 'the widgets capture keeps the re-resolved header for the preview' \
+    grep -Fq '_cwp_header=$_cwp_candidate_header' "$widgets_body"
+assert_true 'the widgets capture taps the measured preview, not a fixed point' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_preview"' "$widgets_body"
+assert_true 'the widgets capture remeasures the safe viewport after exposing Add' \
+    grep -Fq 'widget_picker_viewport_bounds "$_cwp_add_xml"' "$widgets_body"
+assert_true 'the widgets capture intersects the Add button with the safe viewport' \
+    grep -Fq 'widget_add_safe_bounds' "$widgets_body"
+assert_true 'the widgets capture taps the safe Add intersection, not a fixed point' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_safe_add"' "$widgets_body"
+assert_false 'the widgets capture never taps the unsafe original Add centre' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_add"' "$widgets_body"
+assert_true 'the widgets capture bounds the measured Add re-scroll attempts' \
+    grep -Fq '_cwp_max_add_scrolls=3' "$widgets_body"
+assert_true 'the widgets capture re-resolves Add after a measured list scroll' \
+    grep -Fq 'widgets-add-scroll-$_cwp_add_scroll.xml' "$widgets_body"
+assert_true 'the widgets capture detects the exact launcher/widget bind consent' \
+    grep -Fq 'widget_bind_consent_is_ready' "$widgets_body"
+assert_true 'the widgets capture requires the launcher identity and widget name' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$widgets_body"
+assert_true 'the widgets capture stores the bind consent XML' \
+    grep -Fq 'widgets-bind-consent.xml' "$widgets_body"
+assert_true 'the widgets capture stores the bind consent PNG' \
+    grep -Fq 'widgets-bind-consent.png' "$widgets_body"
+assert_true 'the widgets capture measures the android:id/button1 Create control' \
+    grep -Fq 'widget_bind_create_button_bounds' "$widgets_body"
+create_bounds_context=$(grep -A2 -F 'widget_bind_create_button_bounds' "$widgets_body" || true)
+printf '%s\n' "$create_bounds_context" > "$TMP_DIR/create-bounds-context.txt"
+assert_true 'the widgets capture passes the launcher/widget identity to the Create bounds' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$TMP_DIR/create-bounds-context.txt"
+assert_true 'the widgets capture taps the measured Create control' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_bind_create"' "$widgets_body"
+assert_true 'the widgets capture refuses a checked Always allow control' \
+    grep -Fq 'widget_bind_always_allow_is_checked' "$widgets_body"
+assert_true 'the widgets capture proves the new appwidget id is launcher-owned' \
+    grep -Fq '"$ARTIFACTS/widgets-appwidget-after.txt" "$PKG"' "$widgets_body"
+assert_true 'the widgets capture launches Settings for the survival check' \
+    grep -Fq 'android.settings.SETTINGS' "$widgets_body"
+assert_true 'the widgets capture waits for the exact Settings foreground' \
+    grep -Fq 'wait_for_foreground com.android.settings' "$widgets_body"
+assert_true 'the widgets capture captures the Settings launch evidence' \
+    grep -Fq 'widgets-settings-launched.xml' "$widgets_body"
+assert_true 'the widgets capture captures the provider expansion XML and PNG' \
+    grep -Fq 'widgets-provider.xml' "$widgets_body"
+assert_true 'the widgets capture captures the exposed Add XML and PNG' \
+    grep -Fq 'widgets-add.xml' "$widgets_body"
+assert_true 'the widgets capture captures the placed HOME XML and PNG' \
+    grep -Fq 'widgets-home-placed.xml' "$widgets_body"
+assert_true 'the widgets capture captures HOME after the survival key press' \
+    grep -Fq 'widgets-home-after-home.xml' "$widgets_body"
+assert_true 'the widgets capture proves a new real workspace AppWidgetHostView' \
+    grep -Fq 'home_widget_bounds' "$widgets_body"
+assert_true 'the widgets capture proves a new bound app widget provider' \
+    grep -Fq 'appwidget_new_providers' "$widgets_body"
+assert_true 'the widgets capture keeps the placed widget above the measured dock' \
+    grep -Fq 'ui_dock_top' "$widgets_body"
+assert_true 'the widgets capture keeps the placed widget below the measured header' \
+    grep -Fq 'ui_header_bottom' "$widgets_body"
+assert_true 'the widgets capture focuses the real picker search input' \
+    grep -Fq 'widget_picker_search_bar_bounds' "$widgets_body"
+assert_true 'the widgets capture types Clock into the real picker search' \
+    grep -Fq 'input text Clock' "$widgets_body"
+assert_true 'the widgets capture rejects a preview outside the measured viewport' \
+    grep -Fq 'widget_picker_preview_is_visible' "$widgets_body"
+assert_true 'the widgets capture scrolls the measured widget list when the preview is clipped' \
+    grep -Fq 'widget_picker_scroll_target' "$widgets_body"
+assert_true 'the widgets capture fails when the Add button is not exposed' \
+    grep -Fq 'the widget Add button was not exposed' "$widgets_body"
+assert_false 'the widgets capture has no ordinary swipe drag fallback' \
+    grep -Fq 'widget_drop_target' "$widgets_body"
+assert_false 'the widgets capture never swipes a preview to a fixed workspace point' \
+    grep -Fq 'input swipe "$_cwp_px"' "$widgets_body"
+assert_true 'the widgets capture saves the last failed placement stage before cleanup' \
+    grep -Fq 'widgets-add-last' "$widgets_body"
+assert_false 'the widgets capture never binds a widget or edits the database directly' \
+    grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' "$widgets_body"
+assert_false 'the widgets capture never uses a fixed Add tap coordinate' \
+    grep -Eq 'input tap [0-9]+ [0-9]+' "$widgets_body"
+
+placed_line=$(grep -n 'widgets-home-placed.xml' "$widgets_body" | sed -n '1s/:.*//p')
+consent_line=$(grep -n 'widgets-bind-consent.xml' "$widgets_body" | sed -n '1s/:.*//p')
+settings_line=$(grep -n 'android.settings.SETTINGS' "$widgets_body" | sed -n '1s/:.*//p')
+home_key_line=$(grep -n 'return_home widgets-picker' "$widgets_body" | sed -n '1s/:.*//p')
+after_home_line=$(grep -n 'widgets-home-after-home.xml' "$widgets_body" | sed -n '1s/:.*//p')
+if [ -n "$consent_line" ] && [ -n "$placed_line" ] && [ -n "$settings_line" ] &&
+    [ -n "$home_key_line" ] && [ -n "$after_home_line" ] &&
+    [ "$consent_line" -lt "$placed_line" ] &&
+    [ "$placed_line" -lt "$settings_line" ] &&
+    [ "$settings_line" -lt "$home_key_line" ] &&
+    [ "$home_key_line" -lt "$after_home_line" ]; then
+    pass 'consent is handled before placement, and the placed widget is re-checked after Settings and HOME'
+else
+    fail 'consent is handled before placement, and the placed widget is re-checked after Settings and HOME'
+fi
 
 grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')
 widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')

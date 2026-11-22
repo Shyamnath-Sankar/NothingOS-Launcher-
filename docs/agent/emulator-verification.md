@@ -71,7 +71,60 @@ a view.
   search/list label) or the inherited picker (`widgets_search_bar`/`search_bar_container` plus
   `primary_widgets_list_view`/`search_widgets_list_view`). The picker hierarchy must differ from the
   pre-long-press HOME, so a closed HOME with incidental English text cannot pass. It captures
-  `widgets-picker.xml`/`.png`, returns HOME and re-verifies the actual HOME clock/date.
+  `widgets-picker.xml`/`.png`.
+- **Real widget placement and HOME survival (P10b).** Inside the native picker it selects a
+  clickable `widgets_list_header` whose `app_title` is `Clock` or `Calendar` and whose `app_subtitle`
+  reports a positive widget count. A shortcut-only header such as the one-shortcut DotWel row is
+  rejected. A picker row can sit at the bottom with its preview clipped under the navigation bar
+  (CI114: the Calendar header at `[29,1592][1051,1827]` and a `[297,1869][783,1920]` preview, only
+  51 px visible). The smoke therefore measures a viewport below the real
+  `widgets_search_bar_edit_text`/`search_bar_container` and 100 px above the root bottom, and
+  accepts a preview only when it is fully inside that viewport and at least 100 px tall. It brings
+  the provider into view first by focusing the real search input and typing `Clock` (polling the
+  search results for a Clock `widgets_list_header`), then falls back to a bounded genuine scroll
+  inside the measured widget list (`primary_widgets_list_view`/`search_widgets_list_view`/
+  `widgets_catalog`), re-resolving the header and preview after every scroll. A clipped preview is
+  never tapped, even when its resource id is valid. It expands the measured header only when no
+  preview exists yet, re-resolves the expanded title header by its `app_title` so a stale collapsed
+  position cannot pick a later provider's preview, captures `widgets-provider.xml`/`.png`, and taps
+  the fully visible `widget_preview_container`. It then polls for the real enabled, clickable
+  `widget_add_button` resource id. The Add can sit partly under the navigation bar (CI120:
+  `[434,1755][645,1881]` with the navigation bar beginning around 1800, so the original centre 1818
+  opened Android HOME). The smoke remeasures the viewport from the exposed Add hierarchy, intersects
+  the Add bounds with it, pulls the intersection 32 px above the viewport bottom so it clears the
+  navigation bar, and taps only that safe intersection when it is at least 24 px in both dimensions.
+  It never taps the original Add centre. If no large-enough safe intersection remains it performs up
+  to three genuine vertical swipes inside the measured widget list, re-resolves the Add after every
+  scroll, and fails with `widgets-add-last.xml`/`.png` rather than guessing a coordinate. It
+  captures `widgets-add.xml`/`.png` and logs the original and safe bounds. The platform may then show
+  the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
+  `Create widget and allow access?` dialog owned by `com.android.settings`, whose `android:id/message`
+  names the launcher (`DotWel Launcher`) and the selected widget, and which exposes an enabled,
+  clickable `android:id/button1` control whose label is `Create` or the platform-rendered `CREATE`,
+  plus the `android:id/alwaysUse` checkbox. The title and launcher/widget identity must be in the
+  dialog's own nodes; matching text elsewhere in the tree is rejected. It captures
+  `widgets-bind-consent.xml`/`.png`, refuses to continue if `Always allow` is already checked, and
+  taps Create by its measured `android:id/button1` bounds. A generic dialog with a Create button, a
+  wrong package, a missing launcher/widget identity, or a missing/disabled button1 is rejected;
+  dismissing the dialog is never treated as success. There is no ordinary
+  workspace swipe fallback; if Add is not exposed it saves `widgets-add-last.xml`/`.png` and fails
+  instead of faking the picker's long-press drag. It then polls for a new `AppWidgetHostView`-suffixed
+  node in the workspace and, with bounded retries, a new `AppWidgetId` whose host package is this
+  launcher in `dumpsys appwidget` (current `[N] id=N`/`host=HostId{..., pkg:...}` and legacy
+  `AppWidgetId=N`/`hostPackage=` shapes are both parsed). API 37 wraps the provider in
+  `ProviderId{cmp:ComponentInfo{...}}`; that wrapper is accepted only inside a real widget-id block
+  and only when the same block is owned by this launcher. Provider catalogs and other hosts are
+  rejected. The HOME comparison parses both hierarchies
+  as node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
+  picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
+  `widgets-add-last.xml`/`.png` if a configuration activity, an uncompleted consent or an unbound
+  provider blocks placement. The placed widget must sit between the measured header bottom and dock
+  top, so it cannot cover the later drawer swipe start. It then launches Settings with
+  `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
+  captures `widgets-settings-launched.xml`/`.png`, presses HOME, captures
+  `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to remain. It never starts
+  the picker or a configuration activity directly, never binds an app widget itself, and never writes
+  preferences or the database.
 
 Evidence for these phases:
 
@@ -93,7 +146,35 @@ home-popup.png
 widgets-picker-attempt-N-P.xml
 widgets-picker.xml
 widgets-picker.png
+widgets-picker-cleared.xml
+widgets-search-N.xml
+widgets-search.xml
 widgets-picker.txt
+widgets-add-log.txt
+widgets-provider-N-P.xml
+widgets-provider.xml
+widgets-provider.png
+widgets-scroll-N.xml
+widgets-add-attempt-N.xml
+widgets-add.xml
+widgets-add.png
+widgets-bind-consent.xml
+widgets-bind-consent.png
+widgets-home-placed-attempt-N.xml
+widgets-home-placed.xml
+widgets-home-placed.png
+widgets-settings-launch.txt
+widgets-settings-launched.xml
+widgets-settings-launched.png
+activities-widget-settings.txt
+widgets-home-after-home.xml
+widgets-home-after-home.png
+widgets-appwidget-before.txt
+widgets-appwidget-after.txt
+widgets-appwidget-providers.txt
+widgets-add-last.xml
+widgets-add-last.png
+activities-widget-placed-N.txt
 ```
 
 Every wait is a bounded UIAutomator poll. The existing role-consent Cancel, the 1500 ms / four-attempt

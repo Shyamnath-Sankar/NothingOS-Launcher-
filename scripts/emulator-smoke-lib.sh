@@ -769,6 +769,751 @@ home_popup_is_ready() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of a clickable widgets_list_header whose
+# app_title matches $2 and whose app_subtitle reports at least one real widget.
+# A shortcut-only header ("1 shortcut") is never selected, and no class name is
+# assumed. The subtitle is locale text, so only the positive widget count is
+# required.
+widget_picker_provider_bounds() (
+    xml=$1
+    want=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$want" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                click = attr($0, "clickable")
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                is_header = (rid ~ /(^|\/)widgets_list_header$/ &&
+                    click == "true" && bounds != "")
+                if (!selfclose) {
+                    sp++
+                    header_idx[sp] = 0
+                }
+                if (is_header) {
+                    hcount++
+                    header_bounds[hcount] = bounds
+                    header_title[hcount] = ""
+                    header_sub[hcount] = ""
+                    if (!selfclose) header_idx[sp] = hcount
+                }
+                hd = 0
+                for (i = sp; i >= 1; i--) {
+                    if (header_idx[i] > 0) {
+                        hd = header_idx[i]
+                        break
+                    }
+                }
+                if (hd > 0) {
+                    if (rid ~ /(^|\/)app_title$/) header_title[hd] = text
+                    if (rid ~ /(^|\/)app_subtitle$/) header_sub[hd] = text
+                }
+            }
+            END {
+                for (i = 1; i <= hcount; i++) {
+                    if (header_title[i] != want) continue
+                    if (header_sub[i] ~ /(^|[^0-9])[1-9][0-9]*[[:space:]]+widgets?/) {
+                        emit(header_bounds[i])
+                        exit
+                    }
+                }
+            }
+        '
+)
+
+# Print the bounds of the widget_preview_container below the selected provider
+# header and above the next provider header. The container must be clickable or
+# long-clickable, matching the inherited WidgetCell preview. A preview from a
+# collapsed or unrelated provider is rejected.
+widget_picker_preview_bounds() (
+    xml=$1
+    header=$2
+    [ -s "$xml" ] || return 0
+    set -- $header
+    [ "$#" -eq 4 ] || return 0
+    hy2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v hy2="$hy2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                bounds = attr($0, "bounds")
+                if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                y1 = y_of(bounds, 2)
+                if (rid ~ /(^|\/)widgets_list_header$/ && y1 > hy2) {
+                    if (next_top == "" || y1 < next_top) next_top = y1
+                }
+                if (rid !~ /(^|\/)widget_preview_container$/) next
+                if (attr($0, "clickable") != "true" &&
+                    attr($0, "long-clickable") != "true") next
+                if (y1 <= hy2) next
+                if (next_top != "" && y1 >= next_top) next
+                if (best == "" || y1 < best_y) {
+                    best = bounds
+                    best_y = y1
+                }
+            }
+            END {
+                if (best != "") emit(best)
+            }
+        '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the widget picker search bar. The real
+# inherited picker exposes widgets_search_bar_edit_text; the outer
+# search_bar_container/widgets_search_bar is the fallback so the viewport still
+# has a measured top edge. No class name or English placeholder is assumed.
+widget_picker_search_bar_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                b = attr($0, "bounds")
+                if (rid ~ /(^|\/)widgets_search_bar_edit_text$/ && input_b == "")
+                    input_b = b
+                if (rid ~ /(^|\/)(search_bar_container|widgets_search_bar)$/ && outer_b == "")
+                    outer_b = b
+            }
+            END {
+                if (input_b != "") emit(input_b)
+                else if (outer_b != "") emit(outer_b)
+            }
+        '
+)
+
+# Print the usable widget-preview viewport ("x1 y1 x2 y2"): inside the root,
+# below the search bar and 100 px above the root bottom. The bottom margin keeps
+# a preview off the navigation bar; the root is the real UIAutomator window
+# bounds, never a fixed display size. Prints nothing when either edge is
+# unavailable.
+widget_picker_viewport_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 0
+    search=$(widget_picker_search_bar_bounds "$xml")
+    [ -n "$search" ] || return 0
+    set -- $root
+    rx1=$1
+    ry1=$2
+    rx2=$3
+    ry2=$4
+    set -- $search
+    top=$4
+    if [ "$top" -lt "$ry1" ]; then
+        top=$ry1
+    fi
+    bottom=$((ry2 - 100))
+    if [ "$bottom" -le "$top" ]; then
+        return 0
+    fi
+    printf '%s %s %s %s\n' "$rx1" "$top" "$rx2" "$bottom"
+)
+
+# Succeed only when a preview is fully inside the measured viewport and at least
+# 100 px tall. A 51 px preview clipped by the navigation bar is rejected even
+# when its resource id is valid.
+widget_picker_preview_is_visible() (
+    preview=$1
+    viewport=$2
+    if [ -z "$preview" ] || [ -z "$viewport" ]; then
+        return 1
+    fi
+    set -- $preview
+    if [ "$#" -ne 4 ]; then
+        return 1
+    fi
+    px1=$1
+    py1=$2
+    px2=$3
+    py2=$4
+    set -- $viewport
+    if [ "$#" -ne 4 ]; then
+        return 1
+    fi
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    if [ "$py2" -le "$py1" ]; then
+        return 1
+    fi
+    if [ "$((py2 - py1))" -lt 100 ]; then
+        return 1
+    fi
+    if [ "$py1" -lt "$vy1" ]; then
+        return 1
+    fi
+    if [ "$py2" -ge "$vy2" ]; then
+        return 1
+    fi
+    if [ "$px1" -lt "$vx1" ]; then
+        return 1
+    fi
+    if [ "$px2" -gt "$vx2" ]; then
+        return 1
+    fi
+    return 0
+)
+
+# Print the bounds of the measured widget list (inherited primary/search list or
+# the Compose catalog) used for a bounded genuine scroll.
+widget_picker_list_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (best != "") next
+                rid = attr($0, "resource-id")
+                if (rid ~ /(^|\/)(primary_widgets_list_view|search_widgets_list_view|widgets_catalog)$/)
+                    best = attr($0, "bounds")
+            }
+            END { if (best != "") emit(best) }
+        '
+)
+
+# Print "x y_from y_to" for a genuine vertical scroll inside the measured widget
+# list, clamped to the usable viewport so the gesture never lands on the
+# navigation bar. Prints nothing when the list or viewport is unavailable.
+widget_picker_scroll_target() (
+    xml=$1
+    list=$(widget_picker_list_bounds "$xml")
+    viewport=$(widget_picker_viewport_bounds "$xml")
+    if [ -z "$list" ] || [ -z "$viewport" ]; then
+        return 1
+    fi
+    set -- $list
+    lx1=$1
+    ly1=$2
+    lx2=$3
+    ly2=$4
+    set -- $viewport
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    x=$(((lx1 + lx2) / 2))
+    top=$ly1
+    if [ "$top" -lt "$vy1" ]; then
+        top=$vy1
+    fi
+    bottom=$ly2
+    if [ "$bottom" -gt "$vy2" ]; then
+        bottom=$vy2
+    fi
+    if [ "$bottom" -le "$top" ]; then
+        return 1
+    fi
+    span=$((bottom - top))
+    if [ "$span" -lt 200 ]; then
+        return 1
+    fi
+    y_from=$((bottom - span / 5))
+    y_to=$((top + span / 5))
+    if [ "$y_from" -le "$y_to" ]; then
+        return 1
+    fi
+    printf '%s %s %s\n' "$x" "$y_from" "$y_to"
+)
+
+# Print the bounds of the exposed widget Add button by its real resource id.
+# The button may be icon-only, so English text is not required. It must be
+# enabled as well as clickable, so a disabled overlay is never tapped.
+widget_picker_add_button_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "resource-id") !~ /(^|\/)widget_add_button$/) next
+                if (attr($0, "clickable") != "true") next
+                if (attr($0, "enabled") != "true") next
+                emit(attr($0, "bounds"))
+                exit
+            }
+        '
+)
+
+# Print the safe intersection ("x1 y1 x2 y2") of an exposed Add button and the
+# measured picker viewport, pulled 32 px above the viewport's bottom edge so the
+# tap can never land on the navigation bar. CI120 exposed Add at
+# [434,1755][645,1881] while the navigation bar begins around 1800; the original
+# centre 1818 was unsafe. A result is printed only when the remaining box is at
+# least 24 px in both dimensions, so a clipped or fully hidden Add is rejected
+# instead of being tapped at its unsafe original centre. Prints nothing when
+# there is no large-enough safe intersection.
+widget_add_safe_bounds() (
+    add=$1
+    viewport=$2
+    [ -n "$add" ] || return 0
+    [ -n "$viewport" ] || return 0
+    set -- $add
+    [ "$#" -eq 4 ] || return 0
+    ax1=$1
+    ay1=$2
+    ax2=$3
+    ay2=$4
+    set -- $viewport
+    [ "$#" -eq 4 ] || return 0
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    x1=$ax1
+    if [ "$vx1" -gt "$x1" ]; then
+        x1=$vx1
+    fi
+    y1=$ay1
+    if [ "$vy1" -gt "$y1" ]; then
+        y1=$vy1
+    fi
+    x2=$ax2
+    if [ "$vx2" -lt "$x2" ]; then
+        x2=$vx2
+    fi
+    y2=$ay2
+    if [ "$vy2" -lt "$y2" ]; then
+        y2=$vy2
+    fi
+    y2=$((y2 - 32))
+    if [ "$x2" -le "$x1" ] || [ "$y2" -le "$y1" ]; then
+        return 0
+    fi
+    if [ "$((x2 - x1))" -lt 24 ] || [ "$((y2 - y1))" -lt 24 ]; then
+        return 0
+    fi
+    printf '%s %s %s %s\n' "$x1" "$y1" "$x2" "$y2"
+)
+
+# Succeed only for the real Android widget-bind consent dialog
+# (AllowBindAppWidgetActivity). The alertTitle must be the exact title, the
+# android:id/message must name this launcher and the selected widget, and the
+# android:id/button1 control must be an enabled, clickable Create button owned by
+# com.android.settings. Button labels are matched case-insensitively because the
+# platform renders them as CREATE/CANCEL. A generic dialog with a Create button
+# or unrelated text elsewhere in the tree is not accepted.
+widget_bind_consent_is_ready() (
+    xml=$1
+    launcher=$2
+    widget=$3
+    [ -s "$xml" ] || return 1
+    [ -n "$launcher" ] || return 1
+    [ -n "$widget" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk -v launcher="$launcher" -v widget="$widget" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "package") != "com.android.settings") next
+                rid = attr($0, "resource-id")
+                if (rid == "android:id/alertTitle") {
+                    if (tolower(attr($0, "text")) == "create widget and allow access?") title = 1
+                } else if (rid == "android:id/message") {
+                    msg = tolower(attr($0, "text"))
+                    if (index(msg, "application: " tolower(launcher)) > 0 &&
+                        index(msg, "widget: " tolower(widget)) > 0) message = 1
+                } else if (rid == "android:id/button1") {
+                    if (attr($0, "clickable") == "true" &&
+                        attr($0, "enabled") == "true" &&
+                        tolower(attr($0, "text")) == "create") button = 1
+                } else if (rid == "android:id/alwaysUse") {
+                    always = 1
+                }
+            }
+            END { exit !(title && message && button && always) }
+        '
+)
+
+# Print the measured bounds of the consent dialog's Create control by its
+# android:id/button1 resource id. The dialog must still carry the exact title,
+# the com.android.settings package, the launcher/widget message identity and an
+# enabled, clickable button whose label may be CREATE or Create. Handles compact
+# single-line dumps.
+widget_bind_create_button_bounds() (
+    xml=$1
+    launcher=${2:-}
+    widget=${3:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$launcher" ] || return 0
+    [ -n "$widget" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v launcher="$launcher" -v widget="$widget" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "package") != "com.android.settings") next
+                rid = attr($0, "resource-id")
+                if (rid == "android:id/alertTitle") {
+                    if (tolower(attr($0, "text")) == "create widget and allow access?") title = 1
+                } else if (rid == "android:id/message") {
+                    msg = tolower(attr($0, "text"))
+                    if (index(msg, "application: " tolower(launcher)) > 0 &&
+                        index(msg, "widget: " tolower(widget)) > 0) message = 1
+                } else if (rid == "android:id/button1") {
+                    if (attr($0, "clickable") == "true" &&
+                        attr($0, "enabled") == "true" &&
+                        tolower(attr($0, "text")) == "create") bounds = attr($0, "bounds")
+                }
+            }
+            END {
+                if (!(title && message)) exit 1
+                emit(bounds)
+            }
+        '
+)
+
+# Succeed when the consent dialog's Always allow checkbox is checked. The flow
+# refuses to tap Create in that state so a smoke run never grants permanent
+# widget-binding permission.
+widget_bind_always_allow_is_checked() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "resource-id") != "android:id/alwaysUse") next
+                if (attr($0, "checked") == "true") found = 1
+            }
+            END { exit !found }
+        '
+)
+
+# Print the bounds of a new AppWidgetHostView in the workspace, comparing the
+# current hierarchy with the pre-widget HOME. Both hierarchies are normalised to
+# one node record per line (UIAutomator can emit the whole tree on a single
+# line), and explicit R/C markers keep the reference distinct even when it is
+# empty. A host inside a widget-picker preview or sheet is never accepted; when
+# the hierarchy exposes a workspace, only a host inside that workspace counts.
+home_widget_bounds() (
+    xml=$1
+    reference=${2:-}
+    [ -s "$xml" ] || return 0
+    {
+        if [ -n "$reference" ] && [ -s "$reference" ]; then
+            tr '>' '\n' < "$reference" |
+                awk '{ print "R\t" $0 }'
+        fi
+        tr '>' '\n' < "$xml" |
+            awk '{ print "C\t" $0 }'
+    } |
+        awk -F '\t' '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            function is_workspace(rid, cls) {
+                return rid ~ /(^|\/)workspace(_right|_grid)?$/ ||
+                    cls ~ /(^|\.)Workspace$/
+            }
+            function is_preview(rid, cls) {
+                return rid ~ /(^|\/)(widget_preview_container|widgets_list_header|widgets_catalog|widgets_search_bar|primary_widgets_list_view)$/ ||
+                    cls ~ /(WidgetCell|WidgetCellPreview|WidgetsListHeader|WidgetsBottomSheet|BaseWidgetSheet|AddItemWidgetsBottomSheet)/
+            }
+            {
+                kind = $1
+                rec = substr($0, index($0, "\t") + 1)
+                if (kind != last_kind) {
+                    sp = 0
+                    last_kind = kind
+                }
+                if (rec ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if (rec !~ /<node[[:space:]]/) next
+                rid = attr(rec, "resource-id")
+                cls = attr(rec, "class")
+                bounds = attr(rec, "bounds")
+                selfclose = (rec ~ /\/[[:space:]]*$/)
+                parent_ws = (sp > 0 ? stack_ws[sp] : 0)
+                parent_preview = (sp > 0 ? stack_preview[sp] : 0)
+                ws = parent_ws || is_workspace(rid, cls)
+                preview = parent_preview || is_preview(rid, cls)
+                if (kind == "C" && ws) cur_saw_ws = 1
+                if (cls ~ /AppWidgetHostView/ &&
+                    bounds ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) {
+                    if (kind == "R") {
+                        if (!preview) seen[bounds] = 1
+                    } else if (!preview) {
+                        if (ws && first_ws == "") first_ws = bounds
+                        if (!ws && first_nonws == "") first_nonws = bounds
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_ws[sp] = ws
+                    stack_preview[sp] = preview
+                }
+            }
+            END {
+                if (first_ws != "") chosen = first_ws
+                else if (!cur_saw_ws) chosen = first_nonws
+                if (chosen != "" && !(chosen in seen)) emit(chosen)
+            }
+        '
+)
+
+# Print providers of widget instances that are newly bound between two
+# `dumpsys appwidget` captures. Each provider must sit inside a widget-id block
+# (`AppWidgetId=N` on older dumps or `[N] id=N` on current Android), so an
+# installed-provider list or a provider mentioned elsewhere cannot be mistaken
+# for a newly bound widget. A new AppWidgetId is required even when the same
+# provider was already installed.
+#
+# When $3 is set, the new widget's host package must equal it. Current Android
+# prints the host in the widget block as `host=HostId{..., pkg:<package>}`; a
+# `hostPackage=<package>` line is also accepted. If ownership cannot be proven,
+# the helper prints nothing and the smoke fails closed.
+appwidget_new_providers() (
+    before=$1
+    after=$2
+    want_host=${3:-}
+    [ -s "$after" ] || return 0
+    {
+        if [ -n "$before" ] && [ -s "$before" ]; then
+            awk '{ print "B\t" $0 }' "$before"
+        fi
+        awk '{ print "A\t" $0 }' "$after"
+    } |
+        awk -F '\t' -v want_host="$want_host" '
+            function flush() {
+                if (kind != "" && id != "" && provider != "" &&
+                    (want_host == "" || host == want_host))
+                    print kind "\t" id "\t" provider "\t" host
+                id = ""
+                provider = ""
+                host = ""
+            }
+            function provider_of(line,    wrapped) {
+                if (match(line, /provider=ComponentInfo\{[^}]*\}/))
+                    return substr(line, RSTART, RLENGTH)
+                if (match(line, /provider=ProviderId\{[^}]*ComponentInfo\{[^}]*\}/)) {
+                    wrapped = substr(line, RSTART, RLENGTH)
+                    if (match(wrapped, /ComponentInfo\{[^}]*\}/))
+                        return "provider=" substr(wrapped, RSTART, RLENGTH)
+                }
+                return ""
+            }
+            {
+                if ($1 != kind) {
+                    flush()
+                    kind = $1
+                }
+                line = substr($0, index($0, "\t") + 1)
+                if (line ~ /^[[:space:]]*[A-Za-z][A-Za-z ]*:[[:space:]]*$/) {
+                    flush()
+                    next
+                }
+                if (line ~ /^[[:space:]]*\[[0-9]+\][[:space:]]+id=[0-9]+[[:space:]]*$/) {
+                    flush()
+                    id = line
+                    sub(/^.*id=/, "", id)
+                    sub(/[^0-9].*$/, "", id)
+                    next
+                }
+                if (match(line, /AppWidgetId=[0-9]+/)) {
+                    flush()
+                    id = substr(line, RSTART, RLENGTH)
+                    sub(/^AppWidgetId=/, "", id)
+                    next
+                }
+                if (id == "") next
+                p = provider_of(line)
+                if (p != "") {
+                    if (provider != "") flush()
+                    if (id == "") next
+                    provider = p
+                }
+                if (match(line, /host=HostId\{[^}]*\}/)) {
+                    h = substr(line, RSTART, RLENGTH)
+                    if (match(h, /pkg:[^},]*/)) {
+                        host = substr(h, RSTART + 4, RLENGTH - 4)
+                    }
+                } else if (match(line, /hostPackage=[^[:space:]]+/)) {
+                    host = substr(line, RSTART + 12, RLENGTH - 12)
+                }
+            }
+            END { flush() }
+        ' |
+        awk -F '\t' '
+            $1 == "B" {
+                seen[$2] = 1
+                next
+            }
+            $1 == "A" {
+                if (!($2 in seen) && !($2 in printed)) {
+                    print $3
+                    printed[$2] = 1
+                }
+            }
+        '
+)
+
 # Succeed only when the native widget picker search/list is visible and differs
 # from the pre-long-press HOME. The refactored Compose picker exposes the
 # widgets_catalog test tag; the inherited picker exposes its search bar and
