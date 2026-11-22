@@ -823,6 +823,134 @@ assert_eq 'a bound widget instance is found when the before dump is empty' \
     'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
     "$(appwidget_new_providers '' "$appwidget_new_instance")"
 
+# Current Android prints each widget as "[N] id=N" with the host package in a
+# "host=HostId{..., pkg:<package>}" line. The smoke must prove the new id is
+# owned by this launcher, not just that some provider appeared.
+appwidget_modern_before="$TMP_DIR/appwidget-modern-before.txt"
+cat > "$appwidget_modern_before" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    provider=ComponentInfo{com.example.one/.One}
+Hosts:
+  [0] hostId=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    widgets.size=1
+EOF
+appwidget_modern_after="$TMP_DIR/appwidget-modern-after.txt"
+cat > "$appwidget_modern_after" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    provider=ComponentInfo{com.example.one/.One}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+Hosts:
+  [0] hostId=HostId{user:0, app:10265, hostId:1024, pkg:com.android.launcher3}
+    widgets.size=1
+  [1] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=1
+EOF
+assert_eq 'a current-format widget id owned by this launcher is reported' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.launchernos.dotwellabs.debug)"
+assert_eq 'a new widget id owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.other.launcher)"
+assert_eq 'a current-format new id without an ownership match fails closed' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_before" "$appwidget_modern_after" com.launchernos.dotwellabs.debug.extra)"
+assert_eq 'an unchanged current-format dump reports no new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_modern_after" "$appwidget_modern_after" com.launchernos.dotwellabs.debug)"
+
+appwidget_hostpackage="$TMP_DIR/appwidget-hostpackage.txt"
+cat > "$appwidget_hostpackage" <<'EOF'
+AppWidgets:
+  AppWidgetId=9:
+    hostPackage=com.launchernos.dotwellabs.debug
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a hostPackage line also proves launcher ownership' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_hostpackage" com.launchernos.dotwellabs.debug)"
+assert_eq 'a hostPackage owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_hostpackage" com.other.launcher)"
+
+# --- widget bind consent fixtures ------------------------------------------
+
+widget_bind_consent_xml="$TMP_DIR/widget-bind-consent.xml"
+cat > "$widget_bind_consent_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" bounds="[80,600][1000,700]" />
+    <node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" bounds="[80,720][1000,980]" />
+    <node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" checkable="true" checked="false" clickable="true" bounds="[80,1000][1000,1060]" />
+    <node index="3" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" clickable="true" bounds="[100,1100][500,1200]" />
+    <node index="4" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'the real launcher/widget bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_consent_xml" 'DotWel Launcher' Calendar
+assert_eq 'the consent Create control is measured by android:id/button1' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_xml")"
+assert_false 'the consent Always allow checkbox starts unchecked' \
+    widget_bind_always_allow_is_checked "$widget_bind_consent_xml"
+
+widget_bind_consent_compact_xml="$TMP_DIR/widget-bind-consent-compact.xml"
+cat > "$widget_bind_consent_compact_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" bounds="[80,600][1000,700]" /><node index="1" text="Application: DotWel Launcher&#10;Widget: Clock" resource-id="android:id/message" class="android.widget.TextView" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" checked="false" clickable="true" bounds="[80,1000][1000,1060]" /><node index="3" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_true 'a compact single-line bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_consent_compact_xml" 'DotWel Launcher' Clock
+assert_eq 'a compact consent Create control is measured' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_compact_xml")"
+
+widget_bind_unrelated_xml="$TMP_DIR/widget-bind-unrelated.xml"
+cat > "$widget_bind_unrelated_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Delete this widget?" class="android.widget.TextView" bounds="[80,600][1000,700]" />
+  <node index="1" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" />
+</hierarchy>
+EOF
+assert_false 'an unrelated dialog with a Create button is not bind consent' \
+    widget_bind_consent_is_ready "$widget_bind_unrelated_xml" 'DotWel Launcher' Calendar
+assert_eq 'an unrelated dialog exposes no consent Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_unrelated_xml")"
+
+widget_bind_other_launcher_xml="$TMP_DIR/widget-bind-other-launcher.xml"
+sed 's/DotWel Launcher/Other Launcher/g' "$widget_bind_consent_xml" \
+    > "$widget_bind_other_launcher_xml"
+assert_false 'bind consent naming another launcher is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_other_launcher_xml" 'DotWel Launcher' Calendar
+
+widget_bind_other_widget_xml="$TMP_DIR/widget-bind-other-widget.xml"
+sed 's/Widget: Calendar/Widget: Weather/' "$widget_bind_consent_xml" \
+    > "$widget_bind_other_widget_xml"
+assert_false 'bind consent naming another widget is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_other_widget_xml" 'DotWel Launcher' Calendar
+
+widget_bind_no_create_xml="$TMP_DIR/widget-bind-no-create.xml"
+sed '/android:id\/button1/d' "$widget_bind_consent_xml" > "$widget_bind_no_create_xml"
+assert_false 'bind consent without android:id/button1 is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_no_create_xml" 'DotWel Launcher' Calendar
+assert_eq 'bind consent without android:id/button1 has no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_no_create_xml")"
+
+widget_bind_checked_xml="$TMP_DIR/widget-bind-checked.xml"
+sed 's/checked="false"/checked="true"/' "$widget_bind_consent_xml" \
+    > "$widget_bind_checked_xml"
+assert_true 'a checked Always allow control is detected so the flow can fail closed' \
+    widget_bind_always_allow_is_checked "$widget_bind_checked_xml"
+
+
 # --- HOME long-press geometry fixtures -------------------------------------
 
 assert_eq 'the HOME long-press target is the empty centre between header and dock' \
@@ -1037,7 +1165,7 @@ assert_true 'the widgets capture stores home-popup.png evidence' \
 assert_true 'the widgets capture stores widgets-picker.png evidence' \
     grep -Fq 'widgets-picker.png' "$widgets_body"
 assert_false 'the widgets capture never starts the picker activity directly' \
-    grep -Fq 'am start' "$widgets_body"
+    grep -Eq 'am start.*(AppWidgetPickActivity|ACTION_APPWIDGET_PICK|widgetpicker)' "$widgets_body"
 assert_false 'the widgets capture never writes a preference' \
     grep -Eq 'settings put|shared_prefs|onChange|prefs\.' "$widgets_body"
 assert_true 'the widgets capture returns HOME after the picker' \
@@ -1060,6 +1188,28 @@ assert_true 'the widgets capture taps the measured preview, not a fixed point' \
     grep -Fq 'tap_center_of_bounds "$_cwp_preview"' "$widgets_body"
 assert_true 'the widgets capture taps the measured Add button, not a fixed point' \
     grep -Fq 'tap_center_of_bounds "$_cwp_add"' "$widgets_body"
+assert_true 'the widgets capture detects the exact launcher/widget bind consent' \
+    grep -Fq 'widget_bind_consent_is_ready' "$widgets_body"
+assert_true 'the widgets capture requires the launcher identity and widget name' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$widgets_body"
+assert_true 'the widgets capture stores the bind consent XML' \
+    grep -Fq 'widgets-bind-consent.xml' "$widgets_body"
+assert_true 'the widgets capture stores the bind consent PNG' \
+    grep -Fq 'widgets-bind-consent.png' "$widgets_body"
+assert_true 'the widgets capture measures the android:id/button1 Create control' \
+    grep -Fq 'widget_bind_create_button_bounds' "$widgets_body"
+assert_true 'the widgets capture taps the measured Create control' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_bind_create"' "$widgets_body"
+assert_true 'the widgets capture refuses a checked Always allow control' \
+    grep -Fq 'widget_bind_always_allow_is_checked' "$widgets_body"
+assert_true 'the widgets capture proves the new appwidget id is launcher-owned' \
+    grep -Fq '"$ARTIFACTS/widgets-appwidget-after.txt" "$PKG"' "$widgets_body"
+assert_true 'the widgets capture launches Settings for the survival check' \
+    grep -Fq 'android.settings.SETTINGS' "$widgets_body"
+assert_true 'the widgets capture waits for the exact Settings foreground' \
+    grep -Fq 'wait_for_foreground com.android.settings' "$widgets_body"
+assert_true 'the widgets capture captures the Settings launch evidence' \
+    grep -Fq 'widgets-settings-launched.xml' "$widgets_body"
 assert_true 'the widgets capture captures the provider expansion XML and PNG' \
     grep -Fq 'widgets-provider.xml' "$widgets_body"
 assert_true 'the widgets capture captures the exposed Add XML and PNG' \
@@ -1098,14 +1248,19 @@ assert_false 'the widgets capture never uses a fixed Add tap coordinate' \
     grep -Eq 'input tap [0-9]+ [0-9]+' "$widgets_body"
 
 placed_line=$(grep -n 'widgets-home-placed.xml' "$widgets_body" | sed -n '1s/:.*//p')
+consent_line=$(grep -n 'widgets-bind-consent.xml' "$widgets_body" | sed -n '1s/:.*//p')
+settings_line=$(grep -n 'android.settings.SETTINGS' "$widgets_body" | sed -n '1s/:.*//p')
 home_key_line=$(grep -n 'return_home widgets-picker' "$widgets_body" | sed -n '1s/:.*//p')
 after_home_line=$(grep -n 'widgets-home-after-home.xml' "$widgets_body" | sed -n '1s/:.*//p')
-if [ -n "$placed_line" ] && [ -n "$home_key_line" ] && [ -n "$after_home_line" ] &&
-    [ "$placed_line" -lt "$home_key_line" ] &&
+if [ -n "$consent_line" ] && [ -n "$placed_line" ] && [ -n "$settings_line" ] &&
+    [ -n "$home_key_line" ] && [ -n "$after_home_line" ] &&
+    [ "$consent_line" -lt "$placed_line" ] &&
+    [ "$placed_line" -lt "$settings_line" ] &&
+    [ "$settings_line" -lt "$home_key_line" ] &&
     [ "$home_key_line" -lt "$after_home_line" ]; then
-    pass 'the placed widget is captured before HOME and re-checked after HOME'
+    pass 'consent is handled before placement, and the placed widget is re-checked after Settings and HOME'
 else
-    fail 'the placed widget is captured before HOME and re-checked after HOME'
+    fail 'consent is handled before placement, and the placed widget is re-checked after Settings and HOME'
 fi
 
 grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')

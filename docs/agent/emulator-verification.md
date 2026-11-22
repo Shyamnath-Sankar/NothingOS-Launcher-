@@ -88,18 +88,29 @@ a view.
   preview exists yet, re-resolves the expanded title header by its `app_title` so a stale collapsed
   position cannot pick a later provider's preview, captures `widgets-provider.xml`/`.png`, and taps
   the fully visible `widget_preview_container`. It then polls for the real `widget_add_button`
-  resource id, captures `widgets-add.xml`/`.png`, and taps the measured Add button. There is no
-  ordinary workspace swipe fallback; if Add is not exposed it saves `widgets-add-last.xml`/`.png`
-  and fails instead of faking the picker's long-press drag. It then polls for a new
-  `AppWidgetHostView`-suffixed node in the workspace and a newly bound `AppWidgetId`/provider pair in
-  `dumpsys appwidget`. The HOME comparison parses both hierarchies as node records, so a compact
-  single-line UIAutomator dump is handled, and it ignores hosts inside picker/sheet previews. It
-  captures `widgets-home-placed.xml`/`.png`, and fails with saved `widgets-add-last.xml`/`.png` if a
-  configuration activity or an unbound provider blocks placement. The placed widget must sit between
-  the measured header bottom and dock top, so it cannot cover the later drawer swipe start. It then
-  presses HOME, captures `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to
-  remain. It never starts the picker or a configuration activity directly, never binds an app widget,
-  and never writes preferences or the database.
+  resource id, captures `widgets-add.xml`/`.png`, and taps the measured Add button. The platform may
+  then show the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
+  `Create widget and allow access?` dialog whose message names the launcher (`DotWel Launcher`) and
+  the selected widget, exposes the `android:id/button1` `Create` control and the
+  `android:id/alwaysUse` checkbox. It captures `widgets-bind-consent.xml`/`.png`, refuses to
+  continue if `Always allow` is already checked, and taps Create by its measured `android:id/button1`
+  bounds. A generic dialog with a Create button, a missing launcher/widget identity, or a missing
+  button1 is rejected; dismissing the dialog is never treated as success. There is no ordinary
+  workspace swipe fallback; if Add is not exposed it saves `widgets-add-last.xml`/`.png` and fails
+  instead of faking the picker's long-press drag. It then polls for a new `AppWidgetHostView`-suffixed
+  node in the workspace and, with bounded retries, a new `AppWidgetId` whose host package is this
+  launcher in `dumpsys appwidget` (current `[N] id=N`/`host=HostId{..., pkg:...}` and legacy
+  `AppWidgetId=N`/`hostPackage=` shapes are both parsed). The HOME comparison parses both hierarchies
+  as node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
+  picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
+  `widgets-add-last.xml`/`.png` if a configuration activity, an uncompleted consent or an unbound
+  provider blocks placement. The placed widget must sit between the measured header bottom and dock
+  top, so it cannot cover the later drawer swipe start. It then launches Settings with
+  `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
+  captures `widgets-settings-launched.xml`/`.png`, presses HOME, captures
+  `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to remain. It never starts
+  the picker or a configuration activity directly, never binds an app widget itself, and never writes
+  preferences or the database.
 
 Evidence for these phases:
 
@@ -133,9 +144,15 @@ widgets-scroll-N.xml
 widgets-add-attempt-N.xml
 widgets-add.xml
 widgets-add.png
+widgets-bind-consent.xml
+widgets-bind-consent.png
 widgets-home-placed-attempt-N.xml
 widgets-home-placed.xml
 widgets-home-placed.png
+widgets-settings-launch.txt
+widgets-settings-launched.xml
+widgets-settings-launched.png
+activities-widget-settings.txt
 widgets-home-after-home.xml
 widgets-home-after-home.png
 widgets-appwidget-before.txt

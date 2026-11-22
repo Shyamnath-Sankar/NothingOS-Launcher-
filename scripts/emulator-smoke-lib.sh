@@ -1149,6 +1149,93 @@ widget_picker_add_button_bounds() (
         '
 )
 
+# Succeed only for the real Android widget-bind consent dialog
+# (AllowBindAppWidgetActivity). The dialog must name the launcher and the widget
+# being bound, expose the android:id/button1 Create control and the
+# android:id/alwaysUse checkbox. A generic dialog with a Create button is not
+# accepted.
+widget_bind_consent_is_ready() (
+    xml=$1
+    launcher=$2
+    widget=$3
+    [ -s "$xml" ] || return 1
+    [ -n "$launcher" ] || return 1
+    [ -n "$widget" ] || return 1
+    grep -Fq 'Create widget and allow access?' "$xml" || return 1
+    grep -Fq 'Application:' "$xml" || return 1
+    grep -Fq 'Widget:' "$xml" || return 1
+    grep -Fq "$launcher" "$xml" || return 1
+    grep -Fq "$widget" "$xml" || return 1
+    grep -Fq 'resource-id="android:id/button1"' "$xml" || return 1
+    grep -Fq 'text="Create"' "$xml" || return 1
+    grep -Fq 'resource-id="android:id/alwaysUse"' "$xml" || return 1
+    return 0
+)
+
+# Print the measured bounds of the consent dialog's Create control by its
+# android:id/button1 resource id. The dialog title is required so an unrelated
+# dialog with a button1 cannot be targeted. Handles compact single-line dumps.
+widget_bind_create_button_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    grep -Fq 'Create widget and allow access?' "$xml" || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "resource-id") != "android:id/button1") next
+                if (attr($0, "clickable") != "true") next
+                if (attr($0, "text") != "Create") next
+                emit(attr($0, "bounds"))
+                exit
+            }
+        '
+)
+
+# Succeed when the consent dialog's Always allow checkbox is checked. The flow
+# refuses to tap Create in that state so a smoke run never grants permanent
+# widget-binding permission.
+widget_bind_always_allow_is_checked() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "resource-id") != "android:id/alwaysUse") next
+                if (attr($0, "checked") == "true") found = 1
+            }
+            END { exit !found }
+        '
+)
+
 # Print the bounds of a new AppWidgetHostView in the workspace, comparing the
 # current hierarchy with the pre-widget HOME. Both hierarchies are normalised to
 # one node record per line (UIAutomator can emit the whole tree on a single
@@ -1239,13 +1326,20 @@ home_widget_bounds() (
 )
 
 # Print providers of widget instances that are newly bound between two
-# `dumpsys appwidget` captures. Each provider must sit inside an AppWidgetId
-# block, so an installed-provider list or a provider mentioned elsewhere cannot
-# be mistaken for a newly bound widget. A new AppWidgetId is required even when
-# the same provider was already installed.
+# `dumpsys appwidget` captures. Each provider must sit inside a widget-id block
+# (`AppWidgetId=N` on older dumps or `[N] id=N` on current Android), so an
+# installed-provider list or a provider mentioned elsewhere cannot be mistaken
+# for a newly bound widget. A new AppWidgetId is required even when the same
+# provider was already installed.
+#
+# When $3 is set, the new widget's host package must equal it. Current Android
+# prints the host in the widget block as `host=HostId{..., pkg:<package>}`; a
+# `hostPackage=<package>` line is also accepted. If ownership cannot be proven,
+# the helper prints nothing and the smoke fails closed.
 appwidget_new_providers() (
     before=$1
     after=$2
+    want_host=${3:-}
     [ -s "$after" ] || return 0
     {
         if [ -n "$before" ] && [ -s "$before" ]; then
@@ -1253,12 +1347,14 @@ appwidget_new_providers() (
         fi
         awk '{ print "A\t" $0 }' "$after"
     } |
-        awk -F '\t' '
+        awk -F '\t' -v want_host="$want_host" '
             function flush() {
-                if (kind != "" && id != "" && provider != "")
-                    print kind "\t" id "\t" provider
+                if (kind != "" && id != "" && provider != "" &&
+                    (want_host == "" || host == want_host))
+                    print kind "\t" id "\t" provider "\t" host
                 id = ""
                 provider = ""
+                host = ""
             }
             {
                 if ($1 != kind) {
@@ -1266,15 +1362,30 @@ appwidget_new_providers() (
                     kind = $1
                 }
                 line = substr($0, index($0, "\t") + 1)
+                if (line ~ /^[[:space:]]*\[[0-9]+\][[:space:]]+id=[0-9]+[[:space:]]*$/) {
+                    flush()
+                    id = line
+                    sub(/^.*id=/, "", id)
+                    sub(/[^0-9].*$/, "", id)
+                    next
+                }
                 if (match(line, /AppWidgetId=[0-9]+/)) {
                     flush()
                     id = substr(line, RSTART, RLENGTH)
                     sub(/^AppWidgetId=/, "", id)
                     next
                 }
-                if (id != "" &&
-                    match(line, /provider=ComponentInfo\{[^}]*\}/))
+                if (id == "") next
+                if (match(line, /provider=ComponentInfo\{[^}]*\}/))
                     provider = substr(line, RSTART, RLENGTH)
+                if (match(line, /host=HostId\{[^}]*\}/)) {
+                    h = substr(line, RSTART, RLENGTH)
+                    if (match(h, /pkg:[^},]*/)) {
+                        host = substr(h, RSTART + 4, RLENGTH - 4)
+                    }
+                } else if (match(line, /hostPackage=[^[:space:]]+/)) {
+                    host = substr(line, RSTART + 12, RLENGTH - 12)
+                }
             }
             END { flush() }
         ' |

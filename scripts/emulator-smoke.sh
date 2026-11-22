@@ -944,11 +944,15 @@ capture_widgets_picker() {
                     fail "could not tap the measured widget Add button"
 
                 # Wait, bounded, for the sheet to close and a real
-                # AppWidgetHostView to appear in the workspace. A configuration
-                # activity or an unbound provider fails with saved evidence.
+                # AppWidgetHostView to appear in the workspace. The platform may
+                # first show AllowBindAppWidgetActivity; accept only its exact
+                # launcher/widget consent, tap its measured Create control and
+                # keep polling. A configuration activity, a dismissed dialog or
+                # an unbound provider fails with saved evidence.
                 _cwp_placed=
                 _cwp_placed_bounds=
                 _cwp_last_xml="$ARTIFACTS/widgets-add.xml"
+                _cwp_bind_tapped=0
                 _cwp_place_poll=1
                 while [ "$_cwp_place_poll" -le 15 ]; do
                     sleep 1
@@ -958,6 +962,31 @@ capture_widgets_picker() {
                         "widgets-home-placed-attempt-$_cwp_place_poll.xml"; then
                         _cwp_candidate_xml="$ARTIFACTS/widgets-home-placed-attempt-$_cwp_place_poll.xml"
                         _cwp_last_xml=$_cwp_candidate_xml
+                        if widget_bind_consent_is_ready \
+                            "$_cwp_candidate_xml" "$EXPECTED_LABEL" "$_cwp_provider_title"; then
+                            if [ "$_cwp_bind_tapped" -eq 0 ]; then
+                                cp "$_cwp_candidate_xml" "$ARTIFACTS/widgets-bind-consent.xml"
+                                capture_screenshot_to widgets-bind-consent.png
+                                [ -s "$ARTIFACTS/widgets-bind-consent.png" ] ||
+                                    fail "widget bind consent screenshot capture failed"
+                                if widget_bind_always_allow_is_checked \
+                                    "$ARTIFACTS/widgets-bind-consent.xml"; then
+                                    fail "the widget bind consent has Always allow checked; refusing to grant permanent binding"
+                                fi
+                                _cwp_bind_create=$(widget_bind_create_button_bounds \
+                                    "$ARTIFACTS/widgets-bind-consent.xml")
+                                [ -n "$_cwp_bind_create" ] ||
+                                    fail "could not find the measured android:id/button1 Create control in the widget bind consent"
+                                tap_center_of_bounds "$_cwp_bind_create" ||
+                                    fail "could not tap the measured Create control in the widget bind consent"
+                                printf 'route=bind-consent create=%s always_allow=unchecked\n' \
+                                    "$_cwp_bind_create" >> "$ARTIFACTS/widgets-add-log.txt"
+                                _cwp_bind_tapped=1
+                            else
+                                printf 'consent=still-visible-after-create poll=%s\n' \
+                                    "$_cwp_place_poll" >> "$ARTIFACTS/widgets-add-log.txt"
+                            fi
+                        fi
                         _cwp_candidate_bounds=$(home_widget_bounds \
                             "$_cwp_candidate_xml" "$_cwp_ref")
                         if [ -n "$_cwp_candidate_bounds" ]; then
@@ -977,7 +1006,7 @@ capture_widgets_picker() {
                         2>/dev/null || true)
                     printf 'last_foreground=%s\n' "$_cwp_foreground" \
                         >> "$ARTIFACTS/widgets-add-log.txt"
-                    fail "the added widget did not appear as a new workspace AppWidgetHostView (a widget configuration activity or an unbound provider may be blocking placement)"
+                    fail "the added widget did not appear as a new workspace AppWidgetHostView (the bind consent was not completed, a widget configuration activity is open, or the provider is unbound)"
                 fi
                 cp "$_cwp_placed" "$ARTIFACTS/widgets-home-placed.xml"
                 capture_screenshot_to widgets-home-placed.png
@@ -1000,37 +1029,55 @@ capture_widgets_picker() {
                     fail "the placed widget overlaps the header or dock band ($_cwp_placed_bounds outside $_cwp_ref_header_bottom..$_cwp_ref_dock_top)"
                 fi
 
-                adb_cmd shell dumpsys appwidget \
-                    > "$ARTIFACTS/widgets-appwidget-after.txt" 2>&1 || true
-                _cwp_new_providers=$(appwidget_new_providers \
-                    "$ARTIFACTS/widgets-appwidget-before.txt" \
-                    "$ARTIFACTS/widgets-appwidget-after.txt")
+                # The new widget id must be bound and owned by this launcher,
+                # not merely an installed provider or another host's widget.
+                _cwp_new_providers=
+                _cwp_aw_poll=1
+                while [ "$_cwp_aw_poll" -le 5 ]; do
+                    adb_cmd shell dumpsys appwidget \
+                        > "$ARTIFACTS/widgets-appwidget-after.txt" 2>&1 || true
+                    _cwp_new_providers=$(appwidget_new_providers \
+                        "$ARTIFACTS/widgets-appwidget-before.txt" \
+                        "$ARTIFACTS/widgets-appwidget-after.txt" "$PKG")
+                    [ -n "$_cwp_new_providers" ] && break
+                    _cwp_aw_poll=$((_cwp_aw_poll + 1))
+                    sleep 1
+                done
                 [ -n "$_cwp_new_providers" ] ||
-                    fail "no new bound app widget provider appeared in dumpsys appwidget after placement"
+                    fail "no new appwidget id owned by $PKG appeared in dumpsys appwidget after placement"
                 printf '%s\n' "$_cwp_new_providers" \
                     > "$ARTIFACTS/widgets-appwidget-providers.txt"
 
-                # Press HOME again and prove the same widget remains.
+                # Launch Settings and return HOME to prove the same widget
+                # survives a real app switch, not just another HOME key press.
+                adb_cmd shell am start -W -a android.settings.SETTINGS \
+                    > "$ARTIFACTS/widgets-settings-launch.txt" 2>&1 ||
+                    fail "could not launch Settings for the widget survival check"
+                wait_for_foreground com.android.settings \
+                    "$ARTIFACTS/activities-widget-settings.txt" 15 ||
+                    fail "Settings was not foreground for the widget survival check"
+                capture_ui_xml widgets-settings-launched.xml || true
+                capture_screenshot_to widgets-settings-launched.png
                 return_home widgets-picker
                 capture_ui_xml widgets-home-after-home.xml ||
-                    fail "could not capture HOME after the widget survival key press"
+                    fail "could not capture HOME after launching Settings"
                 capture_screenshot_to widgets-home-after-home.png
                 [ -s "$ARTIFACTS/widgets-home-after-home.png" ] ||
                     fail "HOME-after-widget screenshot capture failed"
                 _cwp_survived=$(home_widget_bounds \
                     "$ARTIFACTS/widgets-home-after-home.xml" "$_cwp_ref")
                 [ -n "$_cwp_survived" ] ||
-                    fail "the placed widget disappeared after pressing HOME"
+                    fail "the placed widget disappeared after launching Settings and returning HOME"
                 [ "$_cwp_survived" = "$_cwp_placed_bounds" ] ||
-                    fail "the placed widget moved after pressing HOME (was $_cwp_placed_bounds, now $_cwp_survived)"
+                    fail "the placed widget moved after launching Settings and returning HOME (was $_cwp_placed_bounds, now $_cwp_survived)"
 
-                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, and a new AppWidgetHostView plus bound provider survived HOME.\n' \
+                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings and returning HOME.\n' \
                     "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
                 printf 'Provider: %s\n' "$_cwp_new_providers" \
                     >> "$ARTIFACTS/widgets-picker.txt"
                 printf 'Widget bounds: %s\n' "$_cwp_placed_bounds" \
                     >> "$ARTIFACTS/widgets-picker.txt"
-                printf 'Screenshots: home-popup.png, widgets-picker.png, widgets-provider.png, widgets-add.png, widgets-home-placed.png, widgets-home-after-home.png.\n' \
+                printf 'Screenshots: home-popup.png, widgets-picker.png, widgets-provider.png, widgets-add.png, widgets-bind-consent.png, widgets-home-placed.png, widgets-settings-launched.png, widgets-home-after-home.png.\n' \
                     >> "$ARTIFACTS/widgets-picker.txt"
                 verify_nothing_home
                 return 0
