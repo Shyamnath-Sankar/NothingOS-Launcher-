@@ -3,23 +3,49 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10b FINAL — native widget-picker bind consent and Settings survival**. The smoke
-  now handles the real `AllowBindAppWidgetActivity` after Add: it accepts only the exact
-  `Create widget and allow access?` dialog naming `DotWel Launcher` and the selected widget, captures
-  `widgets-bind-consent.xml/.png`, refuses a pre-checked `Always allow`, and taps Create through the
-  measured `android:id/button1` bounds. Placement proof now requires the new `AppWidgetId` host
-  package to be this launcher, parsing both current `[N] id=N`/`host=HostId{..., pkg:...}` and legacy
-  `AppWidgetId=N`/`hostPackage=` dumps. Survival launches Settings, waits for the exact
-  `com.android.settings` foreground, returns HOME, and requires the same widget bounds. APK110 is
-  frozen. Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle, manifest,
-  permission, applicationId, paid, signing or asset change.
+- current_phase: **P10b review correction — platform CREATE label and message-scoped bind identity**.
+  The bind-consent helpers now accept the actual platform `CREATE`/`Create` label case-insensitively,
+  require an enabled clickable `android:id/button1`, require the `com.android.settings` package, and
+  take the launcher/widget identity only from `android:id/message` (with the title from
+  `android:id/alertTitle`). A new realistic compact fixture covers the actual system dialog. APK110
+  is frozen. Harness/fixtures/docs only: no app source, preference/DB/widget binding, SDK, workflow,
+  Gradle, manifest, permission, applicationId, paid, signing or asset change.
 - branch: `agent/p10b-widget-placement`
-- head: `92708dc` (`fix(smoke): handle widget bind consent and prove launcher-owned placement`) on
-  base `6cf242c`; prior head `9a37bdb`.
-- pr: **PR15** for `agent/p10b-widget-placement`; main/supervisor owns creation/approval. APK110 is
-  frozen and independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
+- head: `871f351` (`fix(smoke): accept platform CREATE label in bind consent`) on base `6cf242c`;
+  prior head `11d3df6`/`92708dc`.
+- pr: **PR15** for `agent/p10b-widget-placement` at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/15; main/supervisor owns approval.
+  APK110 is frozen and independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
 
-## done (this run — P10b bind consent and Settings survival)
+## done (this run — P10b bind consent label-case review correction)
+
+- **Root cause from the CI116 actual XML, not guessed:** `android:id/button1` is rendered with an
+  uppercase `CREATE` label, while both helpers matched `text="Create"`/`text != "Create"` exactly.
+  The old readiness also grepped the whole tree for the title, `Application:`/`Widget:` and the
+  launcher/widget names, so unrelated text could satisfy it.
+- **Case normalization:** `widget_bind_consent_is_ready` and `widget_bind_create_button_bounds` now
+  compare the button label with `tolower(...) == "create"`, so `CREATE` and `Create` both work.
+- **Identity retained:** both helpers require `package="com.android.settings"` on the dialog nodes,
+  the exact `android:id/alertTitle` title, and an enabled (`enabled="true"`) clickable
+  (`clickable="true"`) `android:id/button1`; readiness also requires `android:id/alwaysUse`.
+- **Message scoping:** the launcher and selected widget must appear in the `android:id/message` text
+  as `Application: <launcher>` and `Widget: <widget>` (case-insensitive). Text elsewhere in the tree
+  is rejected. `widget_bind_create_button_bounds` now takes the launcher/widget arguments, and the
+  smoke passes `"$EXPECTED_LABEL" "$_cwp_provider_title"`.
+- **Fixtures:** the pretty and compact titlecase positives now carry the Settings package and enabled
+  controls. A new compact platform fixture matches the actual shape (system package, `alertTitle`,
+  message naming DotWel Launcher and Calendar, unchecked `alwaysUse`, uppercase `CREATE`/`CANCEL`).
+  New negatives cover wrong launcher, wrong widget, wrong package, loose launcher/widget text outside
+  the message, a generic Create dialog, and a disabled Create button; the checked `alwaysUse` case
+  still fails closed. Positive and negative bounds resolution is asserted.
+- **Docs:** `docs/agent/emulator-verification.md` records the case-insensitive label, Settings
+  package, message-scoped identity and disabled-button rejection.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 249/249;
+  `emulator-smoke-drawer-test.sh` 38/38; `verify-play-build-test.sh` 11/11; `sh -n` clean on every
+  edited script; `git diff --check` clean. This is source/fixture verification only, not a runtime
+  claim. APK110 fallback is unchanged; the grid preview task was not started.
+
+## done (previous run — P10b bind consent and Settings survival)
 
 - **Evidence read, not guessed:** CI116 stopped after the Calendar preview Add on the genuine Android
   `AllowBindAppWidgetActivity`; the previous harness polled only for a workspace host and never
@@ -713,12 +739,16 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Main/supervisor owns PR15 creation/CI approval for `agent/p10b-widget-placement` at head `8c915e8`.
+- Main/supervisor owns PR15 approval for `agent/p10b-widget-placement` at head `871f351`.
   APK110 is frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
-  unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke. The latest CI
-  must start by 06:25; the parent final report is at 07:00.
+  unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
 - Inspect the new runtime artifacts after the run:
+  - `widgets-bind-consent.xml` / `.png`: the real `com.android.settings` dialog with
+    `android:id/alertTitle`, an `android:id/message` naming DotWel Launcher and the selected widget,
+    an unchecked `android:id/alwaysUse`, and `android:id/button1` labelled `CREATE` or `Create` with
+    `enabled="true" clickable="true"`. If the actual XML differs, update the helper from that capture;
+    do not return to a whole-tree text grep.
   - `widgets-search-N.xml` / `widgets-search.xml` and `widgets-picker-cleared.xml`: whether the real
     `widgets_search_bar_edit_text` accepted `Clock` and exposed a Clock `widgets_list_header`; the
     cleared dump is the fallback list when the query matched nothing.
@@ -747,8 +777,8 @@ when no task input is given, and continues from "next".
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `8c915e8`.
-- Main/supervisor must create/approve PR15 for `agent/p10b-widget-placement`.
+  API 37 emulator run are unverified until CI runs on `871f351`.
+- Main/supervisor must approve PR15 for `agent/p10b-widget-placement`.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
 - The picker readiness assumes one of the two known native picker markers. If the API 37 image
