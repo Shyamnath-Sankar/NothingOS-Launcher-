@@ -35,6 +35,7 @@ data class AmoledWallpaper(
     @StringRes val creditRes: Int,
     @StringRes val changeNoticeRes: Int?,
     val sourceUrl: String,
+    val licenseUrl: String,
     @DrawableRes val drawableRes: Int,
     val kind: AmoledWallpaperKind,
     val widthPx: Int,
@@ -48,12 +49,16 @@ object AmoledWallpaperCatalog {
     const val PITCH_BLACK_SOURCE = "https://github.com/tecdrop/pitch-black-wallpaper-images"
     const val WIREFRAME_TORUS_SOURCE = "https://walldye.com/torus-wireframe"
 
+    const val CC_BY_4_0_LICENSE = "https://creativecommons.org/licenses/by/4.0/"
+    const val CC0_1_0_LICENSE = "https://creativecommons.org/publicdomain/zero/1.0/"
+
     val pitchBlack = AmoledWallpaper(
         id = PITCH_BLACK_ID,
         titleRes = R.string.dotwel_wallpaper_pitch_black,
         creditRes = R.string.dotwel_wallpaper_pitch_black_credit,
         changeNoticeRes = R.string.dotwel_wallpaper_pitch_black_change,
         sourceUrl = PITCH_BLACK_SOURCE,
+        licenseUrl = CC_BY_4_0_LICENSE,
         drawableRes = R.drawable.dotwel_wallpaper_pitch_black,
         kind = AmoledWallpaperKind.PNG,
         widthPx = 1080,
@@ -66,6 +71,7 @@ object AmoledWallpaperCatalog {
         creditRes = R.string.dotwel_wallpaper_wireframe_torus_credit,
         changeNoticeRes = null,
         sourceUrl = WIREFRAME_TORUS_SOURCE,
+        licenseUrl = CC0_1_0_LICENSE,
         drawableRes = R.drawable.dotwel_wallpaper_wireframe_torus,
         kind = AmoledWallpaperKind.VECTOR,
         widthPx = 1080,

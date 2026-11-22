@@ -2213,13 +2213,56 @@ _cwg_launch_gallery() {
 _cwg_read_ids() {
     _cri_file=$1
     adb_cmd shell dumpsys wallpaper > "$_cri_file" 2>&1 || return 1
-    wallpaper_ids_from_dump "$_cri_file"
+    _cri_user=$(adb_cmd shell am get-current-user 2>/dev/null | tr -d '\r' | sed -n '1p')
+    case "$_cri_user" in
+        '' | *[!0-9]*) wallpaper_ids_from_dump "$_cri_file" ;;
+        *) wallpaper_ids_from_dump "$_cri_file" "$_cri_user" ;;
+    esac
 }
 
 _cwg_widget_ids() {
     _cwi_file=$1
     adb_cmd shell dumpsys appwidget > "$_cwi_file" 2>&1 || return 1
     appwidget_launcher_instances "$_cwi_file" "$PKG" id | sort | tr '\n' ' '
+}
+
+# Measure a real tappable control inside the settings scroll container. Each
+# attempt re-captures the hierarchy, measures the actual scrollable container
+# clipped to the navigation-bar safe viewport, and accepts the control only
+# when it is fully visible. Otherwise it performs one bounded swipe inside the
+# measured container. No hardcoded phone height or coordinate is used. Prints
+# the measured bounds on success and nothing after the small attempt bound.
+_cwg_measure_control() {
+    _cmc_label=$1
+    _cmc_tag=$2
+    _cmc_max=${3:-4}
+    _cmc_attempt=0
+    _cmc_log="$ARTIFACTS/wallpaper-scroll-$_cmc_tag.txt"
+    : > "$_cmc_log"
+    while [ "$_cmc_attempt" -lt "$_cmc_max" ]; do
+        _cmc_attempt=$((_cmc_attempt + 1))
+        capture_ui_xml "wallpaper-scroll-$_cmc_tag-$_cmc_attempt.xml" || return 1
+        _cmc_xml="$ARTIFACTS/wallpaper-scroll-$_cmc_tag-$_cmc_attempt.xml"
+        _cmc_viewport=$(ui_scroll_container_bounds "$_cmc_xml" "$_cwg_nav_top")
+        _cmc_bounds=
+        if [ -n "$_cmc_viewport" ]; then
+            _cmc_bounds=$(ui_clickable_label_within "$_cmc_xml" "$_cmc_label" "$_cmc_viewport")
+        fi
+        printf 'attempt=%s label=%s viewport=%s bounds=%s\n' \
+            "$_cmc_attempt" "$_cmc_label" "${_cmc_viewport:-none}" "${_cmc_bounds:-none}" \
+            >> "$_cmc_log"
+        if [ -n "$_cmc_bounds" ]; then
+            printf '%s\n' "$_cmc_bounds"
+            return 0
+        fi
+        _cmc_target=$(settings_scroll_target "$_cmc_xml" "$_cwg_nav_top") || return 1
+        set -- $_cmc_target
+        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+            "$_cmc_attempt" "$1" "$2" "$1" "$3" >> "$_cmc_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_cmc_log" 2>&1 || return 1
+        sleep 1
+    done
+    return 1
 }
 
 # Offline AMOLED gallery proof. Preview, theme changes, Cancel and Back must
@@ -2232,6 +2275,18 @@ capture_wallpaper_gallery() {
         fail "could not dump widgets before the wallpaper gallery"
     [ -n "$_cwg_widgets_before" ] ||
         fail "no launcher-owned widget IDs before the wallpaper gallery"
+
+    adb_cmd shell dumpsys window windows \
+        > "$ARTIFACTS/wallpaper-navigation-window.txt" 2>&1 || true
+    adb_cmd shell dumpsys window displays \
+        >> "$ARTIFACTS/wallpaper-navigation-window.txt" 2>&1 || true
+    _cwg_nav=$(ui_navigation_bar_bounds "$ARTIFACTS/wallpaper-navigation-window.txt")
+    [ -n "$_cwg_nav" ] ||
+        fail "could not measure the navigation bar for the wallpaper gallery"
+    set -- $_cwg_nav
+    _cwg_nav_top=$2
+    printf 'navigation=%s navigation_top=%s\n' "$_cwg_nav" "$_cwg_nav_top" \
+        > "$ARTIFACTS/wallpaper-navigation-bounds.txt"
 
     _cwg_ids_before=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-before.txt") ||
         fail "could not measure the Home and lock wallpaper IDs"
@@ -2285,19 +2340,36 @@ capture_wallpaper_gallery() {
             _cwg_failure="wallpaper preview $_cwg_name XML capture failed"
             break
         fi
-        for _cwg_label in 'Apply to Home screen' 'CC BY 4.0'; do
+        for _cwg_label in 'Apply to Home screen' 'CC BY 4.0' \
+            'https://creativecommons.org/licenses/by/4.0/'; do
             grep -Fq "$_cwg_label" "$ARTIFACTS/wallpaper-preview-$_cwg_name.xml" ||
                 { _cwg_failure="wallpaper preview $_cwg_name is missing '$_cwg_label'"; break; }
         done
         [ -z "$_cwg_failure" ] || break
         capture_screenshot_to "wallpaper-preview-$_cwg_name.png"
+        _cwg_cancel=$(_cwg_measure_control 'Cancel preview' "cancel-$_cwg_name" 4) ||
+            { _cwg_failure="could not measure the Cancel preview control in $_cwg_name mode"; break; }
+        tap_center_of_bounds "$_cwg_cancel"
+        sleep 1
+        if ! capture_ui_xml "wallpaper-cancelled-$_cwg_name.xml"; then
+            _cwg_failure="wallpaper cancelled $_cwg_name XML capture failed"
+            break
+        fi
+        if grep -Fq 'Cancel preview' "$ARTIFACTS/wallpaper-cancelled-$_cwg_name.xml"; then
+            _cwg_failure="Cancel preview did not clear the selection in $_cwg_name mode"
+            break
+        fi
+        _cwg_ids_cancelled=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-cancelled-$_cwg_name.txt") ||
+            { _cwg_failure="could not re-read wallpaper IDs after Cancel preview in $_cwg_name mode"; break; }
+        [ "$_cwg_ids_cancelled" = "$_cwg_ids_before" ] ||
+            { _cwg_failure="Cancel preview changed wallpaper IDs in $_cwg_name mode"; break; }
         adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 ||
-            { _cwg_failure="could not leave the wallpaper preview in $_cwg_name mode"; break; }
+            { _cwg_failure="could not leave the wallpaper gallery in $_cwg_name mode"; break; }
         sleep 1
         _cwg_ids_after=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-preview-$_cwg_name.txt") ||
             { _cwg_failure="could not re-read wallpaper IDs after the $_cwg_name preview"; break; }
         [ "$_cwg_ids_after" = "$_cwg_ids_before" ] ||
-            { _cwg_failure="preview/Back changed wallpaper IDs in $_cwg_name mode"; break; }
+            { _cwg_failure="preview/Cancel/Back changed wallpaper IDs in $_cwg_name mode"; break; }
     done
 
     if ! adb_cmd shell cmd uimode night "$_cwg_night_value" >/dev/null 2>&1; then
@@ -2344,9 +2416,8 @@ _cwg_apply_wallpaper() {
     sleep 1
     capture_ui_xml "wallpaper-apply-$_caw_slug-preview.xml" ||
         fail "could not capture the $_caw_label preview"
-    _caw_apply=$(ui_clickable_label_bounds \
-        "$ARTIFACTS/wallpaper-apply-$_caw_slug-preview.xml" 'Apply to Home screen')
-    [ -n "$_caw_apply" ] || fail "could not measure the $_caw_label Apply button"
+    _caw_apply=$(_cwg_measure_control 'Apply to Home screen' "apply-$_caw_slug" 4) ||
+        fail "could not measure a visible $_caw_label Apply button inside the settings scroll container"
     tap_center_of_bounds "$_caw_apply"
 
     _caw_after=

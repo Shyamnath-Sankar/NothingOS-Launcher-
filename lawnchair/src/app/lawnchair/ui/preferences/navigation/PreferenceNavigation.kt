@@ -58,6 +58,7 @@ import app.lawnchair.ui.preferences.destinations.SmartspacePreferences
 import app.lawnchair.ui.preferences.destinations.icons.AdvancedIconPreferences
 import app.lawnchair.ui.preferences.destinations.icons.IconPackPreferences
 import app.lawnchair.ui.preferences.destinations.icons.ThemedIconsPreferences
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import com.android.launcher3.util.ComponentKey
 import soup.compose.material.motion.animation.materialSharedAxisXIn
 import soup.compose.material.motion.animation.materialSharedAxisXOut
@@ -151,9 +152,11 @@ fun PreferenceNavigation(
             deepLinks = getDeepLink(HomeScreenPopupEditor),
         ) { LauncherPopupPreference() }
 
-        composable<AmoledWallpapers>(
-            deepLinks = getDeepLink(AmoledWallpapers),
-        ) { AmoledWallpaperPreferences() }
+        if (isPlayStoreFlavor()) {
+            composable<AmoledWallpapers>(
+                deepLinks = getDeepLink(AmoledWallpapers),
+            ) { AmoledWallpaperPreferences() }
+        }
 
         composable<Dock>(
             deepLinks = getDeepLink(Dock),

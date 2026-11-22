@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -70,7 +71,8 @@ fun AmoledWallpaperPreferences(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
-    var selected by remember { mutableStateOf<AmoledWallpaper?>(null) }
+    var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val selected = selectedId?.let { AmoledWallpaperCatalog.byId(it) }
     var applying by remember { mutableStateOf(false) }
     var messageRes by remember { mutableStateOf<Int?>(null) }
     val manager = remember { context.getSystemService<WallpaperManager>() }
@@ -98,10 +100,13 @@ fun AmoledWallpaperPreferences(
                 AmoledWallpaperCatalog.entries.forEach { wallpaper ->
                     WallpaperTile(
                         wallpaper = wallpaper,
-                        selected = selected?.id == wallpaper.id,
+                        selected = selectedId == wallpaper.id,
+                        enabled = !applying,
                         onSelect = {
-                            selected = wallpaper
-                            messageRes = null
+                            if (!applying) {
+                                selectedId = wallpaper.id
+                                messageRes = null
+                            }
                         },
                         modifier = Modifier.weight(1f),
                     )
@@ -135,12 +140,21 @@ fun AmoledWallpaperPreferences(
                     )
                 }
                 TextButton(
-                    onClick = { uriHandler.openUri(wallpaper.sourceUrl) },
+                    onClick = { runCatching { uriHandler.openUri(wallpaper.sourceUrl) } },
                     modifier = Modifier.heightIn(min = NothingUiSpacing.Xxxl),
                 ) {
                     Text(
                         text = stringResource(R.string.dotwel_wallpaper_source) +
                             ": " + wallpaper.sourceUrl,
+                    )
+                }
+                TextButton(
+                    onClick = { runCatching { uriHandler.openUri(wallpaper.licenseUrl) } },
+                    modifier = Modifier.heightIn(min = NothingUiSpacing.Xxxl),
+                ) {
+                    Text(
+                        text = stringResource(R.string.dotwel_wallpaper_license) +
+                            ": " + wallpaper.licenseUrl,
                     )
                 }
                 Button(
@@ -183,6 +197,20 @@ fun AmoledWallpaperPreferences(
                 ) {
                     Text(stringResource(R.string.dotwel_wallpaper_apply))
                 }
+                TextButton(
+                    onClick = {
+                        if (!applying) {
+                            selectedId = null
+                            messageRes = null
+                        }
+                    },
+                    enabled = !applying,
+                    modifier = Modifier
+                        .padding(horizontal = NothingUiSpacing.Lg)
+                        .heightIn(min = NothingUiSpacing.Xxxl),
+                ) {
+                    Text(stringResource(R.string.dotwel_wallpaper_cancel_preview))
+                }
                 messageRes?.let { res ->
                     Text(
                         text = stringResource(res),
@@ -203,6 +231,7 @@ fun AmoledWallpaperPreferences(
 private fun WallpaperTile(
     wallpaper: AmoledWallpaper,
     selected: Boolean,
+    enabled: Boolean,
     onSelect: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -210,6 +239,7 @@ private fun WallpaperTile(
         modifier = modifier
             .selectable(
                 selected = selected,
+                enabled = enabled,
                 role = Role.RadioButton,
                 onClick = onSelect,
             )

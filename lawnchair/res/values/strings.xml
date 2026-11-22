@@ -1123,8 +1123,10 @@
     <string name="dotwel_wallpaper_pitch_black_change">File renamed only; pixels unchanged.</string>
     <string name="dotwel_wallpaper_wireframe_torus_credit">Walldye. CC0 1.0.</string>
     <string name="dotwel_wallpaper_source">Source</string>
+    <string name="dotwel_wallpaper_license">License</string>
     <string name="dotwel_wallpaper_preview_hint">Preview only. Nothing changes until you tap Apply to Home screen.</string>
     <string name="dotwel_wallpaper_apply">Apply to Home screen</string>
+    <string name="dotwel_wallpaper_cancel_preview">Cancel preview</string>
     <string name="dotwel_wallpaper_applied">Home wallpaper updated</string>
     <string name="dotwel_wallpaper_unsupported">This device does not support changing the wallpaper</string>
     <string name="dotwel_wallpaper_not_allowed">Wallpaper changes are not allowed by device policy</string>

@@ -43,9 +43,30 @@ class AmoledWallpaperCatalogTest {
             assertTrue(wallpaper.creditRes != 0)
             assertTrue(wallpaper.drawableRes != 0)
             assertTrue(wallpaper.sourceUrl.startsWith("https://"))
+            assertTrue(wallpaper.licenseUrl.startsWith("https://"))
             assertTrue(wallpaper.widthPx > 0)
             assertTrue(wallpaper.heightPx > 0)
         }
+    }
+
+    @Test
+    fun everyChoiceLinksTheExactCreativeCommonsLicence() {
+        assertEquals(
+            "https://creativecommons.org/licenses/by/4.0/",
+            AmoledWallpaperCatalog.pitchBlack.licenseUrl,
+        )
+        assertEquals(
+            "https://creativecommons.org/publicdomain/zero/1.0/",
+            AmoledWallpaperCatalog.wireframeTorus.licenseUrl,
+        )
+        assertEquals(
+            AmoledWallpaperCatalog.CC_BY_4_0_LICENSE,
+            AmoledWallpaperCatalog.pitchBlack.licenseUrl,
+        )
+        assertEquals(
+            AmoledWallpaperCatalog.CC0_1_0_LICENSE,
+            AmoledWallpaperCatalog.wireframeTorus.licenseUrl,
+        )
     }
 
     @Test

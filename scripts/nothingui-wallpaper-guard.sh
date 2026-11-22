@@ -34,10 +34,11 @@ RECOLORED_SVG="$ROOT/docs/wallpapers/wireframe-torus-recolored.svg"
 PROVENANCE="$ROOT/docs/wallpapers/README.md"
 BY_LICENSE="$ROOT/licenses/wallpapers/CC-BY-4.0.txt"
 ZERO_LICENSE="$ROOT/licenses/wallpapers/CC0-1.0.txt"
+SMOKE="$ROOT/scripts/emulator-smoke.sh"
 
 for file in "$CATALOG" "$TARGET" "$APPLIER" "$UI" "$DASHBOARD" "$HOME_PREFS" \
     "$ROUTES" "$NAV" "$PNG" "$VECTOR" "$SOURCE_SVG" "$RECOLORED_SVG" \
-    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE"; do
+    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -91,6 +92,14 @@ grep -Fq 'R.drawable.dotwel_wallpaper_wireframe_torus' "$CATALOG" ||
     fail "the two wallpaper kinds are not declared"
 grep -Fq 'listOf(pitchBlack, wireframeTorus)' "$CATALOG" ||
     fail "the catalogue is not exactly the two offline choices"
+grep -Fq 'CC_BY_4_0_LICENSE = "https://creativecommons.org/licenses/by/4.0/"' "$CATALOG" ||
+    fail "the CC BY 4.0 licence URL is missing"
+grep -Fq 'CC0_1_0_LICENSE = "https://creativecommons.org/publicdomain/zero/1.0/"' "$CATALOG" ||
+    fail "the CC0 1.0 licence URL is missing"
+grep -Fq 'licenseUrl = CC_BY_4_0_LICENSE' "$CATALOG" ||
+    fail "Pitch Black does not link its CC BY 4.0 licence"
+grep -Fq 'licenseUrl = CC0_1_0_LICENSE' "$CATALOG" ||
+    fail "Torus does not link its CC0 1.0 licence"
 
 # --- explicit apply, Home only -------------------------------------------
 
@@ -124,6 +133,20 @@ grep -Fq 'changeNoticeRes' "$UI" ||
     fail "the rename-only change notice is not shown"
 grep -Fq 'dotwel_wallpaper_preview_hint' "$UI" ||
     fail "the preview-only hint is not shown"
+grep -Fq 'wallpaper.licenseUrl' "$UI" ||
+    fail "the licence URL is not exposed in the preview"
+grep -Fq 'runCatching { uriHandler.openUri(wallpaper.sourceUrl) }' "$UI" ||
+    fail "opening the source link is not guarded"
+grep -Fq 'runCatching { uriHandler.openUri(wallpaper.licenseUrl) }' "$UI" ||
+    fail "opening the licence link is not guarded"
+grep -Fq 'dotwel_wallpaper_cancel_preview' "$UI" ||
+    fail "the explicit Cancel preview control is missing"
+grep -Fq 'enabled = !applying' "$UI" ||
+    fail "the Cancel preview control is not disabled during apply"
+grep -Fq 'enabled = enabled' "$UI" ||
+    fail "the wallpaper tile does not disable selection while applying"
+grep -Fq 'if (!applying) {' "$UI" ||
+    fail "the tile select handler is not guarded while applying"
 
 # --- Play-only entry, normal navigation ----------------------------------
 
@@ -131,11 +154,28 @@ grep -Fq 'data object AmoledWallpapers : PreferenceRootRoute' "$ROUTES" ||
     fail "the gallery route is missing"
 grep -Fq 'composable<AmoledWallpapers>' "$NAV" ||
     fail "the gallery route is not wired into navigation"
+grep -Fq 'import app.lawnchair.ui.util.isPlayStoreFlavor' "$NAV" ||
+    fail "the navigation route does not use the Play gate"
+grep -Fq 'if (isPlayStoreFlavor()) {' "$NAV" ||
+    fail "the gallery deep-link route is not Play gated"
 grep -Fq 'onNavigate(AmoledWallpapers)' "$DASHBOARD" ||
     fail "the dashboard does not open the gallery"
 grep -Fq 'if (isPlayStoreFlavor()) {' "$DASHBOARD" ||
     fail "the dashboard gallery entry is not Play gated"
 grep -Fq 'destination = AmoledWallpapers' "$HOME_PREFS" ||
     fail "the Home Screen wallpaper group has no gallery entry"
+
+# --- measured Apply/Cancel scrolling --------------------------------------
+
+grep -Fq 'ui_clickable_label_within' "$SMOKE" ||
+    fail "the smoke does not require a fully visible Apply/Cancel control"
+grep -Fq 'settings_scroll_target' "$SMOKE" ||
+    fail "the smoke does not scroll inside the measured settings container"
+grep -Fq '_cwg_measure_control' "$SMOKE" ||
+    fail "the smoke has no bounded scroll-to-visible helper"
+grep -Fq 'Cancel preview' "$SMOKE" ||
+    fail "the smoke does not exercise the explicit Cancel preview control"
+grep -Fq 'wallpaper_lock_preserved' "$SMOKE" ||
+    fail "the smoke does not prove the lock wallpaper survived"
 
 printf 'nothingui-wallpaper-guard: OK\n'
