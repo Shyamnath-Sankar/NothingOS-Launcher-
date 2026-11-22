@@ -77,6 +77,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.preferences.components.layout.ProvideDescriptionTextStyle
 import app.lawnchair.ui.preferences.data.liveinfo.SyncLiveInformation
 import app.lawnchair.ui.preferences.navigation.About
+import app.lawnchair.ui.preferences.navigation.AmoledWallpapers
 import app.lawnchair.ui.preferences.navigation.AppDrawer
 import app.lawnchair.ui.preferences.navigation.BackupAndRestore
 import app.lawnchair.ui.preferences.navigation.DebugMenu
@@ -163,6 +164,16 @@ fun PreferencesDashboard(
                 onNavigate = { onNavigate(HomeScreen) },
                 isSelected = currentRoute is HomeScreen,
             )
+
+            if (isPlayStoreFlavor()) {
+                PreferenceCategory(
+                    label = stringResource(R.string.dotwel_amoled_wallpapers_label),
+                    description = stringResource(R.string.dotwel_amoled_wallpapers_description),
+                    iconResource = R.drawable.ic_wallpaper,
+                    onNavigate = { onNavigate(AmoledWallpapers) },
+                    isSelected = currentRoute is AmoledWallpapers,
+                )
+            }
 
             val isSmartspaceEnabled = prefs2.enableSmartspace.firstCached()
             PreferenceCategory(

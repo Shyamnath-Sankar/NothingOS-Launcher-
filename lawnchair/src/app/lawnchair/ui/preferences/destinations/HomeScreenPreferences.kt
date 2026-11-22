@@ -47,7 +47,9 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
+import app.lawnchair.ui.preferences.navigation.AmoledWallpapers
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.collectAsStateBlocking
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
@@ -165,6 +167,13 @@ fun HomeScreenPreferences(
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.wallpaper)) {
+            if (isPlayStoreFlavor()) {
+                NavigationActionPreference(
+                    label = stringResource(id = R.string.dotwel_amoled_wallpapers_label),
+                    destination = AmoledWallpapers,
+                    subtitle = stringResource(id = R.string.dotwel_amoled_wallpapers_description),
+                )
+            }
             SwitchPreference(
                 prefs.wallpaperScrolling.getAdapter(),
                 label = stringResource(id = R.string.wallpaper_scrolling_label),
