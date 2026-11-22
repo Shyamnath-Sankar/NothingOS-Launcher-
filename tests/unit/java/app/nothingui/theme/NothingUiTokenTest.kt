@@ -62,18 +62,25 @@ class NothingUiTokenTest {
     }
 
     @Test
-    fun dotoIsReservedForDisplayAndNumericText() {
+    fun dotoIsUsedForDisplayHeadingsAndNumericText() {
         assertEquals(DotoFontFamily, NothingUiTypography.displayLarge.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displayMedium.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displaySmall.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displayLargeEmphasized.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineLarge.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineMedium.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineSmall.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineLargeEmphasized.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.titleLarge.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.titleLargeEmphasized.fontFamily)
         assertEquals(DotoFontFamily, NothingUiType.NumericDisplay.fontFamily)
         assertEquals(DotoFontFamily, NothingUiType.NumericLabel.fontFamily)
 
-        assertEquals(FontFamily.SansSerif, NothingUiTypography.headlineLarge.fontFamily)
-        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleLarge.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleMedium.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleSmall.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.bodyLarge.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.bodyMedium.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.labelLarge.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.labelSmall.fontFamily)
     }
 

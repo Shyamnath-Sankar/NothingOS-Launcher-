@@ -97,7 +97,33 @@ private val BodyFontFamily = FontFamily.SansSerif
 
 val NothingUiTypography = base.copy(
     displayLarge = base.displayLarge.copy(fontFamily = DotoFontFamily),
+    headlineLarge = base.headlineLarge.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineMedium = base.headlineMedium.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineSmall = base.headlineSmall.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    titleLarge = base.titleLarge.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineLargeEmphasized = base.headlineLargeEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineMediumEmphasized = base.headlineMediumEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineSmallEmphasized = base.headlineSmallEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    titleLargeEmphasized = base.titleLargeEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
     bodyLarge = base.bodyLarge.copy(fontFamily = BodyFontFamily),
+    bodyMedium = base.bodyMedium.copy(fontFamily = BodyFontFamily),
+    labelSmall = base.labelSmall.copy(fontFamily = BodyFontFamily),
 )
 EOF
 
@@ -113,6 +139,25 @@ package app.lawnchair.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
+
+@Composable
+fun LawnchairTheme(
+    darkTheme: Boolean = isSelectedThemeDark,
+    content: @Composable () -> Unit,
+) {
+    if (NothingUiFeature.themeEnabled) {
+        NothingUiTheme(darkTheme = darkTheme, content = content)
+        return
+    }
+
+    val colorScheme = getColorScheme(darkTheme = darkTheme)
+    MaterialExpressiveTheme(
+        colorScheme = colorScheme,
+        content = content,
+    )
+}
 
 @Composable
 fun ComponentActivity.EdgeToEdge(darkTheme: Boolean = isSelectedThemeDark) {
@@ -262,6 +307,25 @@ package app.lawnchair.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
+
+@Composable
+fun LawnchairTheme(
+    darkTheme: Boolean = isSelectedThemeDark,
+    content: @Composable () -> Unit,
+) {
+    if (NothingUiFeature.themeEnabled) {
+        NothingUiTheme(darkTheme = darkTheme, content = content)
+        return
+    }
+
+    val colorScheme = getColorScheme(darkTheme = darkTheme)
+    MaterialExpressiveTheme(
+        colorScheme = colorScheme,
+        content = content,
+    )
+}
 
 @Composable
 fun ComponentActivity.EdgeToEdge() {
@@ -286,6 +350,94 @@ cp -R "$clean" "$missing_license"
 rm "$missing_license/licenses/fonts/OFL-Doto.txt"
 expect_fail_contains 'missing OFL license still fails' \
     "$missing_license" 'missing'
+
+missing_theme_gate="$TMP_DIR/NothingOS-Launcher/missing-theme-gate"
+cp -R "$clean" "$missing_theme_gate"
+write_file "$missing_theme_gate/lawnchair/src/app/lawnchair/ui/theme/Theme.kt" <<'EOF'
+package app.lawnchair.ui.theme
+
+import androidx.compose.runtime.Composable
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
+
+@Composable
+fun LawnchairTheme(
+    darkTheme: Boolean = isSelectedThemeDark,
+    content: @Composable () -> Unit,
+) {
+    NothingUiTheme(darkTheme = darkTheme, content = content)
+}
+EOF
+expect_fail_contains 'settings palette without the Play gate fails' \
+    "$missing_theme_gate" 'does not gate the NothingUI palette to Play'
+
+hardcoded_theme_dark="$TMP_DIR/NothingOS-Launcher/hardcoded-theme-dark"
+cp -R "$clean" "$hardcoded_theme_dark"
+write_file "$hardcoded_theme_dark/lawnchair/src/app/lawnchair/ui/theme/Theme.kt" <<'EOF'
+package app.lawnchair.ui.theme
+
+import androidx.compose.runtime.Composable
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
+
+@Composable
+fun LawnchairTheme(
+    darkTheme: Boolean = isSelectedThemeDark,
+    content: @Composable () -> Unit,
+) {
+    if (NothingUiFeature.themeEnabled) {
+        NothingUiTheme(darkTheme = true, content = content)
+        return
+    }
+
+    val colorScheme = getColorScheme(darkTheme = darkTheme)
+    MaterialExpressiveTheme(
+        colorScheme = colorScheme,
+        content = content,
+    )
+}
+EOF
+expect_fail_contains 'settings palette that ignores the resolved darkTheme fails' \
+    "$hardcoded_theme_dark" 'does not pass the resolved darkTheme'
+
+missing_heading_doto="$TMP_DIR/NothingOS-Launcher/missing-heading-doto"
+cp -R "$clean" "$missing_heading_doto"
+write_file "$missing_heading_doto/lawnchair/src/app/nothingui/theme/NothingUiTypography.kt" <<'EOF'
+package app.nothingui.theme
+
+private val BodyFontFamily = FontFamily.SansSerif
+
+val NothingUiTypography = base.copy(
+    displayLarge = base.displayLarge.copy(fontFamily = DotoFontFamily),
+    headlineLarge = base.headlineLarge.copy(fontFamily = BodyFontFamily),
+    headlineMedium = base.headlineMedium.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineSmall = base.headlineSmall.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    titleLarge = base.titleLarge.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineLargeEmphasized = base.headlineLargeEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineMediumEmphasized = base.headlineMediumEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    headlineSmallEmphasized = base.headlineSmallEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    titleLargeEmphasized = base.titleLargeEmphasized.copy(
+        fontFamily = DotoFontFamily,
+    ),
+    bodyLarge = base.bodyLarge.copy(fontFamily = BodyFontFamily),
+    bodyMedium = base.bodyMedium.copy(fontFamily = BodyFontFamily),
+    labelSmall = base.labelSmall.copy(fontFamily = BodyFontFamily),
+)
+EOF
+expect_fail_contains 'a sans-serif headline instead of the dot heading fails' \
+    "$missing_heading_doto" 'headlineLarge is not wired to the Doto heading typography'
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
