@@ -788,12 +788,17 @@ capture_widgets_picker() {
                         if capture_ui_xml \
                             "widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"; then
                             _cwp_candidate_xml="$ARTIFACTS/widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"
-                            _cwp_candidate_preview=$(widget_picker_preview_bounds \
-                                "$_cwp_candidate_xml" "$_cwp_header")
-                            if [ -n "$_cwp_candidate_preview" ]; then
-                                _cwp_preview=$_cwp_candidate_preview
-                                _cwp_provider_xml=$_cwp_candidate_xml
-                                break
+                            _cwp_candidate_header=$(widget_picker_provider_bounds \
+                                "$_cwp_candidate_xml" "$_cwp_provider_title")
+                            if [ -n "$_cwp_candidate_header" ]; then
+                                _cwp_candidate_preview=$(widget_picker_preview_bounds \
+                                    "$_cwp_candidate_xml" "$_cwp_candidate_header")
+                                if [ -n "$_cwp_candidate_preview" ]; then
+                                    _cwp_header=$_cwp_candidate_header
+                                    _cwp_preview=$_cwp_candidate_preview
+                                    _cwp_provider_xml=$_cwp_candidate_xml
+                                    break
+                                fi
                             fi
                         fi
                         _cwp_expand_poll=$((_cwp_expand_poll + 1))

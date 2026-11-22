@@ -75,14 +75,18 @@ a view.
 - **Real widget placement and HOME survival (P10b).** Inside the native picker it selects a
   clickable `widgets_list_header` whose `app_title` is `Clock` or `Calendar` and whose `app_subtitle`
   reports a positive widget count. A shortcut-only header such as the one-shortcut DotWel row is
-  rejected. It expands the measured header if needed, captures `widgets-provider.xml`/`.png`, and
-  measures the `widget_preview_container` below that header and above the next header. It taps the
-  preview, polls for the real `widget_add_button` resource id, captures `widgets-add.xml`/`.png`, and
-  taps the measured Add button. If Add is not exposed it uses a measured drag to a free right-hand
-  workspace point derived from the pre-widget HOME. It then polls for a new
-  `AppWidgetHostView`-suffixed node in the workspace and a new provider in `dumpsys appwidget`,
-  captures `widgets-home-placed.xml`/`.png`, and fails with saved `widgets-add-last.xml`/`.png` if a
-  configuration activity or an unbound provider blocks placement. The placed widget must sit between
+  rejected. It expands the measured header if needed, re-resolves the expanded title header by its
+  `app_title` so a stale collapsed position cannot pick a later provider's preview, captures
+  `widgets-provider.xml`/`.png`, and measures the `widget_preview_container` below that header and
+  above the next header. It taps the preview, polls for the real `widget_add_button` resource id,
+  captures `widgets-add.xml`/`.png`, and taps the measured Add button. If Add is not exposed it uses a
+  measured drag to a free right-hand workspace point derived from the pre-widget HOME. It then polls
+  for a new `AppWidgetHostView`-suffixed node in the workspace and a newly bound
+  `AppWidgetId`/provider pair in `dumpsys appwidget`. The HOME comparison parses both hierarchies as
+  node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
+  picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
+  `widgets-add-last.xml`/`.png` if a configuration activity or an unbound provider blocks placement.
+  The placed widget must sit between
   the measured header bottom and dock top, so it cannot cover the later drawer swipe start. It then
   presses HOME, captures `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to
   remain. It never starts the picker or a configuration activity directly, never binds an app widget,

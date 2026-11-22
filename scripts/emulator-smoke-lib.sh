@@ -950,78 +950,146 @@ widget_picker_add_button_bounds() (
 )
 
 # Print the bounds of a new AppWidgetHostView in the workspace, comparing the
-# current hierarchy with the pre-widget HOME. Class matching uses the inherited
-# AppWidgetHostView suffix; no guessed host class or fixed coordinate is used.
+# current hierarchy with the pre-widget HOME. Both hierarchies are normalised to
+# one node record per line (UIAutomator can emit the whole tree on a single
+# line), and explicit R/C markers keep the reference distinct even when it is
+# empty. A host inside a widget-picker preview or sheet is never accepted; when
+# the hierarchy exposes a workspace, only a host inside that workspace counts.
 home_widget_bounds() (
     xml=$1
     reference=${2:-}
     [ -s "$xml" ] || return 0
-    [ -n "$reference" ] || reference=/dev/null
-    [ -s "$reference" ] || reference=/dev/null
-    awk '
-        function attr(s, name,    pat, v) {
-            pat = "[[:space:]]" name "=\"[^\"]*\""
-            if (!match(s, pat)) return ""
-            v = substr(s, RSTART, RLENGTH)
-            sub("^[[:space:]]" name "=\"", "", v)
-            sub("\"$", "", v)
-            return v
-        }
-        function emit(b,    s, p, n) {
-            s = b
-            gsub(/\[/, " ", s)
-            gsub(/\]/, " ", s)
-            gsub(/,/, " ", s)
-            sub(/^[[:space:]]+/, "", s)
-            sub(/[[:space:]]+$/, "", s)
-            n = split(s, p, /[[:space:]]+/)
-            if (n == 4) print p[1], p[2], p[3], p[4]
-        }
-        NR == FNR {
-            if ($0 ~ /<node[[:space:]]/ &&
-                attr($0, "class") ~ /AppWidgetHostView/ &&
-                attr($0, "bounds") ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) {
-                seen[attr($0, "bounds")] = 1
+    {
+        if [ -n "$reference" ] && [ -s "$reference" ]; then
+            tr '>' '\n' < "$reference" |
+                awk '{ print "R\t" $0 }'
+        fi
+        tr '>' '\n' < "$xml" |
+            awk '{ print "C\t" $0 }'
+    } |
+        awk -F '\t' '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
             }
-            next
-        }
-        {
-            if ($0 !~ /<node[[:space:]]/) next
-            if (attr($0, "class") !~ /AppWidgetHostView/) next
-            bounds = attr($0, "bounds")
-            if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
-            if (bounds in seen) next
-            emit(bounds)
-            exit
-        }
-    ' "$reference" "$xml"
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            function is_workspace(rid, cls) {
+                return rid ~ /(^|\/)workspace(_right|_grid)?$/ ||
+                    cls ~ /(^|\.)Workspace$/
+            }
+            function is_preview(rid, cls) {
+                return rid ~ /(^|\/)(widget_preview_container|widgets_list_header|widgets_catalog|widgets_search_bar|primary_widgets_list_view)$/ ||
+                    cls ~ /(WidgetCell|WidgetCellPreview|WidgetsListHeader|WidgetsBottomSheet|BaseWidgetSheet|AddItemWidgetsBottomSheet)/
+            }
+            {
+                kind = $1
+                rec = substr($0, index($0, "\t") + 1)
+                if (kind != last_kind) {
+                    sp = 0
+                    last_kind = kind
+                }
+                if (rec ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if (rec !~ /<node[[:space:]]/) next
+                rid = attr(rec, "resource-id")
+                cls = attr(rec, "class")
+                bounds = attr(rec, "bounds")
+                selfclose = (rec ~ /\/[[:space:]]*$/)
+                parent_ws = (sp > 0 ? stack_ws[sp] : 0)
+                parent_preview = (sp > 0 ? stack_preview[sp] : 0)
+                ws = parent_ws || is_workspace(rid, cls)
+                preview = parent_preview || is_preview(rid, cls)
+                if (kind == "C" && ws) cur_saw_ws = 1
+                if (cls ~ /AppWidgetHostView/ &&
+                    bounds ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) {
+                    if (kind == "R") {
+                        if (!preview) seen[bounds] = 1
+                    } else if (!preview) {
+                        if (ws && first_ws == "") first_ws = bounds
+                        if (!ws && first_nonws == "") first_nonws = bounds
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_ws[sp] = ws
+                    stack_preview[sp] = preview
+                }
+            }
+            END {
+                if (first_ws != "") chosen = first_ws
+                else if (!cur_saw_ws) chosen = first_nonws
+                if (chosen != "" && !(chosen in seen)) emit(chosen)
+            }
+        '
 )
 
-# Print provider components that are newly bound between two
-# `dumpsys appwidget` captures. This proves a real AppWidgetHostView was bound
-# by the platform, not just that a view-looking node appeared.
+# Print providers of widget instances that are newly bound between two
+# `dumpsys appwidget` captures. Each provider must sit inside an AppWidgetId
+# block, so an installed-provider list or a provider mentioned elsewhere cannot
+# be mistaken for a newly bound widget. A new AppWidgetId is required even when
+# the same provider was already installed.
 appwidget_new_providers() (
     before=$1
     after=$2
     [ -s "$after" ] || return 0
-    [ -n "$before" ] || before=/dev/null
-    [ -s "$before" ] || before=/dev/null
-    awk '
-        NR == FNR {
-            if (match($0, /provider=ComponentInfo\{[^}]*\}/)) {
-                seen[substr($0, RSTART, RLENGTH)] = 1
+    {
+        if [ -n "$before" ] && [ -s "$before" ]; then
+            awk '{ print "B\t" $0 }' "$before"
+        fi
+        awk '{ print "A\t" $0 }' "$after"
+    } |
+        awk -F '\t' '
+            function flush() {
+                if (kind != "" && id != "" && provider != "")
+                    print kind "\t" id "\t" provider
+                id = ""
+                provider = ""
             }
-            next
-        }
-        {
-            if (!match($0, /provider=ComponentInfo\{[^}]*\}/)) next
-            provider = substr($0, RSTART, RLENGTH)
-            if (!(provider in seen) && !(provider in printed)) {
-                print provider
-                printed[provider] = 1
+            {
+                if ($1 != kind) {
+                    flush()
+                    kind = $1
+                }
+                line = substr($0, index($0, "\t") + 1)
+                if (match(line, /AppWidgetId=[0-9]+/)) {
+                    flush()
+                    id = substr(line, RSTART, RLENGTH)
+                    sub(/^AppWidgetId=/, "", id)
+                    next
+                }
+                if (id != "" &&
+                    match(line, /provider=ComponentInfo\{[^}]*\}/))
+                    provider = substr(line, RSTART, RLENGTH)
             }
-        }
-    ' "$before" "$after"
+            END { flush() }
+        ' |
+        awk -F '\t' '
+            $1 == "B" {
+                seen[$2] = 1
+                next
+            }
+            $1 == "A" {
+                if (!($2 in seen) && !($2 in printed)) {
+                    print $3
+                    printed[$2] = 1
+                }
+            }
+        '
 )
 
 # Compute a measured free workspace point for the drag fallback. It uses the

@@ -599,6 +599,37 @@ assert_eq 'a HOME without a widget preview yields no preview bounds' \
     '' \
     "$(widget_picker_preview_bounds "$home_xml" '0 540 1080 660')"
 
+# Expanding a provider can move its header and the following header. The
+# expanded hierarchy must be re-resolved by title, or a stale header can skip
+# the real preview and associate a later provider's preview instead.
+widget_headers_expanded_xml="$TMP_DIR/widget-headers-expanded.xml"
+cat > "$widget_headers_expanded_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,200][1080,320]">
+      <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,220][300,260]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,265][300,300]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,360][500,660]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,1100][1080,1220]">
+      <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,1120][300,1160]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,1165][300,1200]" />
+    </node>
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,1300][500,1600]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the expanded title header is re-resolved by title' \
+    '0 200 1080 320' \
+    "$(widget_picker_provider_bounds "$widget_headers_expanded_xml" Clock)"
+assert_eq 'a stale collapsed header does not select an expanded provider preview' \
+    '' \
+    "$(widget_picker_preview_bounds "$widget_headers_expanded_xml" '0 540 1080 660')"
+assert_eq 'the expanded title header associates the preview with the selected provider' \
+    '80 360 500 660' \
+    "$(widget_picker_preview_bounds "$widget_headers_expanded_xml" '0 200 1080 320')"
+
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
@@ -619,7 +650,9 @@ cat > "$placed_home_xml" <<'EOF'
   <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
     <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
     <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
-    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" content-desc="" clickable="false" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" />
+    </node>
     <node index="3" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1400][240,1460]" />
   </node>
 </hierarchy>
@@ -633,6 +666,54 @@ assert_eq 'the same AppWidgetHostView already present in the reference is not ne
 assert_eq 'a HOME without an AppWidgetHostView yields no placed-widget bounds' \
     '' \
     "$(home_widget_bounds "$home_xml" "$home_xml")"
+
+# UIAutomator can emit the whole hierarchy on one line, so the host must be
+# found from node records, not from the first attribute on the file line.
+compact_home_xml="$TMP_DIR/home-compact.xml"
+cat > "$compact_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="Phone" class="android.widget.TextView" clickable="true" bounds="[120,1400][240,1460]" /></node></hierarchy>
+EOF
+assert_eq 'a compact HOME without a host yields no placed-widget bounds' \
+    '' \
+    "$(home_widget_bounds "$compact_home_xml" "$compact_home_xml")"
+
+compact_placed_home_xml="$TMP_DIR/placed-home-compact.xml"
+cat > "$compact_placed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" /></node><node index="1" text="Phone" class="android.widget.TextView" clickable="true" bounds="[120,1400][240,1460]" /></node></hierarchy>
+EOF
+assert_eq 'a compact single-line workspace host is detected against a pretty reference' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$compact_placed_home_xml" "$home_xml")"
+assert_eq 'the same compact host is not new against an identical reference' \
+    '' \
+    "$(home_widget_bounds "$compact_placed_home_xml" "$compact_placed_home_xml")"
+assert_eq 'an empty reference still treats the current hierarchy as current' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$compact_placed_home_xml" '')"
+
+compact_preview_home_xml="$TMP_DIR/placed-home-preview-compact.xml"
+cat > "$compact_preview_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,400][1080,520]"><node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,420][300,460]" /><node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,465][300,500]" /></node><node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,540][500,840]"><node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[80,540][500,840]" /></node></node></hierarchy>
+EOF
+assert_eq 'a compact sheet-preview host is not a workspace widget' \
+    '' \
+    "$(home_widget_bounds "$compact_preview_home_xml" "$home_xml")"
+
+compact_mixed_home_xml="$TMP_DIR/placed-home-mixed-compact.xml"
+cat > "$compact_mixed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,200][1080,320]"><node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,220][300,260]" /></node><node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,360][500,660]"><node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[80,360][500,660]" /></node><node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,700][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,900][500,1200]" /></node></node></hierarchy>
+EOF
+assert_eq 'a compact preview host is ignored in favour of the workspace host' \
+    '40 900 500 1200' \
+    "$(home_widget_bounds "$compact_mixed_home_xml" "$home_xml")"
+
+compact_outside_ws_xml="$TMP_DIR/placed-home-outside-workspace-compact.xml"
+cat > "$compact_outside_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]" /><node index="1" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,900][500,1200]" /></node></hierarchy>
+EOF
+assert_eq 'a host outside a workspace that is present is rejected' \
+    '' \
+    "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
 
 appwidget_before="$TMP_DIR/appwidget-before.txt"
 cat > "$appwidget_before" <<'EOF'
@@ -654,6 +735,30 @@ assert_eq 'a newly bound app widget provider is reported after placement' \
 assert_eq 'no new provider is reported when the dump is unchanged' \
     '' \
     "$(appwidget_new_providers "$appwidget_after" "$appwidget_after")"
+
+appwidget_installed="$TMP_DIR/appwidget-installed.txt"
+cat > "$appwidget_installed" <<'EOF'
+AppWidgets:
+  Installed providers:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+appwidget_new_instance="$TMP_DIR/appwidget-new-instance.txt"
+cat > "$appwidget_new_instance" <<'EOF'
+AppWidgets:
+  Installed providers:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+  AppWidgetId=7:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a new bound instance is reported even when its provider is already installed' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_installed" "$appwidget_new_instance")"
+assert_eq 'an installed provider list without a bound AppWidgetId is not a new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_installed" "$appwidget_installed")"
+assert_eq 'a bound widget instance is found when the before dump is empty' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_new_instance")"
 
 assert_eq 'the widget drag fallback targets the measured right workspace, away from centre' \
     '810 834' \
@@ -890,6 +995,10 @@ assert_true 'the widgets capture prefers the system Clock/Calendar providers' \
     grep -Fq 'for _cwp_title in Clock Calendar' "$widgets_body"
 assert_true 'the widgets capture measures the expanded provider preview' \
     grep -Fq 'widget_picker_preview_bounds' "$widgets_body"
+assert_true 'the widgets capture re-resolves the expanded provider header by title' \
+    grep -Fq '_cwp_candidate_header=$(widget_picker_provider_bounds' "$widgets_body"
+assert_true 'the widgets capture keeps the re-resolved header for the preview' \
+    grep -Fq '_cwp_header=$_cwp_candidate_header' "$widgets_body"
 assert_true 'the widgets capture taps the measured preview, not a fixed point' \
     grep -Fq 'tap_center_of_bounds "$_cwp_preview"' "$widgets_body"
 assert_true 'the widgets capture taps the measured Add button, not a fixed point' \
