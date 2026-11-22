@@ -77,6 +77,35 @@ foreground_is() (
     esac
 )
 
+# Succeed only when the resumed component is exactly <package>/<class>. The
+# expected class may be the leading-dot shorthand (".Foo") or fully qualified.
+# A package-only match is not enough: another activity in the same package must
+# not satisfy an exact-activity claim.
+foreground_is_component() (
+    dump=$1
+    expected_pkg=$2
+    expected_cls=$3
+    [ -n "$expected_pkg" ] || return 1
+    [ -n "$expected_cls" ] || return 1
+    component=$(resumed_component "$dump")
+    case "$component" in
+        */*) ;;
+        *) return 1 ;;
+    esac
+    actual_pkg=${component%%/*}
+    actual_cls=${component#*/}
+    [ "$actual_pkg" = "$expected_pkg" ] || return 1
+    case "$expected_cls" in
+        .*) expected_full="$expected_pkg$expected_cls" ;;
+        *) expected_full=$expected_cls ;;
+    esac
+    case "$actual_cls" in
+        .*) actual_full="$actual_pkg$actual_cls" ;;
+        *) actual_full=$actual_cls ;;
+    esac
+    [ "$actual_full" = "$expected_full" ]
+)
+
 # Print the root bounds ("x1 y1 x2 y2") of a UIAutomator XML dump. UIAutomator
 # emits the window root as the first node, so its bounds are the visible display
 # area for this capture (insets included, unlike a fixed wm-size assumption).
@@ -1677,6 +1706,54 @@ appwidget_new_providers() (
                     }
                     printed[$2] = 1
                 }
+            }
+        '
+)
+
+# Print "<numeric AppWidgetId><TAB><provider class>" only when exactly one widget
+# was newly bound between the two dumps, its host and provider package are both
+# the running package, and its provider class is exactly one of the two DotWel
+# providers. Zero records, multiple or mixed records, a non-numeric id, a foreign
+# package and class prefix/suffix lookalikes all print nothing and fail closed.
+own_widget_new_binding() (
+    before=$1
+    after=$2
+    pkg=$3
+    [ -s "$after" ] || return 0
+    [ -n "$pkg" ] || return 0
+    appwidget_new_providers "$before" "$after" "$pkg" id |
+        awk -F '\t' -v pkg="$pkg" '
+            function provider_class(provider,    info, parts) {
+                if (provider !~ /^provider=ComponentInfo\{[^}]*\}$/) return ""
+                info = provider
+                sub(/^provider=ComponentInfo\{/, "", info)
+                sub(/\}$/, "", info)
+                if (split(info, parts, "/") != 2) return ""
+                if (parts[1] != pkg) return ""
+                return parts[2]
+            }
+            {
+                count++
+                if (NF != 2) {
+                    bad = 1
+                    next
+                }
+                if ($1 !~ /^[0-9]+$/) {
+                    bad = 1
+                    next
+                }
+                class = provider_class($2)
+                if (class != "app.dotwel.widgets.DotWelClockWidgetProvider" &&
+                    class != "app.dotwel.widgets.DotWelBatteryWidgetProvider") {
+                    bad = 1
+                    next
+                }
+                id = $1
+                bound = class
+            }
+            END {
+                if (bad || count != 1) exit 0
+                print id "\t" bound
             }
         '
 )

@@ -759,6 +759,8 @@ complete_own_widget_setup() {
                 >> "$ARTIFACTS/own-widget-setup-log.txt"
             break
         fi
+        _cows_pending_before_count=$(printf '%s\n' "$_cows_pending" |
+            awk 'NF { n++ } END { print n + 0 }')
         _cows_target=$(printf '%s\n' "$_cows_pending" | sed -n '1p')
         printf 'round=%s pending=%s target=%s\n' \
             "$_cows_round" "$(printf '%s\n' "$_cows_pending" | tr '\n' ';')" \
@@ -771,6 +773,11 @@ complete_own_widget_setup() {
         _cows_bind_tapped=0
         _cows_dialog_polls=0
         _cows_bound=
+        _cows_bound_id=
+        _cows_bound_class=
+        _cows_round_finished=0
+        _cows_remaining_count=0
+        _cows_home_ok=0
         _cows_xml=
         _cows_poll=1
         while [ "$_cows_poll" -le "$_cows_max_polls" ]; do
@@ -782,10 +789,10 @@ complete_own_widget_setup() {
             if [ "$_cows_bind_tapped" -eq 0 ] &&
                 widget_bind_consent_is_ready \
                     "$_cows_xml" "$EXPECTED_LABEL" "$EXPECTED_LABEL"; then
-                foreground_is \
+                foreground_is_component \
                     "$ARTIFACTS/own-widget-activity-$_cows_round-$_cows_poll.txt" \
-                    com.android.settings ||
-                    fail "the own-widget bind consent is not the exact Settings activity"
+                    com.android.settings .AllowBindAppWidgetActivity ||
+                    fail "the own-widget bind consent is not the exact AllowBindAppWidgetActivity"
                 cp "$_cows_xml" "$ARTIFACTS/own-widget-consent-$_cows_round.xml"
                 capture_screenshot_to "own-widget-consent-$_cows_round.png"
                 [ -s "$ARTIFACTS/own-widget-consent-$_cows_round.png" ] ||
@@ -820,30 +827,42 @@ complete_own_widget_setup() {
                 adb_cmd shell dumpsys appwidget \
                     > "$ARTIFACTS/own-widget-appwidget-after-$_cows_round-$_cows_poll.txt" \
                     2>&1 || true
-                _cows_new=$(appwidget_new_providers \
+                _cows_new_raw=$(appwidget_new_providers \
                     "$ARTIFACTS/own-widget-appwidget-before-$_cows_round.txt" \
                     "$ARTIFACTS/own-widget-appwidget-after-$_cows_round-$_cows_poll.txt" \
                     "$PKG" id)
-                if [ -n "$_cows_new" ]; then
-                    case "$_cows_new" in
-                        *app.dotwel.widgets.DotWelClockWidgetProvider* | \
-                            *app.dotwel.widgets.DotWelBatteryWidgetProvider*)
-                            _cows_bound=$_cows_new
-                            ;;
-                        *)
-                            cp "$_cows_xml" "$ARTIFACTS/own-widget-wrong-provider.xml"
-                            capture_screenshot_to own-widget-wrong-provider.png
-                            fail "the own-widget setup bound an unexpected provider: $_cows_new"
-                            ;;
-                    esac
+                _cows_binding=$(own_widget_new_binding \
+                    "$ARTIFACTS/own-widget-appwidget-before-$_cows_round.txt" \
+                    "$ARTIFACTS/own-widget-appwidget-after-$_cows_round-$_cows_poll.txt" \
+                    "$PKG")
+                if [ -n "$_cows_new_raw" ] && [ -z "$_cows_binding" ]; then
+                    cp "$_cows_xml" "$ARTIFACTS/own-widget-wrong-provider.xml"
+                    capture_screenshot_to own-widget-wrong-provider.png
+                    fail "the own-widget setup did not bind exactly one expected DotWel provider: $_cows_new_raw"
+                fi
+                if [ -n "$_cows_binding" ]; then
+                    _cows_bound=$_cows_binding
+                    _cows_bound_id=$(printf '%s\n' "$_cows_binding" |
+                        awk -F '\t' '{ print $1 }')
+                    _cows_bound_class=$(printf '%s\n' "$_cows_binding" |
+                        awk -F '\t' '{ print $2 }')
                 fi
                 _cows_remaining=$(home_pending_widget_bounds "$_cows_xml")
+                _cows_remaining_count=$(printf '%s\n' "$_cows_remaining" |
+                    awk 'NF { n++ } END { print n + 0 }')
                 _cows_dialog_still_open=0
                 widget_bind_consent_is_ready \
                     "$_cows_xml" "$EXPECTED_LABEL" "$EXPECTED_LABEL" &&
                     _cows_dialog_still_open=1
+                _cows_home_ok=0
+                foreground_is_component \
+                    "$ARTIFACTS/own-widget-activity-$_cows_round-$_cows_poll.txt" \
+                    "$PKG" "$LAUNCHER_ACTIVITY" &&
+                    _cows_home_ok=1
                 if [ -n "$_cows_bound" ] && [ "$_cows_dialog_still_open" -eq 0 ] &&
-                    [ -z "$_cows_remaining" ]; then
+                    [ "$_cows_remaining_count" -eq "$((_cows_pending_before_count - 1))" ] &&
+                    [ "$_cows_home_ok" -eq 1 ]; then
+                    _cows_round_finished=1
                     break
                 fi
             fi
@@ -854,8 +873,11 @@ complete_own_widget_setup() {
             capture_screenshot_to own-widget-setup-last.png
             fail "the own widget was not bound after the per-widget consent in round $_cows_round"
         fi
-        printf 'round=%s bound=%s\n' "$_cows_round" "$_cows_bound" \
-            >> "$ARTIFACTS/own-widget-setup-log.txt"
+        [ "$_cows_round_finished" -eq 1 ] ||
+            fail "the pending own widget count did not decrease by exactly one after Create in round $_cows_round (before=$_cows_pending_before_count remaining=$_cows_remaining_count home=$_cows_home_ok dialog=$_cows_dialog_still_open)"
+        printf 'round=%s bound_id=%s bound_class=%s remaining=%s\n' \
+            "$_cows_round" "$_cows_bound_id" "$_cows_bound_class" \
+            "$_cows_remaining_count" >> "$ARTIFACTS/own-widget-setup-log.txt"
         _cows_completed=$((_cows_completed + 1))
     done
 

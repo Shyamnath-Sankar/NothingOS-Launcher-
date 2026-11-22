@@ -106,6 +106,46 @@ assert_true 'mResumedActivity is the fallback foreground field' \
 assert_false 'com.android.settings.intelligence is not com.android.settings' \
     foreground_is "$intelligence_dump" com.android.settings
 
+# The own-widget bind consent is a specific platform activity. A package-only
+# check would also accept another Settings activity, so the helper must match the
+# exact component (short or fully qualified class). The shape mirrors the real
+# CI134 activities-widget-placed-1.txt resumed component.
+bind_activity_dump="$TMP_DIR/bind-activity.dump"
+cat > "$bind_activity_dump" <<'EOF'
+  * Task{def #2 type=standard}
+    mResumedActivity: ActivityRecord{def u0 com.android.settings/.AllowBindAppWidgetActivity t2}
+    topResumedActivity=ActivityRecord{def u0 com.android.settings/.AllowBindAppWidgetActivity t2}
+EOF
+assert_eq 'the CI134 bind consent resumed component is extracted exactly' \
+    'com.android.settings/.AllowBindAppWidgetActivity' \
+    "$(resumed_component "$bind_activity_dump")"
+assert_true 'the short-form AllowBindAppWidgetActivity is the exact consent activity' \
+    foreground_is_component "$bind_activity_dump" com.android.settings .AllowBindAppWidgetActivity
+assert_true 'the fully qualified AllowBindAppWidgetActivity is the exact consent activity' \
+    foreground_is_component "$bind_activity_dump" com.android.settings \
+    com.android.settings.AllowBindAppWidgetActivity
+assert_false 'another Settings activity is not the bind consent' \
+    foreground_is_component "$settings_dump" com.android.settings .AllowBindAppWidgetActivity
+assert_false 'the bind consent package is required exactly' \
+    foreground_is_component "$bind_activity_dump" com.android.settings.intelligence \
+    .AllowBindAppWidgetActivity
+
+bind_lookalike_dump="$TMP_DIR/bind-lookalike.dump"
+cat > "$bind_lookalike_dump" <<'EOF'
+  * Task{def #2 type=standard}
+    topResumedActivity=ActivityRecord{def u0 com.android.settings/.AllowBindAppWidgetActivityExtra t2}
+EOF
+assert_false 'a class suffix lookalike is not the bind consent' \
+    foreground_is_component "$bind_lookalike_dump" com.android.settings .AllowBindAppWidgetActivity
+
+bind_foreign_dump="$TMP_DIR/bind-foreign.dump"
+cat > "$bind_foreign_dump" <<'EOF'
+  * Task{def #2 type=standard}
+    topResumedActivity=ActivityRecord{def u0 com.example.fake/.AllowBindAppWidgetActivity t2}
+EOF
+assert_false 'a foreign package with the same class is not the bind consent' \
+    foreground_is_component "$bind_foreign_dump" com.android.settings .AllowBindAppWidgetActivity
+
 # --- UIAutomator result-node fixtures --------------------------------------
 
 ancestor_xml="$TMP_DIR/ancestor.xml"
@@ -871,6 +911,154 @@ assert_eq 'a HOME with no pending widget yields no setup target' \
     '' \
     "$(home_pending_widget_bounds "$pending_bound_only_xml")"
 
+# A per-widget setup round must observe exactly one newly bound own provider.
+# The helper requires a numeric id, the running package as both host and provider
+# package, and an exact full DotWel provider class. Multiple/mixed records,
+# foreign packages, class suffix lookalikes and wrong providers all fail closed.
+own_bind_pkg=com.launchernos.dotwellabs.debug
+own_bind_before="$TMP_DIR/own-bind-before.txt"
+cat > "$own_bind_before" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+EOF
+own_bind_clock="$TMP_DIR/own-bind-clock.txt"
+cat > "$own_bind_clock" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'exactly one newly bound own clock provider keeps its numeric id' \
+    "$(printf '7\tapp.dotwel.widgets.DotWelClockWidgetProvider')" \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_clock" "$own_bind_pkg")"
+
+own_bind_battery="$TMP_DIR/own-bind-battery.txt"
+cat > "$own_bind_battery" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=8
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelBatteryWidgetProvider}, profile:0}
+EOF
+assert_eq 'exactly one newly bound own battery provider keeps its numeric id' \
+    "$(printf '8\tapp.dotwel.widgets.DotWelBatteryWidgetProvider')" \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_battery" "$own_bind_pkg")"
+
+assert_eq 'an unchanged dump has no own binding' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_clock" "$own_bind_clock" "$own_bind_pkg")"
+
+own_bind_foreign="$TMP_DIR/own-bind-foreign.txt"
+cat > "$own_bind_foreign" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.fake/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'a foreign provider package is rejected even with an own class name' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_foreign" "$own_bind_pkg")"
+
+own_bind_suffix="$TMP_DIR/own-bind-suffix.txt"
+sed 's/DotWelClockWidgetProvider/DotWelClockWidgetProviderExtra/' \
+    "$own_bind_clock" > "$own_bind_suffix"
+assert_eq 'a provider class suffix lookalike is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_suffix" "$own_bind_pkg")"
+
+own_bind_prefix="$TMP_DIR/own-bind-prefix.txt"
+sed 's/DotWelClockWidgetProvider/EvilDotWelClockWidgetProvider/' \
+    "$own_bind_clock" > "$own_bind_prefix"
+assert_eq 'a provider class prefix lookalike is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_prefix" "$own_bind_pkg")"
+
+own_bind_short_class="$TMP_DIR/own-bind-short-class.txt"
+sed 's#com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider#com.launchernos.dotwellabs.debug/DotWelClockWidgetProvider#' \
+    "$own_bind_clock" > "$own_bind_short_class"
+assert_eq 'a non-fully-qualified own provider class is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_short_class" "$own_bind_pkg")"
+
+own_bind_wrong_provider="$TMP_DIR/own-bind-wrong-provider.txt"
+sed 's#com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider#com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider#' \
+    "$own_bind_clock" > "$own_bind_wrong_provider"
+assert_eq 'an unrelated provider is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_wrong_provider" "$own_bind_pkg")"
+
+own_bind_two="$TMP_DIR/own-bind-two.txt"
+cat > "$own_bind_two" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+  [2] id=8
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelBatteryWidgetProvider}, profile:0}
+EOF
+assert_eq 'two newly bound own providers are rejected as multiple records' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_two" "$own_bind_pkg")"
+
+own_bind_mixed="$TMP_DIR/own-bind-mixed.txt"
+cat > "$own_bind_mixed" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+  [2] id=8
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.fake/app.dotwel.widgets.DotWelBatteryWidgetProvider}, profile:0}
+EOF
+assert_eq 'a mixed own/foreign multiline result is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_mixed" "$own_bind_pkg")"
+
+own_bind_foreign_host="$TMP_DIR/own-bind-foreign-host.txt"
+cat > "$own_bind_foreign_host" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'a new own provider owned by another host is rejected' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_foreign_host" "$own_bind_pkg")"
+
+own_bind_non_numeric="$TMP_DIR/own-bind-non-numeric.txt"
+cat > "$own_bind_non_numeric" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=abc
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'a non-numeric widget id is not accepted' \
+    '' \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_non_numeric" "$own_bind_pkg")"
+
 home_widgets_xml="$TMP_DIR/home-widgets.xml"
 cat > "$home_widgets_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -1489,6 +1677,45 @@ sed -n '/^verify_nothing_home() {/,/^}/p' "$SMOKE" > "$home_verify_body"
 
 home_widgets_body="$TMP_DIR/verify_home_widgets.sh"
 sed -n '/^verify_home_widgets() {/,/^}/p' "$SMOKE" > "$home_widgets_body"
+
+own_widget_setup_body="$TMP_DIR/complete_own_widget_setup.sh"
+sed -n '/^complete_own_widget_setup() {/,/^}/p' "$SMOKE" > "$own_widget_setup_body"
+
+assert_true 'the own-widget setup accepts only one exact own provider record' \
+    grep -Fq 'own_widget_new_binding' "$own_widget_setup_body"
+assert_false 'the own-widget setup has no substring provider acceptance' \
+    grep -Eq 'case "\$_cows_new"|\*app\.dotwel\.widgets\.DotWel(Clock|Battery)WidgetProvider\*' \
+    "$own_widget_setup_body"
+assert_true 'the own-widget setup requires the exact AllowBindAppWidgetActivity' \
+    grep -Fq 'com.android.settings .AllowBindAppWidgetActivity' "$own_widget_setup_body"
+assert_false 'the own-widget setup never accepts any Settings package as the consent' \
+    grep -Fq 'foreground_is "$ARTIFACTS/own-widget-activity' "$own_widget_setup_body"
+assert_true 'the own-widget setup requires the real launcher HOME after Create' \
+    grep -Fq '"$PKG" "$LAUNCHER_ACTIVITY"' "$own_widget_setup_body"
+assert_true 'the own-widget setup measures the pending count before the round' \
+    grep -Fq '_cows_pending_before_count=' "$own_widget_setup_body"
+assert_true 'the own-widget setup finishes a round only after a one-pending decrease' \
+    grep -Fq '[ "$_cows_remaining_count" -eq "$((_cows_pending_before_count - 1))" ]' \
+    "$own_widget_setup_body"
+assert_true 'the own-widget setup fails when the one-pending decrease is not observed' \
+    grep -Fq '_cows_round_finished' "$own_widget_setup_body"
+assert_true 'the own-widget setup keeps at most two rounds' \
+    grep -Fq '_cows_max_rounds=2' "$own_widget_setup_body"
+assert_true 'the own-widget setup keeps bounded polling' \
+    grep -Fq '_cows_max_polls=12' "$own_widget_setup_body"
+assert_true 'the own-widget setup refuses a checked Always allow' \
+    grep -Fq 'widget_bind_always_allow_is_checked' "$own_widget_setup_body"
+assert_true 'the own-widget setup taps only the measured Create control' \
+    grep -Fq 'tap_center_of_bounds "$_cows_create"' "$own_widget_setup_body"
+assert_true 'the own-widget setup captures before, consent and after XML' \
+    grep -Fq 'own-widget-before-$_cows_round.xml' "$own_widget_setup_body"
+assert_true 'the own-widget setup captures before, consent and after PNG' \
+    grep -Fq 'own-widget-consent-$_cows_round.png' "$own_widget_setup_body"
+assert_true 'the own-widget setup captures the final after XML and PNG' \
+    grep -Fq 'own-widget-after.xml' "$own_widget_setup_body"
+assert_false 'the own-widget setup never binds or edits the database directly' \
+    grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' \
+    "$own_widget_setup_body"
 
 assert_true 'the clean home capture uses system dark and light modes' \
     grep -Fq 'for _ccht_mode in yes no; do' "$clean_home_body"
