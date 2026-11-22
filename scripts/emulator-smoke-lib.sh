@@ -522,10 +522,11 @@ drawer_is_ready() (
 # Print the navigation-bar bounds ("x1 y1 x2 y2") from a `dumpsys window`
 # dump. The NavigationBar window is a separate SystemUI window, so its frame is
 # the authoritative safe-area edge for the edge-to-edge launcher drawer. When
-# the window frame is absent, fall back to the stable display frame
-# (`mStable=Rect(...)`) and the current display frame (`mCurrent=Rect(...)`).
-# Prints nothing when neither source is measurable, so the caller can fail
-# closed instead of guessing a coordinate.
+# the window frame is absent, use the measured modern InsetsSource
+# `type=navigationBars` frame, then the stable display frame (`mStable=Rect(...)`)
+# and the current display frame (`mCurrent=Rect(...)`).
+# Prints nothing when no source is measurable, so the caller can fail closed
+# instead of guessing a coordinate.
 ui_navigation_bar_bounds() (
     dump=$1
     [ -s "$dump" ] || return 0
@@ -543,6 +544,35 @@ ui_navigation_bar_bounds() (
                 sub(/ +$/, "", b)
                 n = split(b, p, / +/)
                 if (n == 4) {
+                    print p[1], p[2], p[3], p[4]
+                    exit
+                }
+            }
+        }
+    ' "$dump")
+    if [ -n "$nav" ]; then
+        printf '%s\n' "$nav"
+        return 0
+    fi
+    nav=$(awk '
+        /InsetsSource/ && /type=navigationBars/ && /visible=true/ {
+            line = $0
+            if (match(line, /frame=\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]/)) {
+                b = substr(line, RSTART + 7, RLENGTH - 7)
+                gsub(/[^0-9]+/, " ", b)
+                sub(/^ +/, "", b)
+                sub(/ +$/, "", b)
+                if (split(b, p, / +/) == 4) {
+                    print p[1], p[2], p[3], p[4]
+                    exit
+                }
+            }
+            if (match(line, /frame=Rect\([0-9]+, *[0-9]+ *- *[0-9]+, *[0-9]+\)/)) {
+                b = substr(line, RSTART + 10, RLENGTH - 10)
+                gsub(/[^0-9]+/, " ", b)
+                sub(/^ +/, "", b)
+                sub(/ +$/, "", b)
+                if (split(b, p, / +/) == 4) {
                     print p[1], p[2], p[3], p[4]
                     exit
                 }
@@ -583,6 +613,66 @@ ui_navigation_bar_bounds() (
             print 0, stable_bottom, cur_right, cur_bottom
         }
     ' "$dump"
+)
+
+
+# Print "home lock" wallpaper IDs from a `dumpsys wallpaper` dump. Home is
+# required; the lock ID prints as "-" when the dump has no separate lock row.
+# Explicit "Home wallpaper ID" / "Lock wallpaper ID" labels win, then the
+# AOSP `mWallpaperId` / `mLockWallpaperId` fields. Prints nothing when no Home
+# ID is measurable so the caller can fail closed instead of guessing.
+wallpaper_ids_from_dump() (
+    dump=$1
+    [ -s "$dump" ] || return 0
+    awk '
+        BEGIN { explicit_home = -1; plain_home = -1; lock = -1 }
+        function id_of(s,    v) {
+            gsub(/[^0-9]/, "", s)
+            if (s == "") return -1
+            return s + 0
+        }
+        {
+            l = tolower($0)
+            if (l ~ /lock/ && l ~ /wallpaper/) {
+                if (match(l, /(lock wallpaper id|mlockwallpaperid|mlastlockwallpaperid)[^0-9]*[0-9]+/)) {
+                    v = id_of(substr(l, RSTART, RLENGTH))
+                    if (v >= 0) lock = v
+                }
+                next
+            }
+            if (match(l, /home wallpaper id[^0-9]*[0-9]+/)) {
+                v = id_of(substr(l, RSTART, RLENGTH))
+                if (v >= 0 && explicit_home < 0) explicit_home = v
+                next
+            }
+            if (match(l, /mwallpaperid[^0-9]*[0-9]+/)) {
+                v = id_of(substr(l, RSTART, RLENGTH))
+                if (v >= 0 && plain_home < 0) plain_home = v
+            }
+        }
+        END {
+            home = (explicit_home >= 0) ? explicit_home : plain_home
+            if (home < 0) exit 1
+            if (lock < 0) lock = "-"
+            print home, lock
+        }
+    ' "$dump"
+)
+
+# Android may share the lock wallpaper sentinel with the previous Home image
+# after a FLAG_SYSTEM-only change. A recorded lock ID must not move; an absent
+# lock ID may stay absent or materialise as the prior Home ID. Anything else
+# means the Home-only operation changed the lock target.
+wallpaper_lock_preserved() (
+    before_home=$1
+    before_lock=$2
+    after_lock=$3
+    [ -n "$before_home" ] && [ -n "$before_lock" ] && [ -n "$after_lock" ] || return 1
+    if [ "$before_lock" = '-' ]; then
+        [ "$after_lock" = '-' ] || [ "$after_lock" = "$before_home" ]
+        return
+    fi
+    [ "$after_lock" = "$before_lock" ]
 )
 
 # Print the measured bounds ("x1 y1 x2 y2") of the real all-apps list container.

@@ -341,6 +341,35 @@ scrolling, the work/private tabs and the floating-search offsets are unchanged. 
 inherits the same recycler, so search results use the same bottom boundary without a separate
 capture.
 
+## Offline AMOLED wallpaper gallery
+
+`emulator-smoke.sh` now resolves the modern navigation safe area from a visible
+`InsetsSource type=navigationBars frame=[...]` when no `NavigationBar` window frame is present. The
+API 181 activity artifacts report `frame=[0,1794][1080,1920]`; the parser accepts that modern
+bracket frame and `frame=Rect(...)` syntax, ignores invisible sources, and keeps the legacy
+`mFrame`/`mStable` fixtures and fail-closed behavior. The measured 1794 top is used; no phone height
+is guessed.
+
+After the native/theme captures, `capture_wallpaper_gallery` records `dumpsys wallpaper` Home/Lock
+IDs and launcher-owned `dumpsys appwidget` IDs. It opens the Play-only gallery through the normal
+`lawnchair://settings/amoled-wallpapers` route in dark and light, captures
+`wallpaper-gallery-{dark,light}.xml/.png`, opens the Pitch Black preview, captures
+`wallpaper-preview-{dark,light}.xml/.png`, then presses Back and requires both wallpaper IDs to be
+unchanged. Preview, theme switching, Cancel and Back never call the applier. Widget IDs are re-read
+after the previews and must match.
+
+Only then does it tap Pitch Black and the separate Apply to Home screen button, poll up to ten times
+for a changed Home ID, and repeat for Wireframe Torus. Each apply writes
+`wallpaper-apply-<id>.{png,txt}`, `wallpaper-apply-<id>-ids-*.txt`,
+`wallpaper-apply-<id>-widgets.txt` and `wallpaper-home-after-<id>.xml`; the existing
+`verify_home_widgets` proof runs after each apply. A recorded lock ID must not move. An absent lock
+ID may stay absent or materialise as the prior Home ID under the Home-only operation; it may not
+take a different value. The applier uses `FLAG_SYSTEM` only, checks
+`isWallpaperSupported`/`isSetWallpaperAllowed`, applies the PNG as an existing-resource stream and
+renders the vector to a bounded 1080x2340 bitmap on IO, then confirms the positive returned ID
+equals the current Home wallpaper ID. Lock is never targeted and protected image data is never
+read.
+
 ## Locked private-space validation
 
 `scripts/private-space-check.sh` is deliberately separate. It detects an

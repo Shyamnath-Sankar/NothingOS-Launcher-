@@ -2197,6 +2197,194 @@ capture_widgets_picker() {
     fail "the real HOME long-press did not open the Widgets picker after $_cwp_max_attempts bounded attempts"
 }
 
+_cwg_launch_gallery() {
+    _clg_tag=$1
+    if ! _clg_out=$(adb_cmd shell am start -W -f 0x18000000         -a android.intent.action.VIEW         -d 'lawnchair://settings/amoled-wallpapers'         -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_clg_out" > "$ARTIFACTS/wallpaper-gallery-$_clg_tag-launch.txt"
+        return 1
+    fi
+    printf '%s\n' "$_clg_out" > "$ARTIFACTS/wallpaper-gallery-$_clg_tag-launch.txt"
+    case "$_clg_out" in
+        *"Error:"* | *"Error type"* | *Exception*) return 1 ;;
+    esac
+    printf '%s\n' "$_clg_out" | grep -q 'Status: ok'
+}
+
+_cwg_read_ids() {
+    _cri_file=$1
+    adb_cmd shell dumpsys wallpaper > "$_cri_file" 2>&1 || return 1
+    wallpaper_ids_from_dump "$_cri_file"
+}
+
+_cwg_widget_ids() {
+    _cwi_file=$1
+    adb_cmd shell dumpsys appwidget > "$_cwi_file" 2>&1 || return 1
+    appwidget_launcher_instances "$_cwi_file" "$PKG" id | sort | tr '\n' ' '
+}
+
+# Offline AMOLED gallery proof. Preview, theme changes, Cancel and Back must
+# leave the Home/Lock wallpaper IDs and widget IDs untouched. Only then are
+# Pitch Black and Wireframe Torus explicitly applied, each followed by a real
+# HOME capture, a Home-ID change and an unchanged widget/layout proof.
+capture_wallpaper_gallery() {
+    _cwg_failure=
+    _cwg_widgets_before=$(_cwg_widget_ids "$ARTIFACTS/wallpaper-widgets-before.txt") ||
+        fail "could not dump widgets before the wallpaper gallery"
+    [ -n "$_cwg_widgets_before" ] ||
+        fail "no launcher-owned widget IDs before the wallpaper gallery"
+
+    _cwg_ids_before=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-before.txt") ||
+        fail "could not measure the Home and lock wallpaper IDs"
+    set -- $_cwg_ids_before
+    _cwg_home_before=$1
+    _cwg_lock_before=$2
+    printf 'home=%s lock=%s widgets=%s\n' \
+        "$_cwg_home_before" "$_cwg_lock_before" "$_cwg_widgets_before" \
+        > "$ARTIFACTS/wallpaper-baseline.txt"
+
+    _cwg_night_before=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r')
+    _cwg_night_value=$(printf '%s\n' "$_cwg_night_before" |
+        sed -n 's/^[Nn]ight mode:[[:space:]]*//p' | sed -n '1p')
+    case "$_cwg_night_value" in
+        yes | no | auto) ;;
+        *) _cwg_night_value=auto ;;
+    esac
+
+    for _cwg_mode in yes no; do
+        case "$_cwg_mode" in
+            yes) _cwg_name=dark ;;
+            no) _cwg_name=light ;;
+        esac
+        if ! adb_cmd shell cmd uimode night "$_cwg_mode" >/dev/null 2>&1; then
+            _cwg_failure="could not switch to night $_cwg_mode for the wallpaper $_cwg_name capture"
+            break
+        fi
+        sleep 1
+        if ! _cwg_launch_gallery "$_cwg_name"; then
+            _cwg_failure="could not open the wallpaper gallery in $_cwg_name mode"
+            break
+        fi
+        sleep 1
+        if ! capture_ui_xml "wallpaper-gallery-$_cwg_name.xml"; then
+            _cwg_failure="wallpaper gallery $_cwg_name XML capture failed"
+            break
+        fi
+        for _cwg_label in 'AMOLED Wallpapers' 'Pitch Black' 'Wireframe Torus'; do
+            grep -Fq "$_cwg_label" "$ARTIFACTS/wallpaper-gallery-$_cwg_name.xml" ||
+                { _cwg_failure="wallpaper gallery $_cwg_name is missing '$_cwg_label'"; break; }
+        done
+        [ -z "$_cwg_failure" ] || break
+        capture_screenshot_to "wallpaper-gallery-$_cwg_name.png"
+        _cwg_tile=$(ui_clickable_label_bounds \
+            "$ARTIFACTS/wallpaper-gallery-$_cwg_name.xml" 'Pitch Black')
+        [ -n "$_cwg_tile" ] ||
+            { _cwg_failure="could not measure the Pitch Black tile in $_cwg_name mode"; break; }
+        tap_center_of_bounds "$_cwg_tile"
+        sleep 1
+        if ! capture_ui_xml "wallpaper-preview-$_cwg_name.xml"; then
+            _cwg_failure="wallpaper preview $_cwg_name XML capture failed"
+            break
+        fi
+        for _cwg_label in 'Apply to Home screen' 'CC BY 4.0'; do
+            grep -Fq "$_cwg_label" "$ARTIFACTS/wallpaper-preview-$_cwg_name.xml" ||
+                { _cwg_failure="wallpaper preview $_cwg_name is missing '$_cwg_label'"; break; }
+        done
+        [ -z "$_cwg_failure" ] || break
+        capture_screenshot_to "wallpaper-preview-$_cwg_name.png"
+        adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 ||
+            { _cwg_failure="could not leave the wallpaper preview in $_cwg_name mode"; break; }
+        sleep 1
+        _cwg_ids_after=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-preview-$_cwg_name.txt") ||
+            { _cwg_failure="could not re-read wallpaper IDs after the $_cwg_name preview"; break; }
+        [ "$_cwg_ids_after" = "$_cwg_ids_before" ] ||
+            { _cwg_failure="preview/Back changed wallpaper IDs in $_cwg_name mode"; break; }
+    done
+
+    if ! adb_cmd shell cmd uimode night "$_cwg_night_value" >/dev/null 2>&1; then
+        _cwg_failure="could not restore the emulator night mode after the wallpaper gallery"
+    fi
+    sleep 1
+
+    _cwg_widgets_after_preview=$(_cwg_widget_ids "$ARTIFACTS/wallpaper-widgets-after-preview.txt") ||
+        _cwg_failure="could not re-dump widgets after the wallpaper preview"
+    [ "$_cwg_widgets_after_preview" = "$_cwg_widgets_before" ] ||
+        _cwg_failure="preview/Back changed widget IDs"
+    [ -z "$_cwg_failure" ] || fail "$_cwg_failure"
+
+    _cwg_apply_wallpaper 'Pitch Black' 'pitch-black'
+    _cwg_apply_wallpaper 'Wireframe Torus' 'wireframe-torus'
+
+    _cwg_ids_final=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-final.txt") ||
+        fail "could not measure the final wallpaper IDs"
+    printf 'final ids=%s\n' "$_cwg_ids_final" >> "$ARTIFACTS/wallpaper-baseline.txt"
+    return_home wallpaper-gallery
+}
+
+# Explicitly apply one measured tile. The caller has already entered the
+# gallery; this opens it again, taps the tile and the separate Apply button,
+# then polls only for a changed Home ID.
+_cwg_apply_wallpaper() {
+    _caw_label=$1
+    _caw_slug=$2
+    _caw_ids_before=$(_cwg_read_ids "$ARTIFACTS/wallpaper-apply-$_caw_slug-ids-before.txt") ||
+        fail "could not measure wallpaper IDs before applying $_caw_label"
+    set -- $_caw_ids_before
+    _caw_home_before=$1
+    _caw_lock_before=$2
+
+    _cwg_launch_gallery "apply-$_caw_slug" ||
+        fail "could not open the gallery to apply $_caw_label"
+    sleep 1
+    capture_ui_xml "wallpaper-apply-$_caw_slug-tile.xml" ||
+        fail "could not capture the $_caw_label gallery tile"
+    _caw_tile=$(ui_clickable_label_bounds \
+        "$ARTIFACTS/wallpaper-apply-$_caw_slug-tile.xml" "$_caw_label")
+    [ -n "$_caw_tile" ] || fail "could not measure the $_caw_label tile"
+    tap_center_of_bounds "$_caw_tile"
+    sleep 1
+    capture_ui_xml "wallpaper-apply-$_caw_slug-preview.xml" ||
+        fail "could not capture the $_caw_label preview"
+    _caw_apply=$(ui_clickable_label_bounds \
+        "$ARTIFACTS/wallpaper-apply-$_caw_slug-preview.xml" 'Apply to Home screen')
+    [ -n "$_caw_apply" ] || fail "could not measure the $_caw_label Apply button"
+    tap_center_of_bounds "$_caw_apply"
+
+    _caw_after=
+    _caw_after_home=
+    _caw_after_lock=
+    _caw_poll=0
+    while [ "$_caw_poll" -lt 10 ]; do
+        _caw_poll=$((_caw_poll + 1))
+        sleep 1
+        _caw_after=$(_cwg_read_ids "$ARTIFACTS/wallpaper-apply-$_caw_slug-ids-$_caw_poll.txt") ||
+            fail "could not read wallpaper IDs after applying $_caw_label"
+        set -- $_caw_after
+        _caw_after_home=$1
+        _caw_after_lock=$2
+        [ "$_caw_after_home" != "$_caw_home_before" ] && break
+    done
+    [ -n "$_caw_after_home" ] || fail "no wallpaper ID result after applying $_caw_label"
+    [ "$_caw_after_home" != "$_caw_home_before" ] ||
+        fail "applying $_caw_label did not change the Home wallpaper ID"
+    wallpaper_lock_preserved "$_caw_home_before" "$_caw_lock_before" "$_caw_after_lock" ||
+        fail "applying $_caw_label changed the lock wallpaper"
+    printf 'applied=%s before=%s after=%s\n' "$_caw_slug" "$_caw_ids_before" "$_caw_after" \
+        > "$ARTIFACTS/wallpaper-apply-$_caw_slug.txt"
+
+    capture_screenshot_to "wallpaper-apply-$_caw_slug.png"
+    return_home "wallpaper-$_caw_slug"
+    sleep 1
+    _caw_widgets=$(_cwg_widget_ids "$ARTIFACTS/wallpaper-apply-$_caw_slug-widgets.txt") ||
+        fail "could not re-dump widgets after applying $_caw_label"
+    [ "$_caw_widgets" = "$_cwg_widgets_before" ] ||
+        fail "applying $_caw_label changed the widget IDs"
+    verify_home_widgets
+    capture_ui_xml "wallpaper-home-after-$_caw_slug.xml" ||
+        fail "could not capture HOME after applying $_caw_label"
+    _cwg_home_before=$_caw_after_home
+    _cwg_lock_before=$_caw_after_lock
+}
+
 fail() {
     printf 'emulator-smoke: FAIL: %s\n' "$*" >&2
     if command -v adb >/dev/null 2>&1; then
@@ -2440,6 +2628,8 @@ capture_native_surfaces_theme
 capture_theme_sample dark
 capture_theme_sample light
 return_home theme-sample
+
+capture_wallpaper_gallery
 
 capture_logcat
 [ -s "$ARTIFACTS/logcat.txt" ] || fail "logcat capture failed"

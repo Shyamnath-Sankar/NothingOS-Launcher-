@@ -2921,6 +2921,61 @@ EOF
 assert_eq 'the stable display frame is the navigation fallback' \
     '0 1824 1080 1920' "$(ui_navigation_bar_bounds "$nav_display")"
 
+nav_insets="$TMP_DIR/nav-insets.txt"
+cat > "$nav_insets" <<'EOF'
+  InsetsSource id=1 type=navigationBars frame=[0,1794][1080,1920] visible=true
+    associated with Taskbar
+  InsetsSource id=2 type=statusBars frame=[0,0][1080,72] visible=true
+EOF
+assert_eq 'the modern InsetsSource navigationBars frame is measured' \
+    '0 1794 1080 1920' "$(ui_navigation_bar_bounds "$nav_insets")"
+
+nav_insets_hidden="$TMP_DIR/nav-insets-hidden.txt"
+cat > "$nav_insets_hidden" <<'EOF'
+  InsetsSource id=1 type=navigationBars frame=[0,1794][1080,1920] visible=false
+EOF
+assert_eq 'an invisible InsetsSource navigationBars frame does not guess' \
+    '' "$(ui_navigation_bar_bounds "$nav_insets_hidden")"
+
+nav_insets_rect="$TMP_DIR/nav-insets-rect.txt"
+cat > "$nav_insets_rect" <<'EOF'
+  InsetsSource type=navigationBars frame=Rect(0, 1794 - 1080, 1920) visible=true
+EOF
+assert_eq 'modern Rect frame syntax is measured' \
+    '0 1794 1080 1920' "$(ui_navigation_bar_bounds "$nav_insets_rect")"
+
+wallpaper_dump="$TMP_DIR/wallpaper-dump.txt"
+cat > "$wallpaper_dump" <<'EOF'
+  mCurrentUserId=0
+  mWallpaperId: 41
+  mLockWallpaperId: 40
+EOF
+assert_eq 'Home and lock wallpaper IDs are measured separately' \
+    '41 40' "$(wallpaper_ids_from_dump "$wallpaper_dump")"
+
+wallpaper_dump_home_only="$TMP_DIR/wallpaper-dump-home-only.txt"
+cat > "$wallpaper_dump_home_only" <<'EOF'
+  Home wallpaper ID: 41
+EOF
+assert_eq 'a Home-only wallpaper dump reports no invented lock ID' \
+    '41 -' "$(wallpaper_ids_from_dump "$wallpaper_dump_home_only")"
+
+wallpaper_dump_none="$TMP_DIR/wallpaper-dump-none.txt"
+printf 'no wallpaper ids here\n' > "$wallpaper_dump_none"
+assert_eq 'an unmeasurable wallpaper dump prints nothing' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_none")"
+
+assert_true 'an unchanged lock ID is preserved' \
+    wallpaper_lock_preserved 41 40 40
+assert_false 'a moved lock ID is rejected' \
+    wallpaper_lock_preserved 41 40 39
+assert_true 'an absent lock ID may materialise as the prior Home ID' \
+    wallpaper_lock_preserved 41 - 41
+assert_true 'an absent lock ID may stay absent' \
+    wallpaper_lock_preserved 41 - -
+assert_false 'an absent lock ID may not take the new Home ID' \
+    wallpaper_lock_preserved 41 - 42
+
 nav_none="$TMP_DIR/nav-none.txt"
 printf 'no window data here\n' > "$nav_none"
 assert_eq 'an unmeasurable navigation bar prints nothing' \
