@@ -24,17 +24,32 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
-- proves the two original widgets are actually hosted: `dumpsys appwidget` must contain distinct
-  launcher-owned `AppWidgetId` records for `DotWelClockWidgetProvider` and
-  `DotWelBatteryWidgetProvider` (current `[N] id=N`/`HostId` and legacy `AppWidgetId`/
-  `hostPackage` shapes, including the API 37 `ProviderId{cmp:ComponentInfo{...}}` wrapper). A
-  provider catalog or a widget owned by another host fails. The measured HOME XML must expose the
-  `nothingui_clock_time` child with a live `H:mm`/`HH:mm` value and the `nothingui_battery_art`
-  child with a real `0..100%` or `--` description
+- proves the three original widgets are actually hosted: `dumpsys appwidget` must contain distinct
+  launcher-owned `AppWidgetId` records for `DotWelClockWidgetProvider`,
+  `DotWelBatteryWidgetProvider` and `DotWelDeviceWidgetProvider` (current `[N] id=N`/`HostId` and
+  legacy `AppWidgetId`/`hostPackage` shapes, including the API 37
+  `ProviderId{cmp:ComponentInfo{...}}` wrapper). A provider catalog or a widget owned by another
+  host fails. The measured HOME XML must expose the `nothingui_clock_time` child with a live
+  `H:mm`/`HH:mm` value, the `nothingui_battery_art` child with a real `0..100%` or `--`
+  description, and the device card's `nothingui_device_storage_value` plus
+  `nothingui_device_storage_detail`; an unavailable storage read must show the short `--` marker and
+  the localized `Storage unavailable` detail, never the long placeholder
 - before any third-party widget is added, requires the existing `pref_launcherTheme=system` choice
   (read-only), captures `clean-home-dark.xml`/`.png` and `clean-home-light.xml`/`.png` under system
   night `yes`/`no`, runs the same launcher-owned widget-id and child-value proof for each capture,
   restores the previous night mode, and returns HOME
+- then exercises the three real device-card Settings pills (`nothingui_device_wifi`,
+  `nothingui_device_sound`, `nothingui_device_display`) by the bounds of each measured child, not
+  the card centre. For each pill it resolves the expected destination from the installed platform
+  with `cmd package resolve-activity --brief` for `android.settings.WIFI_SETTINGS`,
+  `android.settings.SOUND_SETTINGS` and `android.settings.DISPLAY_SETTINGS`, falling back to
+  `android.settings.SETTINGS` exactly as the widget does; it never guesses an activity alias. It
+  requires the platform-resolved component to be foreground, captures
+  `activities-device-settings-<action>.txt` and `device-settings-<action>.xml`/`.png`, presses HOME,
+  requires the device card and pill to be visible again, and re-reads `dumpsys appwidget` to prove
+  all three own widget ids are distinct and unchanged. It writes `device-settings-before.png`,
+  `device-settings-home-<action>.png`, `device-settings-log.txt` and `device-settings.txt`, and it
+  never changes a setting or rebinds a widget
 - captures app-info and About evidence, then verifies the real Play settings palette. It reads the
   existing `pref_launcherTheme` preference and requires `system` (a clean install defaults to it; the
   smoke never writes the preference), switches the emulator with `cmd uimode night yes` and
@@ -134,15 +149,22 @@ a view.
   and only when the same block is owned by this launcher. Provider catalogs and other hosts are
   rejected. The HOME comparison parses both hierarchies
   as node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
-  picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
-  `widgets-add-last.xml`/`.png` if a configuration activity, an uncompleted consent or an unbound
-  provider blocks placement. The placed widget must sit between the measured header bottom and dock
-  top, so it cannot cover the later drawer swipe start. It then launches Settings with
+  picker/sheet previews.
+  A denser factory HOME can put the new provider on a later page, so after Add and any bind consent
+  the smoke waits for a new launcher-owned `AppWidgetId`, then searches at most three measured HOME
+  pages. Identity is the picker-selected provider label plus a real workspace host, never geometry
+  alone: a reference host with a different label, a pending host, a picker/sheet preview and an
+  outside-workspace host are rejected. This keeps the inherited own Clock (same provider family) from
+  satisfying a new third-party Clock placement. It saves `widgets-placement-page-N.xml`/`.png`,
+  `widgets-survival-page-N.xml`/`.png`, the activities/swipe logs and `widgets-page-log.txt` for every
+  page visited, and captures `widgets-home-placed.xml`/`.png` only for the exact matched host. The
+  placed widget must sit between the measured header bottom and dock top, so it cannot cover the
+  later drawer swipe start. It then launches Settings with
   `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
-  captures `widgets-settings-launched.xml`/`.png`, presses HOME, captures
-  `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to remain. It never starts
-  the picker or a configuration activity directly, never binds an app widget itself, and never writes
-  preferences or the database.
+  captures `widgets-settings-launched.xml`/`.png`, presses HOME, and searches the same bounded pages
+  by provider label plus the exact placed bounds. It captures `widgets-home-after-home.xml`/`.png`
+  and requires that exact host to remain. It never starts the picker or a configuration activity
+  directly, never binds an app widget itself, and never writes preferences or the database.
 
 Evidence for these phases:
 
@@ -191,6 +213,11 @@ widgets-add.xml
 widgets-add.png
 widgets-bind-consent.xml
 widgets-bind-consent.png
+widgets-placement-page-N.xml
+widgets-placement-page-N.png
+widgets-survival-page-N.xml
+widgets-survival-page-N.png
+widgets-page-log.txt
 widgets-home-placed-attempt-N.xml
 widgets-home-placed.xml
 widgets-home-placed.png
@@ -200,6 +227,33 @@ widgets-settings-launched.png
 activities-widget-settings.txt
 widgets-home-after-home.xml
 widgets-home-after-home.png
+device-settings-before.xml
+device-settings-before.png
+activities-device-settings-wifi.txt
+activities-device-settings-sound.txt
+activities-device-settings-display.txt
+device-settings-wifi.xml
+device-settings-wifi.png
+device-settings-sound.xml
+device-settings-sound.png
+device-settings-display.xml
+device-settings-display.png
+device-settings-home-wifi.xml
+device-settings-home-wifi.png
+device-settings-home-sound.xml
+device-settings-home-sound.png
+device-settings-home-display.xml
+device-settings-home-display.png
+device-settings-appwidget-before.txt
+device-settings-appwidget-after-wifi.txt
+device-settings-appwidget-after-sound.txt
+device-settings-appwidget-after-display.txt
+device-settings-instances-before.txt
+device-settings-instances-after-wifi.txt
+device-settings-instances-after-sound.txt
+device-settings-instances-after-display.txt
+device-settings-log.txt
+device-settings.txt
 widgets-appwidget-before.txt
 widgets-appwidget-after.txt
 widgets-appwidget-providers.txt

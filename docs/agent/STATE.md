@@ -3,18 +3,67 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 pending-widget smoke harness recovery**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 provider identity, page discovery and device Settings proof**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `c39199a` (`chore(widgets): match google-java-format AOSP for provider policy constants`);
-  previous head `740b2cb`, base `452ffb4`. This STATE commit follows.
+- head: `81afb5e` (`test(smoke): exercise device Settings pills at measured bounds`); this STATE
+  commit follows. Previous commits this run: `56bb219`, `a46a487`, `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI136** — `assemble`/unit passed; the `play-brand-guard` failure was corrected by `18c8ac4`
-  and has not been re-run since. The harness recovery below still needs a fresh PR19 CI run.
-- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit tests,
-  Verify Play manifest and identity, API 37 smoke). Inspect the own-widget before/consent/after
-  XML+PNG and the clean dark/light home screenshots. No further app change planned. Do not merge.
+- ci: **CI147** (coordinator-reported, not reproduced locally) — compile/assemble, Kotlin/Java
+  style and **62 unit tests passed**; the own-widget runtime phase succeeded; the third-party
+  placement detector failed; the Coding57 watchdog stalled and checkpoint recovery preserved work.
+  A fresh PR19 run is required at this head.
+- next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
+  tests, Verify Play manifest and identity, and the API 37 smoke. Inspect
+  `device-settings-*.xml/.png`, `activities-device-settings-*.txt`, the page-discovery
+  `widgets-placement-page-*`/`widgets-survival-page-*` evidence, and clean dark/light HOME. The
+  third-party detector still needs diagnosis from the fresh CI147-era evidence; do not guess and do
+  not merge.
 
-## done (this run — PR19 pending-widget smoke harness recovery)
+## done (this run — PR19 provider identity, page discovery and device Settings proof)
+
+- **Device storage fallback:** `NothingUiDeviceStorage` now exposes `UNKNOWN_MARKER = "--"` and a
+  negative/unknown size renders `--`; the device layout's default storage value and the localized
+  `Storage unavailable` detail are the short fallback. The unit expectation for
+  `usedPercent(3L, 1L)` was corrected from `100` to `67` (integer rounding is 67%), and
+  `formatSize(-1L)` expects `--`. The new `nothingui_device_storage_unknown_value` string is
+  `translatable="false"`.
+- **Provider identity, not geometry:** `home_widget_bounds` accepts an optional expected provider
+  label, matches the real workspace host `content-desc`, ignores reference hosts with a different
+  label, and rejects pending hosts, picker/sheet previews and hosts outside the workspace when an
+  expected label is supplied. The inherited first-unseen behavior is preserved when no label is
+  supplied. The unsafe `home_has_widget_bounds` helper was removed; no bounds-only placement claim
+  remains. Fixtures cover new Calendar vs existing own Clock at the same geometry, a wrong provider
+  at the same bounds, preview, outside workspace, pending host, and two own hosts before Calendar.
+- **Measured page discovery:** after Add and bind consent, the smoke waits for a new
+  launcher-owned `AppWidgetId`, then searches at most three measured HOME pages by provider label
+  plus a real workspace host. It refuses to swipe unless the launcher is resumed and no bind consent
+  is open, and saves per-page XML/PNG, activities/swipe logs and `widgets-page-log.txt`. The
+  after-Settings survival search uses the provider label plus the exact placed bounds and rechecks
+  that exact host. Static tests assert the three-page cap, foreground/consent safety, per-page
+  evidence and no bounds-only helper.
+- **Device Settings shortcuts:** `exercise_device_settings_shortcuts` taps the measured child bounds
+  of `nothingui_device_wifi`, `nothingui_device_sound` and `nothingui_device_display`. It resolves
+  each expected destination from the installed platform with
+  `cmd package resolve-activity --brief` for `WIFI_SETTINGS`, `SOUND_SETTINGS` and
+  `DISPLAY_SETTINGS`, falling back to `android.settings.SETTINGS` exactly as the widget does, and
+  never guesses an alias. It requires the platform-resolved component foreground, captures the
+  Settings activity/UI, returns HOME, requires the card and pill visible again, and re-reads
+  `dumpsys appwidget` to prove all three own ids are distinct and unchanged. It never writes a
+  setting or rebinds a widget.
+- **Focused fixtures:** smoke tests now cover `parse_resolved_component` (brief, priority-prefixed,
+  alias and no-activity output), device child bounds, device storage short fallback, device provider
+  binding in `own_widget_new_binding`, static device provider/storage checks, and the device
+  Settings flow/order. `_cows_max_rounds` was corrected to `3` with the label “at most three rounds”.
+- **Verification actually run (no Gradle, no Android, no emulator):**
+  `emulator-smoke-test.sh` 443/443; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite 19/19;
+  `verify-play-build-test.sh` 11/11; `sh -n` clean on every edited script; `git diff --check`
+  clean. The JUnit test, Android build, style and API 37 runtime captures remain CI gates.
+- **Blocked/unknown:** no local JUnit or runtime result. CI147's third-party detector failure is not
+  fixed here; the page-discovery change is the intended correction but needs fresh CI evidence.
+  PR19 is not merged and no pixel/APK claim is made.
+
+## done (previous run — PR19 pending-widget smoke harness recovery)
 
 - **Reported failure reproduced:** at `740b2cb` the smoke fixture suite had exactly one failure:
   `a pending host outside a present workspace is rejected` returned `40 900 500 1200`.
