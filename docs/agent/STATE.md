@@ -3,24 +3,77 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — offline AMOLED wallpaper gallery slice
-  (pending combined CI/pixels)**.
+- current_phase: **P5 home-widget-composition-v1 — pre-CI repair of the offline AMOLED wallpaper
+  gallery slice (combined CI/pixels still pending)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `9bd0a8d` (`fix(smoke): measure modern nav insets and prove wallpaper gallery`).
-  This STATE commit follows. Candidate base was the reviewed `88c05dd1`; asset commit `7e5822f`,
-  gallery commit `6322e84`.
+- head: `ea278df` (`fix(wallpaper): show licence links, guard apply, gate route`). This STATE commit
+  follows. Parser/fixtures commit `fb35da9`. Candidate base was the reviewed `88c05dd1`; asset commit
+  `7e5822f`, gallery commit `6322e84`, prior smoke commit `9bd0a8d`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: last verified runtime checkpoint is **CI181** (`6824907`). No CI result is claimed for this
-  head. `69` had only source/cheap-fixture review, not accepted pixels. The next combined CI must
-  prove spacing plus this gallery.
-- next: run the Play build/style, JUnit (including the two new wallpaper tests), Verify Play
-  manifest/identity and the API 37 smoke. Confirm the modern `InsetsSource navigationBars`
-  `frame=[0,1794][1080,1920]` is measured, the gallery opens from both dashboard and Home Screen
-  settings, preview/theme/Cancel/Back leave both wallpaper IDs and widget IDs unchanged, Pitch Black
-  and Torus each change only the Home ID and preserve widgets/layout, and the actual `dumpsys
-  wallpaper` field names match `wallpaper_ids_from_dump`. Release/hosting stay paused.
+  head. The next combined CI must prove spacing plus this gallery.
+- next: run the Play build/style, JUnit (including the licence-URL catalogue test), Verify Play
+  manifest/identity and the API 37 smoke. Confirm the current AOSP `dumpsys wallpaper` sections
+  parse for the real emulator user, the gallery opens from both dashboard and Home Screen settings,
+  preview/Cancel/Back leave both wallpaper IDs and widget IDs unchanged, the measured scroll exposes
+  Apply and Cancel, Pitch Black and Torus each change only the Home ID and preserve widgets/layout,
+  and the lock-preservation rule holds on the actual dump. Release/hosting stay paused.
 
-## done (this run — offline AMOLED wallpaper gallery)
+## done (this run — pre-CI wallpaper gallery repairs)
+
+- **Wallpaper ID parser (current AOSP):** `wallpaper_ids_from_dump` now reads the real
+  `WallpaperManagerService.dump`/`dumpWallpaper` format: `System wallpaper state:`,
+  `Lock wallpaper state:` and `Fallback wallpaper state:` sections with
+  ` User <id>: id=<wallpaperId>: mWhich=...: mSystemWasBoth=...: mBindSource=...` rows. It parses
+  only the System/Lock sections, ignores the fallback and other users, accepts an explicit current
+  user (or a single System user), and fails closed on missing or ambiguous target evidence. Legacy
+  `Home wallpaper ID` / `mWallpaperId` / `mLockWallpaperId` fixtures still parse only when no current
+  System section exists. `_cwg_read_ids` supplies the emulator user from `am get-current-user` and
+  keeps every raw dump as an artifact. No protected wallpaper image is read.
+- **Lock preservation tightened:** when the prior lock was shared/absent (`-`), a changed Home is
+  preserved only if the lock materialises with an ID equal to the prior Home ID. A still-absent lock
+  after a changed Home is no longer accepted as proof.
+- **Fixtures:** new current-format separate-lock, truly empty Lock section/shared Home, multiple
+  users (current and explicit user, ambiguous no-user, missing user), fallback-only, missing System
+  section, empty System section and malformed inputs; the legacy fixtures remain.
+- **Licence links in the APK UI:** `AmoledWallpaper` now carries the exact CC BY 4.0
+  (`https://creativecommons.org/licenses/by/4.0/`) and CC0 1.0
+  (`https://creativecommons.org/publicdomain/zero/1.0/`) URLs, and the preview shows a visible
+  `License: <url>` button next to `Source: <url>`. Tecdrop copyright, the source link and the
+  rename-only notice remain visible. Both link taps use `runCatching`, so an unsupported external
+  link cannot crash Settings; there is no runtime download. `docs/wallpapers` and
+  `licenses/wallpapers` are unchanged.
+- **Cancel preview:** a new explicit `Cancel preview` control clears the selection and message
+  without applying; normal Back is untouched and preview/Cancel never call the applier.
+- **Apply-state guards:** the tile `selectable` is disabled while applying, its `onSelect` is
+  guarded, the Apply button stays disabled during the job, and Cancel preview is disabled in flight
+  (not a fake undo). The selected ID uses `rememberSaveable`; `applying`/the job are not saved, so a
+  recreation cannot retrigger an apply.
+- **Play route gate:** `composable<AmoledWallpapers>` (including its deep link) is now registered
+  only when `isPlayStoreFlavor()` is true, matching the already-gated dashboard/Home Screen links.
+  Other navigation and non-Play behavior are unchanged; no manifest change.
+- **Measured scroll in the smoke:** new pure `ui_scroll_container_bounds`,
+  `ui_clickable_label_within` and `settings_scroll_target` helpers read the real `scrollable="true"`
+  settings container clipped to the measured navigation safe viewport. `_cwg_measure_control`
+  re-captures, records each attempt, accepts only a fully visible tappable Apply/Cancel, swipes
+  inside the measured band, and fails after four attempts. It replaces the direct Apply tap and
+  drives Cancel preview; no hardcoded phone height or coordinates.
+- **Preserved:** all assets/hashes/vector paths, palette/geometry, Home-only applier, the `69`
+  spacing clip, existing native/widget smoke, and every workflow/dependency/SDK/permission/
+  provider/signing/manifest/application-ID/system-nav/default-home setting. No gallery rebuild,
+  theme reopen, release, merge or local Android build.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` all pass (including the new parser/scroll fixtures);
+  `nothingui-wallpaper-guard.sh` OK; `nothingui-polish-guard.sh` OK;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean. No local `ktlint`/`spotless` binary is installed, so Kotlin style was checked by the
+  existing source guard and manual import/trailing-comma review only.
+- **Blocked/unknown:** no local JUnit, APK, merged-manifest or runtime pixel result. The actual
+  emulator `dumpsys wallpaper` output, the measured Apply/Cancel scrolling, Cancel-preview IDs and
+  the Play deep-link gate are **not** proven until the next combined API 37 CI. No completion claim;
+  PR19 is not merged.
+
+## done (previous run — offline AMOLED wallpaper gallery)
 
 - **Assets fetched once, hashes exact:** Tecdrop `pitch-black-wallpaper-fhd-mobile-1080x1920-1bit.png`
   (348 B) SHA-256 `d0e03819…58181d` is committed as
