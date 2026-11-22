@@ -1236,6 +1236,129 @@ capture_grid_settings() {
     verify_nothing_home
 }
 
+# Resolve a Settings action through the installed platform, falling back to the
+# top-level Settings action exactly as the device widget does. Prints
+# "<action><TAB><component>"; never guesses an activity alias.
+resolve_settings_action_component() (
+    action=$1
+    for candidate in "$action" android.settings.SETTINGS; do
+        out=$(adb_cmd shell cmd package resolve-activity --brief -a "$candidate" \
+            2>&1 | tr -d '\r' || true)
+        component=$(parse_resolved_component "$out")
+        if [ -n "$component" ]; then
+            printf '%s\t%s\n' "$candidate" "$component"
+            return 0
+        fi
+    done
+    return 1
+)
+
+# Tap each real device-card Settings pill at its measured child bounds, prove the
+# resulting platform-resolved Settings destination is foreground, capture the
+# activity UI, return HOME and require all three own widget ids to be unchanged.
+# No setting is changed and no widget is rebound.
+exercise_device_settings_shortcuts() {
+    capture_ui_xml device-settings-before.xml ||
+        fail "could not capture HOME before the device Settings shortcuts"
+    capture_screenshot_to device-settings-before.png
+    [ -s "$ARTIFACTS/device-settings-before.png" ] ||
+        fail "device Settings before screenshot capture failed"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/device-settings-appwidget-before.txt" 2>&1 || true
+    appwidget_launcher_instances \
+        "$ARTIFACTS/device-settings-appwidget-before.txt" "$PKG" \
+        > "$ARTIFACTS/device-settings-instances-before.txt"
+    _eds_clock_id=$(awk -F '\t' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelClockWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/device-settings-instances-before.txt")
+    _eds_battery_id=$(awk -F '\t' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelBatteryWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/device-settings-instances-before.txt")
+    _eds_device_id=$(awk -F '\t' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelDeviceWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/device-settings-instances-before.txt")
+    [ -n "$_eds_clock_id" ] && [ -n "$_eds_battery_id" ] && [ -n "$_eds_device_id" ] ||
+        fail "the device Settings check could not find all three launcher-owned widget ids"
+    [ "$_eds_clock_id" != "$_eds_battery_id" ] &&
+        [ "$_eds_device_id" != "$_eds_clock_id" ] &&
+        [ "$_eds_device_id" != "$_eds_battery_id" ] ||
+        fail "the three own widget ids are not distinct before the device Settings check"
+    : > "$ARTIFACTS/device-settings-log.txt"
+
+    for _eds_action in wifi sound display; do
+        case "$_eds_action" in
+            wifi) _eds_intent=android.settings.WIFI_SETTINGS ;;
+            sound) _eds_intent=android.settings.SOUND_SETTINGS ;;
+            display) _eds_intent=android.settings.DISPLAY_SETTINGS ;;
+        esac
+        _eds_bounds=$(home_widget_device_action_bounds \
+            "$ARTIFACTS/device-settings-before.xml" "$_eds_action")
+        [ -n "$_eds_bounds" ] ||
+            fail "the device card does not expose measured $_eds_action child bounds"
+        _eds_resolved=$(resolve_settings_action_component "$_eds_intent") ||
+            fail "the installed platform resolved neither $_eds_intent nor the top-level Settings fallback"
+        _eds_expected_action=${_eds_resolved%%	*}
+        _eds_expected_component=${_eds_resolved#*	}
+        _eds_expected_pkg=${_eds_expected_component%%/*}
+        _eds_expected_cls=${_eds_expected_component#*/}
+        printf 'action=%s bounds=%s expected_action=%s expected_component=%s\n' \
+            "$_eds_action" "$_eds_bounds" "$_eds_expected_action" \
+            "$_eds_expected_component" >> "$ARTIFACTS/device-settings-log.txt"
+        tap_center_of_bounds "$_eds_bounds" ||
+            fail "could not tap the measured device $_eds_action pill"
+        _eds_activities="$ARTIFACTS/activities-device-settings-$_eds_action.txt"
+        wait_for_foreground com.android.settings "$_eds_activities" 15 ||
+            fail "the device $_eds_action shortcut did not foreground Settings"
+        capture_ui_xml "device-settings-$_eds_action.xml" ||
+            fail "could not capture the device $_eds_action Settings UI"
+        capture_screenshot_to "device-settings-$_eds_action.png"
+        [ -s "$ARTIFACTS/device-settings-$_eds_action.png" ] ||
+            fail "device $_eds_action Settings screenshot capture failed"
+        foreground_is_component \
+            "$_eds_activities" "$_eds_expected_pkg" "$_eds_expected_cls" ||
+            fail "the device $_eds_action shortcut opened '$(resumed_component "$_eds_activities")', expected the platform-resolved '$_eds_expected_component'"
+        grep -Fq 'package="com.android.settings"' \
+            "$ARTIFACTS/device-settings-$_eds_action.xml" ||
+            fail "the device $_eds_action destination UI is not the Settings package"
+        printf 'actual_component=%s ui=device-settings-%s.xml\n' \
+            "$(resumed_component "$_eds_activities")" "$_eds_action" \
+            >> "$ARTIFACTS/device-settings-log.txt"
+
+        return_home "device-settings-$_eds_action"
+        _eds_home_xml="$ARTIFACTS/device-settings-home-$_eds_action.xml"
+        capture_ui_xml "device-settings-home-$_eds_action.xml" ||
+            fail "could not capture HOME after the device $_eds_action shortcut"
+        capture_screenshot_to "device-settings-home-$_eds_action.png"
+        [ -n "$(home_widget_device_action_bounds "$_eds_home_xml" "$_eds_action")" ] ||
+            fail "the device card $_eds_action pill is not visible after returning HOME"
+        adb_cmd shell dumpsys appwidget \
+            > "$ARTIFACTS/device-settings-appwidget-after-$_eds_action.txt" 2>&1 || true
+        appwidget_launcher_instances \
+            "$ARTIFACTS/device-settings-appwidget-after-$_eds_action.txt" "$PKG" \
+            > "$ARTIFACTS/device-settings-instances-after-$_eds_action.txt"
+        _eds_clock_after=$(awk -F '\t' \
+            '$2 ~ /app\.dotwel\.widgets\.DotWelClockWidgetProvider}/ { print $1; exit }' \
+            "$ARTIFACTS/device-settings-instances-after-$_eds_action.txt")
+        _eds_battery_after=$(awk -F '\t' \
+            '$2 ~ /app\.dotwel\.widgets\.DotWelBatteryWidgetProvider}/ { print $1; exit }' \
+            "$ARTIFACTS/device-settings-instances-after-$_eds_action.txt")
+        _eds_device_after=$(awk -F '\t' \
+            '$2 ~ /app\.dotwel\.widgets\.DotWelDeviceWidgetProvider}/ { print $1; exit }' \
+            "$ARTIFACTS/device-settings-instances-after-$_eds_action.txt")
+        [ "$_eds_clock_after" = "$_eds_clock_id" ] &&
+            [ "$_eds_battery_after" = "$_eds_battery_id" ] &&
+            [ "$_eds_device_after" = "$_eds_device_id" ] ||
+            fail "a launcher-owned widget id changed after the device $_eds_action shortcut (clock=$_eds_clock_after battery=$_eds_battery_after device=$_eds_device_after)"
+        printf 'returned_home=1 ids=%s,%s,%s\n' \
+            "$_eds_clock_after" "$_eds_battery_after" "$_eds_device_after" \
+            >> "$ARTIFACTS/device-settings-log.txt"
+    done
+    printf 'Device settings: the three measured device-card pills opened the platform-resolved Settings destinations, each Settings UI was captured, HOME was restored without changing a setting, and all three own widget ids stayed distinct and unchanged.\n' \
+        > "$ARTIFACTS/device-settings.txt"
+    printf 'Screenshots: device-settings-before.png, device-settings-wifi.png, device-settings-sound.png, device-settings-display.png, device-settings-home-*.png.\n' \
+        >> "$ARTIFACTS/device-settings.txt"
+}
+
 # Search up to three measured HOME page advances for the newly placed provider,
 # identified by the picker-selected label and a real workspace host, and never
 # by geometry alone. The caller must have already verified the launcher is
@@ -2091,6 +2214,7 @@ capture_screenshot
 complete_own_widget_setup
 verify_nothing_home
 capture_clean_home_theme
+exercise_device_settings_shortcuts
 capture_grid_settings
 capture_widgets_picker
 exercise_app_drawer

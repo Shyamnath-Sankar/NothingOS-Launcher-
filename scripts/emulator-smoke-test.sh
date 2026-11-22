@@ -146,6 +146,20 @@ EOF
 assert_false 'a foreign package with the same class is not the bind consent' \
     foreground_is_component "$bind_foreign_dump" com.android.settings .AllowBindAppWidgetActivity
 
+assert_eq 'a brief resolve-activity component is parsed exactly' \
+    'com.android.settings/.Settings' \
+    "$(parse_resolved_component 'com.android.settings/.Settings')"
+assert_eq 'a resolve-activity component after priority fields is parsed' \
+    'com.android.settings/.wifi.WifiSettings' \
+    "$(parse_resolved_component 'priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+com.android.settings/.wifi.WifiSettings')"
+assert_eq 'a Settings alias class is preserved without guessing' \
+    'com.android.settings/.Settings$SoundSettingsActivity' \
+    "$(parse_resolved_component 'com.android.settings/.Settings$SoundSettingsActivity')"
+assert_eq 'a no-activity result yields no component' \
+    '' \
+    "$(parse_resolved_component 'No activity found')"
+
 # --- UIAutomator result-node fixtures --------------------------------------
 
 ancestor_xml="$TMP_DIR/ancestor.xml"
@@ -1083,6 +1097,20 @@ assert_eq 'exactly one newly bound own battery provider keeps its numeric id' \
     "$(printf '8\tapp.dotwel.widgets.DotWelBatteryWidgetProvider')" \
     "$(own_widget_new_binding "$own_bind_before" "$own_bind_battery" "$own_bind_pkg")"
 
+own_bind_device="$TMP_DIR/own-bind-device.txt"
+cat > "$own_bind_device" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=9
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelDeviceWidgetProvider}, profile:0}
+EOF
+assert_eq 'exactly one newly bound own device provider keeps its numeric id' \
+    "$(printf '9\tapp.dotwel.widgets.DotWelDeviceWidgetProvider')" \
+    "$(own_widget_new_binding "$own_bind_before" "$own_bind_device" "$own_bind_pkg")"
+
 assert_eq 'an unchanged dump has no own binding' \
     '' \
     "$(own_widget_new_binding "$own_bind_clock" "$own_bind_clock" "$own_bind_pkg")"
@@ -1846,6 +1874,14 @@ sed -n '/^complete_own_widget_setup() {/,/^}/p' "$SMOKE" > "$own_widget_setup_bo
 search_pages_body="$TMP_DIR/search_home_pages_for_widget.sh"
 sed -n '/^search_home_pages_for_widget() {/,/^}/p' "$SMOKE" > "$search_pages_body"
 
+device_settings_body="$TMP_DIR/exercise_device_settings_shortcuts.sh"
+sed -n '/^exercise_device_settings_shortcuts() {/,/^}/p' "$SMOKE" \
+    > "$device_settings_body"
+
+resolve_settings_body="$TMP_DIR/resolve_settings_action_component.sh"
+sed -n '/^resolve_settings_action_component() (/,/^)/p' "$SMOKE" \
+    > "$resolve_settings_body"
+
 assert_true 'the own-widget setup accepts only one exact own provider record' \
     grep -Fq 'own_widget_new_binding' "$own_widget_setup_body"
 assert_false 'the own-widget setup has no substring provider acceptance' \
@@ -2120,6 +2156,29 @@ assert_true 'the widgets capture records the survival page' \
     grep -Fq 'survival-page=' "$widgets_body"
 assert_true 'the widgets capture re-proves the exact placed bounds after page navigation' \
     grep -Fq '_cwp_recheck_bounds' "$widgets_body"
+assert_true 'the device settings check taps each measured pill child bound' \
+    grep -Fq 'tap_center_of_bounds "$_eds_bounds"' "$device_settings_body"
+assert_true 'the device settings check measures the real device child ids' \
+    grep -Fq 'home_widget_device_action_bounds' "$device_settings_body"
+assert_true 'the device settings check resolves destinations through the platform' \
+    grep -Fq 'resolve_settings_action_component' "$device_settings_body"
+assert_true 'the device settings resolver falls back to the top-level Settings action' \
+    grep -Fq 'android.settings.SETTINGS' "$resolve_settings_body"
+assert_true 'the device settings check requires the platform-resolved component' \
+    grep -Fq 'foreground_is_component' "$device_settings_body"
+assert_true 'the device settings check captures the resulting activity UI' \
+    grep -Fq 'device-settings-$_eds_action.xml' "$device_settings_body"
+assert_true 'the device settings check captures the resulting activity PNG' \
+    grep -Fq 'device-settings-$_eds_action.png' "$device_settings_body"
+assert_true 'the device settings check returns HOME after every shortcut' \
+    grep -Fq 'return_home "device-settings-$_eds_action"' "$device_settings_body"
+assert_true 'the device settings check re-reads all three own widget ids' \
+    grep -Fq '_eds_device_after' "$device_settings_body"
+assert_false 'the device settings check never writes a setting' \
+    grep -Eq 'settings put|shared_prefs|onChange|prefs\.' "$device_settings_body"
+assert_false 'the device settings check never binds a widget directly' \
+    grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' \
+    "$device_settings_body"
 
 placed_line=$(grep -n 'widgets-home-placed.xml' "$widgets_body" | sed -n '1s/:.*//p')
 consent_line=$(grep -n 'widgets-bind-consent.xml' "$widgets_body" | sed -n '1s/:.*//p')
@@ -2138,17 +2197,20 @@ else
 fi
 
 clean_home_call_line=$(grep -n '^capture_clean_home_theme$' "$SMOKE" | sed -n '1s/:.*//p')
+device_settings_call_line=$(grep -n '^exercise_device_settings_shortcuts$' "$SMOKE" | sed -n '1s/:.*//p')
 grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')
 widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')
 drawer_call_line=$(grep -n '^exercise_app_drawer$' "$SMOKE" | sed -n '1s/:.*//p')
-if [ -n "$clean_home_call_line" ] && [ -n "$grid_call_line" ] &&
-    [ -n "$widgets_call_line" ] && [ -n "$drawer_call_line" ] &&
-    [ "$clean_home_call_line" -lt "$grid_call_line" ] &&
+if [ -n "$clean_home_call_line" ] && [ -n "$device_settings_call_line" ] &&
+    [ -n "$grid_call_line" ] && [ -n "$widgets_call_line" ] &&
+    [ -n "$drawer_call_line" ] &&
+    [ "$clean_home_call_line" -lt "$device_settings_call_line" ] &&
+    [ "$device_settings_call_line" -lt "$grid_call_line" ] &&
     [ "$grid_call_line" -lt "$widgets_call_line" ] &&
     [ "$widgets_call_line" -lt "$drawer_call_line" ]; then
-    pass 'the clean-home, grid and widget captures run before the existing drawer flow'
+    pass 'the clean-home, device-settings, grid and widget captures run before the existing drawer flow'
 else
-    fail 'the clean-home, grid and widget captures run before the existing drawer flow'
+    fail 'the clean-home, device-settings, grid and widget captures run before the existing drawer flow'
 fi
 
 assert_true 'the role consent cancel flow is still present' \

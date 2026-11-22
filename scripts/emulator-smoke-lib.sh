@@ -106,6 +106,24 @@ foreground_is_component() (
     [ "$actual_full" = "$expected_full" ]
 )
 
+# Extract the first package/class component from `cmd package resolve-activity`
+# output. A brief dump normally prints the component alone; the fallback accepts
+# the component token after the priority/match fields. "No activity found" and
+# other prose contain no slash and yield nothing, so a caller can apply its own
+# safe fallback rather than guessing an activity alias.
+parse_resolved_component() (
+    out=$1
+    component=$(printf '%s\n' "$out" |
+        sed -n 's/^\([A-Za-z0-9_][A-Za-z0-9_.]*\/[A-Za-z0-9_.$][A-Za-z0-9_.$]*\)$/\1/p' |
+        sed -n '1p')
+    if [ -z "$component" ]; then
+        component=$(printf '%s\n' "$out" |
+            sed -n 's/.*[[:space:]]\([A-Za-z0-9_][A-Za-z0-9_.]*\/[A-Za-z0-9_.$][A-Za-z0-9_.$]*\).*/\1/p' |
+            sed -n '1p')
+    fi
+    printf '%s\n' "$component"
+)
+
 # Print the root bounds ("x1 y1 x2 y2") of a UIAutomator XML dump. UIAutomator
 # emits the window root as the first node, so its bounds are the visible display
 # area for this capture (insets included, unlike a fixed wm-size assumption).
