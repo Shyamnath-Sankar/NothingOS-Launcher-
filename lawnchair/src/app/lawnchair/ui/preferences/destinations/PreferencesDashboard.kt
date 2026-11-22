@@ -330,6 +330,11 @@ fun RowScope.PreferencesOverflowMenu(
 fun PreferencesDebugWarning(
     modifier: Modifier = Modifier,
 ) {
+    val warningContentColor = if (isPlayStoreFlavor()) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.error
+    }
     WarningPreference(
         // Don't move to strings.xml, no need to translate this warning
         text = "You are using a development build, which may contain bugs and broken features. Use at your own risk!",
@@ -338,6 +343,8 @@ fun PreferencesDebugWarning(
         colors = ListItemDefaults.segmentedColors(
             containerColor = MaterialTheme.colorScheme.errorContainer,
         ),
+        iconTint = warningContentColor,
+        textColor = warningContentColor,
     )
 }
 

@@ -131,6 +131,53 @@ grep -q 'displayLarge = base.displayLarge.copy' \
 grep -q 'fontFamily = DotoFontFamily' "$THEME_DIR/NothingUiTypography.kt" ||
     fail "display typography is not wired to Doto"
 
+# Headline styles and titleLarge are the dot-matrix headings; body and labels
+# stay on the readable platform sans-serif.
+for heading in headlineLarge headlineMedium headlineSmall titleLarge; do
+    grep -A1 -F "$heading = base.$heading.copy(" "$THEME_DIR/NothingUiTypography.kt" |
+        grep -q 'fontFamily = DotoFontFamily' ||
+        fail "$heading is not wired to the Doto heading typography"
+done
+for heading in \
+    headlineLargeEmphasized headlineMediumEmphasized headlineSmallEmphasized titleLargeEmphasized; do
+    grep -A1 -F "$heading = base.$heading.copy(" "$THEME_DIR/NothingUiTypography.kt" |
+        grep -q 'fontFamily = DotoFontFamily' ||
+        fail "$heading is not wired to the Doto heading typography"
+done
+grep -q 'bodyMedium = base.bodyMedium.copy(fontFamily = BodyFontFamily)' \
+    "$THEME_DIR/NothingUiTypography.kt" ||
+    fail "bodyMedium is not wired to the platform sans-serif"
+grep -q 'labelSmall = base.labelSmall.copy(fontFamily = BodyFontFamily)' \
+    "$THEME_DIR/NothingUiTypography.kt" ||
+    fail "labelSmall is not wired to the platform sans-serif"
+
+# The real settings entry point must use the NothingUI palette only on Play,
+# with the already-resolved darkTheme argument (LIGHT/DARK/SYSTEM).
+grep -Fq 'import app.nothingui.theme.NothingUiFeature' "$THEME_FILE" ||
+    fail "LawnchairTheme does not import the Play-only theme gate"
+grep -Fq 'import app.nothingui.theme.NothingUiTheme' "$THEME_FILE" ||
+    fail "LawnchairTheme does not import the NothingUI theme"
+grep -Fq 'if (NothingUiFeature.themeEnabled) {' "$THEME_FILE" ||
+    fail "LawnchairTheme does not gate the NothingUI palette to Play"
+grep -Fq 'NothingUiTheme(darkTheme = darkTheme, content = content)' "$THEME_FILE" ||
+    fail "LawnchairTheme does not pass the resolved darkTheme to NothingUiTheme"
+grep -Fq 'val colorScheme = getColorScheme(darkTheme = darkTheme)' "$THEME_FILE" ||
+    fail "LawnchairTheme lost the inherited non-Play color scheme"
+grep -Fq 'MaterialExpressiveTheme(' "$THEME_FILE" ||
+    fail "LawnchairTheme lost the inherited non-Play Material theme"
+
+if grep -Fq 'NothingUiTheme(darkTheme = true' "$THEME_FILE"; then
+    fail "LawnchairTheme hardcodes the dark theme instead of using darkTheme"
+fi
+
+gate_line=$(grep -n 'if (NothingUiFeature.themeEnabled) {' "$THEME_FILE" |
+    sed -n '1s/:.*//p')
+inherited_line=$(grep -n 'val colorScheme = getColorScheme(darkTheme = darkTheme)' "$THEME_FILE" |
+    sed -n '1s/:.*//p')
+if [ -z "$gate_line" ] || [ -z "$inherited_line" ] || [ "$gate_line" -ge "$inherited_line" ]; then
+    fail "the Play theme gate must run before the inherited color scheme"
+fi
+
 grep -q 'fun NothingUiThemeSampleScreen' "$THEME_DIR/NothingUiThemeSample.kt" ||
     fail "missing renderable theme sample screen"
 grep -q '@Preview' "$THEME_DIR/NothingUiThemeSample.kt" ||

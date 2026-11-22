@@ -16,6 +16,7 @@
 
 package app.nothingui.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import kotlin.math.max
@@ -34,6 +35,22 @@ class NothingUiTokenTest {
     @Test
     fun lightSchemeMeetsContrastTargets() {
         assertSchemeContrast(LightNothingUiColors)
+    }
+
+    @Test
+    fun darkWarningContentMeetsContrastTarget() {
+        assertWarningContrast(DarkNothingUiColors)
+    }
+
+    @Test
+    fun lightWarningContentMeetsContrastTarget() {
+        assertWarningContrast(LightNothingUiColors)
+    }
+
+    @Test
+    fun warningSchemeMapsErrorContainerToNeutralPalette() {
+        assertWarningSchemeMapping(DarkNothingUiColors, DarkNothingUiColors.toDarkColorScheme())
+        assertWarningSchemeMapping(LightNothingUiColors, LightNothingUiColors.toLightColorScheme())
     }
 
     @Test
@@ -62,18 +79,25 @@ class NothingUiTokenTest {
     }
 
     @Test
-    fun dotoIsReservedForDisplayAndNumericText() {
+    fun dotoIsUsedForDisplayHeadingsAndNumericText() {
         assertEquals(DotoFontFamily, NothingUiTypography.displayLarge.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displayMedium.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displaySmall.fontFamily)
         assertEquals(DotoFontFamily, NothingUiTypography.displayLargeEmphasized.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineLarge.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineMedium.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineSmall.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.headlineLargeEmphasized.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.titleLarge.fontFamily)
+        assertEquals(DotoFontFamily, NothingUiTypography.titleLargeEmphasized.fontFamily)
         assertEquals(DotoFontFamily, NothingUiType.NumericDisplay.fontFamily)
         assertEquals(DotoFontFamily, NothingUiType.NumericLabel.fontFamily)
 
-        assertEquals(FontFamily.SansSerif, NothingUiTypography.headlineLarge.fontFamily)
-        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleLarge.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleMedium.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.titleSmall.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.bodyLarge.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.bodyMedium.fontFamily)
+        assertEquals(FontFamily.SansSerif, NothingUiTypography.labelLarge.fontFamily)
         assertEquals(FontFamily.SansSerif, NothingUiTypography.labelSmall.fontFamily)
     }
 
@@ -95,6 +119,18 @@ class NothingUiTokenTest {
         assertTrue(contrast(colors.onSurfaceMuted, colors.surface) >= 4.5)
         assertTrue(contrast(colors.accent, colors.background) >= 3.0)
         assertTrue(contrast(colors.onAccent, colors.accent) >= 4.5)
+    }
+
+    private fun assertWarningContrast(colors: NothingUiColors) {
+        assertTrue(contrast(colors.onWarningContainer, colors.warningContainer) >= 4.5)
+        assertEquals(colors.warningContainer.red, colors.warningContainer.green, 0f)
+        assertEquals(colors.warningContainer.green, colors.warningContainer.blue, 0f)
+    }
+
+    private fun assertWarningSchemeMapping(colors: NothingUiColors, scheme: ColorScheme) {
+        assertEquals(colors.warningContainer, scheme.errorContainer)
+        assertEquals(colors.onWarningContainer, scheme.onErrorContainer)
+        assertEquals(colors.accent, scheme.error)
     }
 
     private fun contrast(first: Color, second: Color): Double {

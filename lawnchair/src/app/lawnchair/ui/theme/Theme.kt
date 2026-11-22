@@ -45,6 +45,8 @@ import app.lawnchair.theme.ThemeProvider
 import app.lawnchair.theme.toComposeColorScheme
 import app.lawnchair.ui.preferences.components.ThemeChoice
 import app.lawnchair.wallpaper.WallpaperManagerCompat
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiTheme
 import com.android.launcher3.Utilities
 
 @Composable
@@ -52,6 +54,11 @@ fun LawnchairTheme(
     darkTheme: Boolean = isSelectedThemeDark,
     content: @Composable () -> Unit,
 ) {
+    if (NothingUiFeature.themeEnabled) {
+        NothingUiTheme(darkTheme = darkTheme, content = content)
+        return
+    }
+
     val colorScheme = getColorScheme(darkTheme = darkTheme)
     MaterialExpressiveTheme(
         colorScheme = colorScheme,

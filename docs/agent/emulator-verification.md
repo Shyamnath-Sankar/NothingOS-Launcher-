@@ -24,9 +24,16 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
-- captures app-info and About evidence, then opens the debug-only Play theme sample through the
-  existing exported `PreferenceActivity` and the explicit
-  `app.lawnchair.ui.preferences.THEME_SAMPLE` extra. It captures
+- captures app-info and About evidence, then verifies the real Play settings palette. It reads the
+  existing `pref_launcherTheme` preference and requires `system` (a clean install defaults to it; the
+  smoke never writes the preference), switches the emulator with `cmd uimode night yes` and
+  `cmd uimode night no`, launches the real exported `PreferenceActivity` without the diagnostic
+  extra, and captures `settings-theme-dark.xml`/`.png` and `settings-theme-light.xml`/`.png`. Each
+  hierarchy must expose the real Preferences dashboard (`Settings`, `General`) and must not contain
+  the `DOTWEL` sample. The previous system night mode is restored before returning HOME, even when a
+  capture fails.
+- then opens the debug-only Play theme sample through the existing exported `PreferenceActivity` and
+  the explicit `app.lawnchair.ui.preferences.THEME_SAMPLE` extra. It captures
   `theme-sample-dark.xml`/`.png` and `theme-sample-light.xml`/`.png`, requires `DOTWEL` in both UI
   hierarchies, and returns HOME. The extra is inert unless the build is both debug and Play, so
   release and non-Play builds keep the normal settings surface.

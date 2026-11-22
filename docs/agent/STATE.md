@@ -3,24 +3,88 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P11 grid-preview header parity with live HOME**. The grid/launcher preview now
-  resolves its first-page smartspace from the same selected `SmartspaceMode.layoutResourceId` the
-  real workspace uses, before the model is bound. On Play the lawnchair mode resolves to
-  `nothingui_home_header`, so the preview shows `NothingUiHomeHeaderView`; github/nightly keep the
-  inherited `smartspace_container`. Disabled smartspace, the explicit dummy backup placeholder and
-  the other selected modes are preserved. The dummy placeholder is now passed through the
-  constructor so an already-loaded model that binds synchronously cannot race it. App source +
-  static guard/fixtures only: no grid values, Apply behavior, SDK, workflow, manifest, permission,
-  applicationId, paid, signing or asset change.
-- branch: `agent/p11-preview-header`
-- head: `df2bfbc` (`test(preview): guard preview smartspace layout source`) on base `e7c9240d`;
-  app fix `31d0963`.
-- pr: **PR16** for `agent/p11-preview-header` at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/16; main/supervisor owns approval.
-  CI is `action_required` (maintainer approval needed), so the APK/pixels are not yet produced.
-  APK110 remains the fallback and is independent of this branch.
+- current_phase: **A1 settings palette — debug-warning contrast fixed; native surfaces still next**.
+  The Play settings dashboard debug warning rendered red text/icons on the Material dark-red
+  `errorContainer` (1.86:1). `NothingUiColors` now carries an explicit neutral
+  `warningContainer`/`onWarningContainer` pair mapped to `errorContainer`/`onErrorContainer`, and
+  `PreferencesDebugWarning` passes that content color to both text and icon on Play only. Contrast
+  is now 10.16:1 dark and 15.77:1 light; non-Play and all other red accents are unchanged. Native
+  `ThemeProvider`, popup, drawer and picker surfaces are still untouched and are next.
+- branch: `agent/a1-settings-palette-tiny-check`
+- head: app `550d5b2` (`fix(settings): use neutral high-contrast debug warning on Play`); this STATE
+  commit follows. Prior A1 checkpoint is `236f00f`/`b1f5d10`/`e17b860`.
+- pr: #17 (https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/17). CI128 was green on
+  build/unit/style/emulator; the only blocker was the debug-warning contrast in the captured pixels.
+  This run is source/fixtures only — no Gradle build or emulator run here.
 
-## done (this run — P11 preview header parity)
+## done (this run — A1 debug warning contrast)
+
+- **Root cause read from the source:** `PreferencesDebugWarning` passed
+  `MaterialTheme.colorScheme.errorContainer` to `WarningPreference`, whose text/icon default to
+  `MaterialTheme.colorScheme.error`. The NothingUi converters never set
+  `errorContainer`/`onErrorContainer`, so Play fell back to Material's dark-red container
+  (`#93000A`) under the accent-red text (`#D7261E`) — 1.86:1, the unreadable pixels CI captured.
+- **Neutral warning tokens:** `NothingUiColors` gains `warningContainer`/`onWarningContainer`.
+  Dark uses `Gray700` on `Paper` (10.16:1); light uses `Gray100` on `Ink` (15.77:1). Both
+  containers are true neutral greys; `error` stays `AccentRed` and `onError` stays `onAccent`, so
+  restrained red elsewhere is unchanged.
+- **Converter mapping:** both `toDarkColorScheme()` and `toLightColorScheme()` now set
+  `errorContainer = warningContainer` and `onErrorContainer = onWarningContainer` instead of
+  inheriting Material defaults.
+- **Play-only debug warning:** `PreferencesDebugWarning` computes the content color as
+  `onErrorContainer` on Play and `error` otherwise, passing it as both `textColor` and `iconTint`.
+  The warning is still shown in exactly the same debug/nightly condition; non-Play pixels are
+  identical because the fallback is the previous default value.
+- **Regression coverage:** `NothingUiTokenTest` adds dark and light warning-content contrast checks
+  (`>= 4.5:1`, plus neutral-channel assertions) and a converter-mapping check that
+  `errorContainer`/`onErrorContainer` equal the palette values while `error` stays the accent.
+  Existing typography and screenshot-smoke assertions are untouched.
+- **Scope:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing, asset, native
+  popup/drawer/picker or other-repo change. Patch is 3 files, 46 insertions.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-theme-guard.sh "$PWD"` OK;
+  `nothingui-theme-guard-test.sh` 12/12; `verify-play-build-test.sh` 11/11; `sh -n` clean on the
+  edited scripts; `git diff --check` clean. The new JUnit contrast/mapping test and the CI pixel
+  recapture are left to PR #17 CI, which builds and runs the unit tests.
+- **Next:** native `ThemeProvider`, popup, drawer and picker surfaces. Slice A is still not complete.
+
+## done (previous run — A1 settings palette partial checkpoint)
+
+- **Real settings entry wired, not the sample:** `LawnchairTheme` previously always built the
+  inherited `MaterialExpressiveTheme`/`ThemeProvider` color scheme. It now short-circuits through
+  `NothingUiTheme(darkTheme = darkTheme, content = content)` when
+  `NothingUiFeature.themeEnabled` is true. The default parameter remains
+  `isSelectedThemeDark`, so LIGHT, DARK and SYSTEM resolve exactly as before; github/nightly still
+  take the inherited branch with the same `getColorScheme`, shapes and expressive motion.
+- **Typography:** `NothingUiTypography` now uses `DotoFontFamily` for `headlineLarge`,
+  `headlineMedium`, `headlineSmall`, `titleLarge` and their emphasized variants (normal headings
+  keep normal weight; emphasized headings keep bold). `titleMedium`/`titleSmall`, all body and all
+  label styles remain `FontFamily.SansSerif`, so settings copy stays readable.
+- **Preserved:** no change to `ThemeProvider`, popup, drawer, picker, grid values, Apply behavior,
+  manifest, permissions, SDK, applicationId, signing, assets, workflows or other repos. The
+  diagnostic `THEME_SAMPLE` route remains debug + Play gated and is unchanged.
+- **Regression tests outside production `src`:** `tests/unit/java/app/nothingui/theme/
+  NothingUiTokenTest.kt` now requires Doto on the display/headline/titleLarge styles and sans on
+  titleMedium/titleSmall/body/label. `scripts/nothingui-theme-guard.sh` now requires the Play gate,
+  the resolved `darkTheme` call, the inherited non-Play branch, and Doto on every headline/titleLarge
+  style. Its fixture suite adds missing-gate, hardcoded-dark, and sans-headline negatives (and
+  updates the existing EdgeToEdge fixture so it still tests only its own rule).
+- **Smoke:** `scripts/emulator-smoke.sh` adds `capture_settings_theme` and
+  `assert_settings_theme_choice_system`. It reads `shared_prefs/com.android.launcher3.prefs.xml`
+  through `run-as` and requires `pref_launcherTheme=system` (a clean install default; no write),
+  records the current `cmd uimode night`, captures the real `PreferenceActivity` under night
+  `yes`/`no` without the sample extra as `settings-theme-dark.xml`/`.png` and
+  `settings-theme-light.xml`/`.png`, requires the real `Settings`/`General` dashboard and rejects
+  the `DOTWEL` sample, then restores the previous night mode and returns HOME even when a capture
+  fails. The existing grid-preview and widget-placement phases are unchanged.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-theme-guard.sh "$PWD"` OK;
+  `nothingui-theme-guard-test.sh` all pass (13/13); `emulator-smoke-test.sh` all pass including the
+  new settings-theme static checks; `sh -n` clean on the edited scripts; `git diff --check` clean.
+  The Android build, JUnit, `spotlessCheck`, and the API 37 emulator dark/light captures are left
+  to CI/PR review.
+- **Next:** native `ThemeProvider`, popup, drawer and picker surfaces. Slice A is not complete; this
+  is only the settings palette checkpoint.
+
+## done (previous run — P11 preview header parity)
 
 - **Root cause from the source, not guessed:** `LauncherPreviewRenderer` initialized
   `mWorkspaceSearchContainer` to `R.layout.smartspace_container` at field declaration, before the
