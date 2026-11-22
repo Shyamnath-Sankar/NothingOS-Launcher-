@@ -747,11 +747,213 @@ capture_widgets_picker() {
                 capture_screenshot_to widgets-picker.png
                 [ -s "$ARTIFACTS/widgets-picker.png" ] ||
                     fail "widget picker screenshot capture failed"
-                printf 'Widgets: the real HOME long-press popup was opened, Widgets was tapped by its bounds, and the native picker search/list is visible (not HOME).\n' \
-                    > "$ARTIFACTS/widgets-picker.txt"
-                printf 'Screenshots: home-popup.png, widgets-picker.png.\n' \
-                    >> "$ARTIFACTS/widgets-picker.txt"
+                _cwp_ref="$ARTIFACTS/home-before-widgets-attempt-$_cwp_attempt.xml"
+                : > "$ARTIFACTS/widgets-add-log.txt"
+
+                # P10b: add a real third-party widget through the native picker,
+                # then prove it survives HOME. Select a provider header that
+                # reports a real widget, never a shortcut-only row.
+                _cwp_provider_title=
+                _cwp_header=
+                for _cwp_title in Clock Calendar; do
+                    _cwp_candidate_header=$(widget_picker_provider_bounds \
+                        "$ARTIFACTS/widgets-picker.xml" "$_cwp_title")
+                    if [ -n "$_cwp_candidate_header" ]; then
+                        _cwp_provider_title=$_cwp_title
+                        _cwp_header=$_cwp_candidate_header
+                        break
+                    fi
+                done
+                if [ -z "$_cwp_header" ]; then
+                    capture_ui_xml widgets-add-last.xml || true
+                    capture_screenshot_to widgets-add-last.png
+                    fail "the native widget picker exposed no Clock/Calendar provider with a real widget (shortcut-only rows are ignored)"
+                fi
+                printf 'provider=%s header=%s\n' \
+                    "$_cwp_provider_title" "$_cwp_header" \
+                    >> "$ARTIFACTS/widgets-add-log.txt"
+
+                # A provider can already be expanded. Otherwise tap its measured
+                # header and poll for the widget_preview_container below it.
+                _cwp_preview=$(widget_picker_preview_bounds \
+                    "$ARTIFACTS/widgets-picker.xml" "$_cwp_header")
+                _cwp_provider_xml="$ARTIFACTS/widgets-picker.xml"
+                _cwp_expand=1
+                while [ -z "$_cwp_preview" ] && [ "$_cwp_expand" -le 2 ]; do
+                    tap_center_of_bounds "$_cwp_header" ||
+                        fail "could not tap the measured $_cwp_provider_title provider header"
+                    _cwp_expand_poll=1
+                    while [ "$_cwp_expand_poll" -le 5 ]; do
+                        sleep 1
+                        if capture_ui_xml \
+                            "widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"; then
+                            _cwp_candidate_xml="$ARTIFACTS/widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"
+                            _cwp_candidate_preview=$(widget_picker_preview_bounds \
+                                "$_cwp_candidate_xml" "$_cwp_header")
+                            if [ -n "$_cwp_candidate_preview" ]; then
+                                _cwp_preview=$_cwp_candidate_preview
+                                _cwp_provider_xml=$_cwp_candidate_xml
+                                break
+                            fi
+                        fi
+                        _cwp_expand_poll=$((_cwp_expand_poll + 1))
+                    done
+                    _cwp_expand=$((_cwp_expand + 1))
+                done
+                if [ -z "$_cwp_preview" ]; then
+                    capture_ui_xml widgets-add-last.xml || true
+                    capture_screenshot_to widgets-add-last.png
+                    fail "the measured $_cwp_provider_title header did not expose a clickable/long-clickable widget_preview_container"
+                fi
+                cp "$_cwp_provider_xml" "$ARTIFACTS/widgets-provider.xml"
+                capture_screenshot_to widgets-provider.png
+                [ -s "$ARTIFACTS/widgets-provider.png" ] ||
+                    fail "widget provider screenshot capture failed"
+                printf 'preview=%s\n' "$_cwp_preview" \
+                    >> "$ARTIFACTS/widgets-add-log.txt"
+                adb_cmd shell dumpsys appwidget \
+                    > "$ARTIFACTS/widgets-appwidget-before.txt" 2>&1 || true
+
+                # Tap the preview to expose the real Add button.
+                tap_center_of_bounds "$_cwp_preview" ||
+                    fail "could not tap the measured widget preview"
+                _cwp_add=
+                _cwp_add_xml=
+                _cwp_add_poll=1
+                while [ "$_cwp_add_poll" -le 5 ]; do
+                    sleep 1
+                    if capture_ui_xml "widgets-add-attempt-$_cwp_add_poll.xml"; then
+                        _cwp_candidate_xml="$ARTIFACTS/widgets-add-attempt-$_cwp_add_poll.xml"
+                        _cwp_candidate_add=$(widget_picker_add_button_bounds \
+                            "$_cwp_candidate_xml")
+                        if [ -n "$_cwp_candidate_add" ]; then
+                            _cwp_add=$_cwp_candidate_add
+                            _cwp_add_xml=$_cwp_candidate_xml
+                            break
+                        fi
+                    fi
+                    _cwp_add_poll=$((_cwp_add_poll + 1))
+                done
+                if [ -n "$_cwp_add" ]; then
+                    cp "$_cwp_add_xml" "$ARTIFACTS/widgets-add.xml"
+                    capture_screenshot_to widgets-add.png
+                    [ -s "$ARTIFACTS/widgets-add.png" ] ||
+                        fail "widget Add screenshot capture failed"
+                    printf 'route=add-button add=%s\n' "$_cwp_add" \
+                        >> "$ARTIFACTS/widgets-add-log.txt"
+                    tap_center_of_bounds "$_cwp_add" ||
+                        fail "could not tap the measured widget Add button"
+                else
+                    # Genuine measured drag fallback when the Add button is not
+                    # exposed. The drop point is derived from the pre-widget HOME
+                    # and avoids the header, dock and central drawer swipe.
+                    _cwp_drop=$(widget_drop_target "$_cwp_ref") || _cwp_drop=
+                    if [ -z "$_cwp_drop" ]; then
+                        capture_ui_xml widgets-add-last.xml || true
+                        capture_screenshot_to widgets-add-last.png
+                        fail "the widget Add button was not exposed and no measured free workspace drop point exists"
+                    fi
+                    set -- $_cwp_preview
+                    _cwp_px=$((($1 + $3) / 2))
+                    _cwp_py=$((($2 + $4) / 2))
+                    set -- $_cwp_drop
+                    printf 'route=drag from=%s,%s to=%s,%s\n' \
+                        "$_cwp_px" "$_cwp_py" "$1" "$2" \
+                        >> "$ARTIFACTS/widgets-add-log.txt"
+                    adb_cmd shell input swipe "$_cwp_px" "$_cwp_py" "$1" "$2" 1000 \
+                        > "$ARTIFACTS/widgets-drag.txt" 2>&1 ||
+                        fail "could not drag the measured widget preview to the workspace"
+                fi
+
+                # Wait, bounded, for the sheet to close and a real
+                # AppWidgetHostView to appear in the workspace. A configuration
+                # activity or an unbound provider fails with saved evidence.
+                _cwp_placed=
+                _cwp_placed_bounds=
+                _cwp_last_xml="$ARTIFACTS/widgets-add.xml"
+                _cwp_place_poll=1
+                while [ "$_cwp_place_poll" -le 15 ]; do
+                    sleep 1
+                    adb_cmd shell dumpsys activity activities \
+                        > "$ARTIFACTS/activities-widget-placed-$_cwp_place_poll.txt" 2>&1 || true
+                    if capture_ui_xml \
+                        "widgets-home-placed-attempt-$_cwp_place_poll.xml"; then
+                        _cwp_candidate_xml="$ARTIFACTS/widgets-home-placed-attempt-$_cwp_place_poll.xml"
+                        _cwp_last_xml=$_cwp_candidate_xml
+                        _cwp_candidate_bounds=$(home_widget_bounds \
+                            "$_cwp_candidate_xml" "$_cwp_ref")
+                        if [ -n "$_cwp_candidate_bounds" ]; then
+                            _cwp_placed=$_cwp_candidate_xml
+                            _cwp_placed_bounds=$_cwp_candidate_bounds
+                            break
+                        fi
+                    fi
+                    _cwp_place_poll=$((_cwp_place_poll + 1))
+                done
+                if [ -z "$_cwp_placed" ]; then
+                    cp "$_cwp_last_xml" "$ARTIFACTS/widgets-add-last.xml" \
+                        2>/dev/null || true
+                    capture_screenshot_to widgets-add-last.png
+                    _cwp_last_activities="$ARTIFACTS/activities-widget-placed-$((_cwp_place_poll - 1)).txt"
+                    _cwp_foreground=$(resumed_component "$_cwp_last_activities" \
+                        2>/dev/null || true)
+                    printf 'last_foreground=%s\n' "$_cwp_foreground" \
+                        >> "$ARTIFACTS/widgets-add-log.txt"
+                    fail "the added widget did not appear as a new workspace AppWidgetHostView (a widget configuration activity or an unbound provider may be blocking placement)"
+                fi
+                cp "$_cwp_placed" "$ARTIFACTS/widgets-home-placed.xml"
+                capture_screenshot_to widgets-home-placed.png
+                [ -s "$ARTIFACTS/widgets-home-placed.png" ] ||
+                    fail "placed-widget screenshot capture failed"
+
+                # Keep the widget out of the measured header and dock bands so
+                # it cannot cover the later drawer swipe start.
+                _cwp_ref_root=$(ui_root_bounds "$_cwp_ref")
+                _cwp_ref_dock_top=$(ui_dock_top "$_cwp_ref" "$_cwp_ref_root")
+                _cwp_ref_header_bottom=$(ui_header_bottom \
+                    "$_cwp_ref" "$_cwp_ref_dock_top")
+                [ -n "$_cwp_ref_dock_top" ] ||
+                    fail "could not measure the pre-widget dock top"
+                [ -n "$_cwp_ref_header_bottom" ] ||
+                    fail "could not measure the pre-widget header bottom"
+                set -- $_cwp_placed_bounds
+                if [ "$2" -lt "$_cwp_ref_header_bottom" ] ||
+                    [ "$4" -gt "$_cwp_ref_dock_top" ]; then
+                    fail "the placed widget overlaps the header or dock band ($_cwp_placed_bounds outside $_cwp_ref_header_bottom..$_cwp_ref_dock_top)"
+                fi
+
+                adb_cmd shell dumpsys appwidget \
+                    > "$ARTIFACTS/widgets-appwidget-after.txt" 2>&1 || true
+                _cwp_new_providers=$(appwidget_new_providers \
+                    "$ARTIFACTS/widgets-appwidget-before.txt" \
+                    "$ARTIFACTS/widgets-appwidget-after.txt")
+                [ -n "$_cwp_new_providers" ] ||
+                    fail "no new bound app widget provider appeared in dumpsys appwidget after placement"
+                printf '%s\n' "$_cwp_new_providers" \
+                    > "$ARTIFACTS/widgets-appwidget-providers.txt"
+
+                # Press HOME again and prove the same widget remains.
                 return_home widgets-picker
+                capture_ui_xml widgets-home-after-home.xml ||
+                    fail "could not capture HOME after the widget survival key press"
+                capture_screenshot_to widgets-home-after-home.png
+                [ -s "$ARTIFACTS/widgets-home-after-home.png" ] ||
+                    fail "HOME-after-widget screenshot capture failed"
+                _cwp_survived=$(home_widget_bounds \
+                    "$ARTIFACTS/widgets-home-after-home.xml" "$_cwp_ref")
+                [ -n "$_cwp_survived" ] ||
+                    fail "the placed widget disappeared after pressing HOME"
+                [ "$_cwp_survived" = "$_cwp_placed_bounds" ] ||
+                    fail "the placed widget moved after pressing HOME (was $_cwp_placed_bounds, now $_cwp_survived)"
+
+                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, and a new AppWidgetHostView plus bound provider survived HOME.\n' \
+                    "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
+                printf 'Provider: %s\n' "$_cwp_new_providers" \
+                    >> "$ARTIFACTS/widgets-picker.txt"
+                printf 'Widget bounds: %s\n' "$_cwp_placed_bounds" \
+                    >> "$ARTIFACTS/widgets-picker.txt"
+                printf 'Screenshots: home-popup.png, widgets-picker.png, widgets-provider.png, widgets-add.png, widgets-home-placed.png, widgets-home-after-home.png.\n' \
+                    >> "$ARTIFACTS/widgets-picker.txt"
                 verify_nothing_home
                 return 0
             fi

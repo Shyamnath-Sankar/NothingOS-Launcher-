@@ -71,7 +71,22 @@ a view.
   search/list label) or the inherited picker (`widgets_search_bar`/`search_bar_container` plus
   `primary_widgets_list_view`/`search_widgets_list_view`). The picker hierarchy must differ from the
   pre-long-press HOME, so a closed HOME with incidental English text cannot pass. It captures
-  `widgets-picker.xml`/`.png`, returns HOME and re-verifies the actual HOME clock/date.
+  `widgets-picker.xml`/`.png`.
+- **Real widget placement and HOME survival (P10b).** Inside the native picker it selects a
+  clickable `widgets_list_header` whose `app_title` is `Clock` or `Calendar` and whose `app_subtitle`
+  reports a positive widget count. A shortcut-only header such as the one-shortcut DotWel row is
+  rejected. It expands the measured header if needed, captures `widgets-provider.xml`/`.png`, and
+  measures the `widget_preview_container` below that header and above the next header. It taps the
+  preview, polls for the real `widget_add_button` resource id, captures `widgets-add.xml`/`.png`, and
+  taps the measured Add button. If Add is not exposed it uses a measured drag to a free right-hand
+  workspace point derived from the pre-widget HOME. It then polls for a new
+  `AppWidgetHostView`-suffixed node in the workspace and a new provider in `dumpsys appwidget`,
+  captures `widgets-home-placed.xml`/`.png`, and fails with saved `widgets-add-last.xml`/`.png` if a
+  configuration activity or an unbound provider blocks placement. The placed widget must sit between
+  the measured header bottom and dock top, so it cannot cover the later drawer swipe start. It then
+  presses HOME, captures `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to
+  remain. It never starts the picker or a configuration activity directly, never binds an app widget,
+  and never writes preferences or the database.
 
 Evidence for these phases:
 
@@ -94,6 +109,25 @@ widgets-picker-attempt-N-P.xml
 widgets-picker.xml
 widgets-picker.png
 widgets-picker.txt
+widgets-add-log.txt
+widgets-provider-N-P.xml
+widgets-provider.xml
+widgets-provider.png
+widgets-add-attempt-N.xml
+widgets-add.xml
+widgets-add.png
+widgets-drag.txt
+widgets-home-placed-attempt-N.xml
+widgets-home-placed.xml
+widgets-home-placed.png
+widgets-home-after-home.xml
+widgets-home-after-home.png
+widgets-appwidget-before.txt
+widgets-appwidget-after.txt
+widgets-appwidget-providers.txt
+widgets-add-last.xml
+widgets-add-last.png
+activities-widget-placed-N.txt
 ```
 
 Every wait is a bounded UIAutomator poll. The existing role-consent Cancel, the 1500 ms / four-attempt

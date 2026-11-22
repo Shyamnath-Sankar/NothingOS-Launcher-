@@ -769,6 +769,296 @@ home_popup_is_ready() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of a clickable widgets_list_header whose
+# app_title matches $2 and whose app_subtitle reports at least one real widget.
+# A shortcut-only header ("1 shortcut") is never selected, and no class name is
+# assumed. The subtitle is locale text, so only the positive widget count is
+# required.
+widget_picker_provider_bounds() (
+    xml=$1
+    want=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$want" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                click = attr($0, "clickable")
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                is_header = (rid ~ /(^|\/)widgets_list_header$/ &&
+                    click == "true" && bounds != "")
+                if (!selfclose) {
+                    sp++
+                    header_idx[sp] = 0
+                }
+                if (is_header) {
+                    hcount++
+                    header_bounds[hcount] = bounds
+                    header_title[hcount] = ""
+                    header_sub[hcount] = ""
+                    if (!selfclose) header_idx[sp] = hcount
+                }
+                hd = 0
+                for (i = sp; i >= 1; i--) {
+                    if (header_idx[i] > 0) {
+                        hd = header_idx[i]
+                        break
+                    }
+                }
+                if (hd > 0) {
+                    if (rid ~ /(^|\/)app_title$/) header_title[hd] = text
+                    if (rid ~ /(^|\/)app_subtitle$/) header_sub[hd] = text
+                }
+            }
+            END {
+                for (i = 1; i <= hcount; i++) {
+                    if (header_title[i] != want) continue
+                    if (header_sub[i] ~ /(^|[^0-9])[1-9][0-9]*[[:space:]]+widgets?/) {
+                        emit(header_bounds[i])
+                        exit
+                    }
+                }
+            }
+        '
+)
+
+# Print the bounds of the widget_preview_container below the selected provider
+# header and above the next provider header. The container must be clickable or
+# long-clickable, matching the inherited WidgetCell preview. A preview from a
+# collapsed or unrelated provider is rejected.
+widget_picker_preview_bounds() (
+    xml=$1
+    header=$2
+    [ -s "$xml" ] || return 0
+    set -- $header
+    [ "$#" -eq 4 ] || return 0
+    hy2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v hy2="$hy2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                bounds = attr($0, "bounds")
+                if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                y1 = y_of(bounds, 2)
+                if (rid ~ /(^|\/)widgets_list_header$/ && y1 > hy2) {
+                    if (next_top == "" || y1 < next_top) next_top = y1
+                }
+                if (rid !~ /(^|\/)widget_preview_container$/) next
+                if (attr($0, "clickable") != "true" &&
+                    attr($0, "long-clickable") != "true") next
+                if (y1 <= hy2) next
+                if (next_top != "" && y1 >= next_top) next
+                if (best == "" || y1 < best_y) {
+                    best = bounds
+                    best_y = y1
+                }
+            }
+            END {
+                if (best != "") emit(best)
+            }
+        '
+)
+
+# Print the bounds of the exposed widget Add button by its real resource id.
+# The button may be icon-only, so English text is not required.
+widget_picker_add_button_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "resource-id") !~ /(^|\/)widget_add_button$/) next
+                if (attr($0, "clickable") != "true") next
+                emit(attr($0, "bounds"))
+                exit
+            }
+        '
+)
+
+# Print the bounds of a new AppWidgetHostView in the workspace, comparing the
+# current hierarchy with the pre-widget HOME. Class matching uses the inherited
+# AppWidgetHostView suffix; no guessed host class or fixed coordinate is used.
+home_widget_bounds() (
+    xml=$1
+    reference=${2:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$reference" ] || reference=/dev/null
+    [ -s "$reference" ] || reference=/dev/null
+    awk '
+        function attr(s, name,    pat, v) {
+            pat = "[[:space:]]" name "=\"[^\"]*\""
+            if (!match(s, pat)) return ""
+            v = substr(s, RSTART, RLENGTH)
+            sub("^[[:space:]]" name "=\"", "", v)
+            sub("\"$", "", v)
+            return v
+        }
+        function emit(b,    s, p, n) {
+            s = b
+            gsub(/\[/, " ", s)
+            gsub(/\]/, " ", s)
+            gsub(/,/, " ", s)
+            sub(/^[[:space:]]+/, "", s)
+            sub(/[[:space:]]+$/, "", s)
+            n = split(s, p, /[[:space:]]+/)
+            if (n == 4) print p[1], p[2], p[3], p[4]
+        }
+        NR == FNR {
+            if ($0 ~ /<node[[:space:]]/ &&
+                attr($0, "class") ~ /AppWidgetHostView/ &&
+                attr($0, "bounds") ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) {
+                seen[attr($0, "bounds")] = 1
+            }
+            next
+        }
+        {
+            if ($0 !~ /<node[[:space:]]/) next
+            if (attr($0, "class") !~ /AppWidgetHostView/) next
+            bounds = attr($0, "bounds")
+            if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+            if (bounds in seen) next
+            emit(bounds)
+            exit
+        }
+    ' "$reference" "$xml"
+)
+
+# Print provider components that are newly bound between two
+# `dumpsys appwidget` captures. This proves a real AppWidgetHostView was bound
+# by the platform, not just that a view-looking node appeared.
+appwidget_new_providers() (
+    before=$1
+    after=$2
+    [ -s "$after" ] || return 0
+    [ -n "$before" ] || before=/dev/null
+    [ -s "$before" ] || before=/dev/null
+    awk '
+        NR == FNR {
+            if (match($0, /provider=ComponentInfo\{[^}]*\}/)) {
+                seen[substr($0, RSTART, RLENGTH)] = 1
+            }
+            next
+        }
+        {
+            if (!match($0, /provider=ComponentInfo\{[^}]*\}/)) next
+            provider = substr($0, RSTART, RLENGTH)
+            if (!(provider in seen) && !(provider in printed)) {
+                print provider
+                printed[provider] = 1
+            }
+        }
+    ' "$before" "$after"
+)
+
+# Compute a measured free workspace point for the drag fallback. It uses the
+# right-hand workspace (away from the central drawer swipe) and stays between
+# the measured header bottom and dock top. Returns "x y" or nothing.
+widget_drop_target() (
+    xml=$1
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 1
+    set -- $root
+    rx1=$1
+    ry1=$2
+    rx2=$3
+    ry2=$4
+    width=$((rx2 - rx1))
+    height=$((ry2 - ry1))
+    [ "$width" -gt 0 ] && [ "$height" -gt 0 ] || return 1
+    dock_top=$(ui_dock_top "$xml" "$root")
+    [ -n "$dock_top" ] || dock_top=$((ry1 + height * 85 / 100))
+    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
+    [ -n "$header_bottom" ] || header_bottom=$((ry1 + height * 15 / 100))
+    margin=$((height * 4 / 100))
+    band_top=$((header_bottom + margin))
+    band_bottom=$((dock_top - margin))
+    [ "$band_bottom" -gt "$band_top" ] || return 1
+    x=$((rx1 + width * 3 / 4))
+    band=$((band_bottom - band_top))
+    for pct in 50 40 60 30 70 20 80; do
+        y=$((band_top + band * pct / 100))
+        if ui_point_is_free "$xml" "$x" "$y"; then
+            printf '%s %s\n' "$x" "$y"
+            return 0
+        fi
+    done
+    return 1
+)
+
 # Succeed only when the native widget picker search/list is visible and differs
 # from the pre-long-press HOME. The refactored Compose picker exposes the
 # widgets_catalog test tag; the inherited picker exposes its search bar and

@@ -550,6 +550,115 @@ sed '/primary_widgets_list_view/d' "$picker_old_xml" > "$picker_old_no_list"
 assert_false 'an inherited search bar without the widget list is rejected' \
     widget_picker_is_ready "$picker_old_no_list" "$home_xml"
 
+# --- widget placement fixtures ---------------------------------------------
+# Shape copied from the CI110 picker dump: a clickable widgets_list_header with
+# app_title/app_subtitle, a widget_preview_container inside a WidgetCell, and a
+# DotWel header that exposes only a shortcut. The helper must select a provider
+# with a positive widget count and must never select the shortcut-only row.
+
+widget_headers_xml="$TMP_DIR/widget-headers.xml"
+cat > "$widget_headers_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,400][1080,520]">
+      <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,420][300,460]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,465][300,500]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,540][1080,660]">
+      <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,560][300,600]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,605][300,640]" />
+    </node>
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[80,700][500,1000]" />
+    <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,1100][1080,1220]">
+      <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,1120][300,1160]" />
+      <node index="1" text="1 shortcut" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,1165][300,1200]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a real Clock provider header is selected by its measured bounds' \
+    '0 540 1080 660' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Clock)"
+assert_eq 'a real Calendar provider header is selected by its measured bounds' \
+    '0 400 1080 520' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Calendar)"
+assert_eq 'a shortcut-only provider header is not selected as a widget' \
+    '' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" 'DotWel Launcher')"
+assert_eq 'a missing provider header yields no bounds' \
+    '' \
+    "$(widget_picker_provider_bounds "$widget_headers_xml" Weather)"
+assert_eq 'the widget preview below the expanded Clock header is measured' \
+    '80 700 500 1000' \
+    "$(widget_picker_preview_bounds "$widget_headers_xml" '0 540 1080 660')"
+assert_eq 'a preview above the selected header is rejected' \
+    '' \
+    "$(widget_picker_preview_bounds "$widget_headers_xml" '0 1100 1080 1220')"
+assert_eq 'a HOME without a widget preview yields no preview bounds' \
+    '' \
+    "$(widget_picker_preview_bounds "$home_xml" '0 540 1080 660')"
+
+widget_add_xml="$TMP_DIR/widget-add.xml"
+cat > "$widget_add_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" content-desc="Add Clock widget" clickable="true" bounds="[200,800][400,900]" />
+</hierarchy>
+EOF
+assert_eq 'the exposed widget Add button is selected by its resource id' \
+    '200 800 400 900' \
+    "$(widget_picker_add_button_bounds "$widget_add_xml")"
+assert_eq 'an English Add label without the add-button id is rejected' \
+    '' \
+    "$(widget_picker_add_button_bounds "$home_xml")"
+
+placed_home_xml="$TMP_DIR/placed-home.xml"
+cat > "$placed_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="4:10" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,100][200,160]" />
+    <node index="1" text="FRI 21 NOV" class="android.widget.TextView" content-desc="" clickable="false" bounds="[40,170][300,210]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" clickable="false" long-clickable="true" bounds="[40,400][500,700]" />
+    <node index="3" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[120,1400][240,1460]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a new workspace AppWidgetHostView is detected against the pre-widget HOME' \
+    '40 400 500 700' \
+    "$(home_widget_bounds "$placed_home_xml" "$home_xml")"
+assert_eq 'the same AppWidgetHostView already present in the reference is not new' \
+    '' \
+    "$(home_widget_bounds "$placed_home_xml" "$placed_home_xml")"
+assert_eq 'a HOME without an AppWidgetHostView yields no placed-widget bounds' \
+    '' \
+    "$(home_widget_bounds "$home_xml" "$home_xml")"
+
+appwidget_before="$TMP_DIR/appwidget-before.txt"
+cat > "$appwidget_before" <<'EOF'
+AppWidgets:
+  AppWidgetId=1:
+    provider=ComponentInfo{com.example.one/.One}
+EOF
+appwidget_after="$TMP_DIR/appwidget-after.txt"
+cat > "$appwidget_after" <<'EOF'
+AppWidgets:
+  AppWidgetId=1:
+    provider=ComponentInfo{com.example.one/.One}
+  AppWidgetId=2:
+    provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}
+EOF
+assert_eq 'a newly bound app widget provider is reported after placement' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_before" "$appwidget_after")"
+assert_eq 'no new provider is reported when the dump is unchanged' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_after" "$appwidget_after")"
+
+assert_eq 'the widget drag fallback targets the measured right workspace, away from centre' \
+    '810 834' \
+    "$(widget_drop_target "$actual_home_xml")"
+
 # --- HOME long-press geometry fixtures -------------------------------------
 
 assert_eq 'the HOME long-press target is the empty centre between header and dock' \
@@ -589,6 +698,8 @@ awk '
 ' "$actual_home_xml" > "$blocked_home_xml"
 assert_false 'a HOME whose whole long-press band is occupied has no unsafe fallback' \
     home_longpress_target "$blocked_home_xml"
+assert_false 'a HOME whose whole drop band is occupied has no unsafe widget drop target' \
+    widget_drop_target "$blocked_home_xml"
 
 empty_xml="$TMP_DIR/empty.xml"
 printf '<hierarchy rotation="0"></hierarchy>\n' > "$empty_xml"
@@ -773,6 +884,51 @@ assert_true 'the widgets capture re-verifies the actual HOME' \
     grep -Fq 'verify_nothing_home' "$widgets_body"
 assert_true 'the widgets capture is bounded' \
     grep -Fq '_cwp_max_attempts=3' "$widgets_body"
+assert_true 'the widgets capture selects a real provider header with widgets' \
+    grep -Fq 'widget_picker_provider_bounds' "$widgets_body"
+assert_true 'the widgets capture prefers the system Clock/Calendar providers' \
+    grep -Fq 'for _cwp_title in Clock Calendar' "$widgets_body"
+assert_true 'the widgets capture measures the expanded provider preview' \
+    grep -Fq 'widget_picker_preview_bounds' "$widgets_body"
+assert_true 'the widgets capture taps the measured preview, not a fixed point' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_preview"' "$widgets_body"
+assert_true 'the widgets capture taps the measured Add button, not a fixed point' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_add"' "$widgets_body"
+assert_true 'the widgets capture captures the provider expansion XML and PNG' \
+    grep -Fq 'widgets-provider.xml' "$widgets_body"
+assert_true 'the widgets capture captures the exposed Add XML and PNG' \
+    grep -Fq 'widgets-add.xml' "$widgets_body"
+assert_true 'the widgets capture captures the placed HOME XML and PNG' \
+    grep -Fq 'widgets-home-placed.xml' "$widgets_body"
+assert_true 'the widgets capture captures HOME after the survival key press' \
+    grep -Fq 'widgets-home-after-home.xml' "$widgets_body"
+assert_true 'the widgets capture proves a new real workspace AppWidgetHostView' \
+    grep -Fq 'home_widget_bounds' "$widgets_body"
+assert_true 'the widgets capture proves a new bound app widget provider' \
+    grep -Fq 'appwidget_new_providers' "$widgets_body"
+assert_true 'the widgets capture keeps the placed widget above the measured dock' \
+    grep -Fq 'ui_dock_top' "$widgets_body"
+assert_true 'the widgets capture keeps the placed widget below the measured header' \
+    grep -Fq 'ui_header_bottom' "$widgets_body"
+assert_true 'the widgets capture has a measured drag fallback' \
+    grep -Fq 'widget_drop_target' "$widgets_body"
+assert_true 'the widgets capture saves the last failed placement stage before cleanup' \
+    grep -Fq 'widgets-add-last' "$widgets_body"
+assert_false 'the widgets capture never binds a widget or edits the database directly' \
+    grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' "$widgets_body"
+assert_false 'the widgets capture never uses a fixed Add tap coordinate' \
+    grep -Eq 'input tap [0-9]+ [0-9]+' "$widgets_body"
+
+placed_line=$(grep -n 'widgets-home-placed.xml' "$widgets_body" | sed -n '1s/:.*//p')
+home_key_line=$(grep -n 'return_home widgets-picker' "$widgets_body" | sed -n '1s/:.*//p')
+after_home_line=$(grep -n 'widgets-home-after-home.xml' "$widgets_body" | sed -n '1s/:.*//p')
+if [ -n "$placed_line" ] && [ -n "$home_key_line" ] && [ -n "$after_home_line" ] &&
+    [ "$placed_line" -lt "$home_key_line" ] &&
+    [ "$home_key_line" -lt "$after_home_line" ]; then
+    pass 'the placed widget is captured before HOME and re-checked after HOME'
+else
+    fail 'the placed widget is captured before HOME and re-checked after HOME'
+fi
 
 grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')
 widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')
