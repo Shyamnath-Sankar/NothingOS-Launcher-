@@ -14,7 +14,7 @@
 #     artifact directory, and fails on install/launch/crash problems
 #   - dumps the actual HOME UIAutomator hierarchy and requires the rendered
 #     NothingUI date strip and live clock widget text, with no inherited
-#     "Lawnchair" text; proves both original widget providers are bound and
+#     "Lawnchair" text; proves all three original widget providers are bound and
 #     captures home.png as the actual-home visual evidence
 #   - captures the clean HOME in system dark/light (UI XML + screenshot) before
 #     any third-party widget is added, then restores the previous night mode
@@ -663,10 +663,10 @@ verify_default_home_consent() {
         >> "$ARTIFACTS/role-consent.txt"
 }
 
-# The Play home replaces the inherited welcome smartspace with a quiet borderless
-# date strip plus the two original widgets. Assert the rendered date strip and
-# the live clock widget text, not a static source guard, and keep the inherited
-# brand check on the actual HOME.
+# The Play home replaces the inherited welcome smartspace with a quiet date pill
+# plus the three original widgets. Assert the rendered date strip and the live
+# clock widget text, not a static source guard, and keep the inherited brand
+# check on the actual HOME.
 verify_nothing_home() {
     _vnh_attempt=1
     _vnh_captured=0
@@ -694,10 +694,11 @@ verify_nothing_home() {
     fail "actual HOME does not expose the NothingUI date strip and live clock widget"
 }
 
-# Fresh Play installs seed both original 2x2 widgets through the default
-# workspace. Prove the host actually bound them with distinct launcher-owned
-# AppWidgetIds and that the measured HOME exposes the real clock/battery child
-# values, instead of trusting a provider catalog or the layout file.
+# Fresh Play installs seed two 2x2 widgets plus the wide device card through the
+# default workspace. Prove the host actually bound all three with distinct
+# launcher-owned AppWidgetIds and that the measured HOME exposes the real
+# clock/battery/device child values, instead of trusting a provider catalog or
+# the layout file.
 verify_home_widgets() {
     _vhw_xml=${1:-$ARTIFACTS/home.xml}
     adb_cmd shell dumpsys appwidget > "$ARTIFACTS/home-widgets.txt" 2>&1 ||
@@ -710,36 +711,52 @@ verify_home_widgets() {
     _vhw_battery_id=$(awk -F '\t' \
         '$2 ~ /app\.dotwel\.widgets\.DotWelBatteryWidgetProvider}/ { print $1; exit }' \
         "$ARTIFACTS/home-widgets-instances.txt")
+    _vhw_device_id=$(awk -F '\t' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelDeviceWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/home-widgets-instances.txt")
     [ -n "$_vhw_clock_id" ] ||
         fail "the clock widget has no launcher-owned AppWidgetId on the fresh Play HOME"
     [ -n "$_vhw_battery_id" ] ||
         fail "the battery widget has no launcher-owned AppWidgetId on the fresh Play HOME"
+    [ -n "$_vhw_device_id" ] ||
+        fail "the device widget has no launcher-owned AppWidgetId on the fresh Play HOME"
     [ "$_vhw_clock_id" != "$_vhw_battery_id" ] ||
         fail "the clock and battery widgets share AppWidgetId $_vhw_clock_id"
+    [ "$_vhw_device_id" != "$_vhw_clock_id" ] &&
+        [ "$_vhw_device_id" != "$_vhw_battery_id" ] ||
+        fail "the device widget shares an AppWidgetId with another own widget"
     [ -s "$_vhw_xml" ] ||
         fail "the HOME UI XML for the widget child proof is missing"
     grep -Eq 'resource-id="[^"]*/nothingui_clock_time"' "$_vhw_xml" ||
         fail "the HOME UI XML does not expose the clock child id nothingui_clock_time"
     grep -Eq 'resource-id="[^"]*/nothingui_battery_art"' "$_vhw_xml" ||
         fail "the HOME UI XML does not expose the battery child id nothingui_battery_art"
+    grep -Eq 'resource-id="[^"]*/nothingui_device_storage_value"' "$_vhw_xml" ||
+        fail "the HOME UI XML does not expose the device child id nothingui_device_storage_value"
+    grep -Eq 'resource-id="[^"]*/nothingui_device_storage_progress"' "$_vhw_xml" ||
+        fail "the HOME UI XML does not expose the device child id nothingui_device_storage_progress"
     _vhw_clock_text=$(home_widget_clock_text "$_vhw_xml")
     home_widget_clock_text_is_live "$_vhw_clock_text" ||
         fail "the HOME clock child has no live time text (got '$_vhw_clock_text')"
     _vhw_battery_description=$(home_widget_battery_description "$_vhw_xml")
     home_widget_battery_description_is_real "$_vhw_battery_description" ||
         fail "the HOME battery child has no real percentage or -- description (got '$_vhw_battery_description')"
-    printf 'Home widgets: clock AppWidgetId %s and battery AppWidgetId %s are launcher-owned; the HOME XML exposes nothingui_clock_time=%s and nothingui_battery_art=%s.\n' \
-        "$_vhw_clock_id" "$_vhw_battery_id" "$_vhw_clock_text" "$_vhw_battery_description" \
+    _vhw_device_value=$(home_widget_device_storage_value "$_vhw_xml")
+    home_widget_device_storage_is_real "$_vhw_device_value" ||
+        fail "the HOME device child has no real storage value (got '$_vhw_device_value')"
+    printf 'Home widgets: clock AppWidgetId %s, battery AppWidgetId %s and device AppWidgetId %s are launcher-owned; the HOME XML exposes nothingui_clock_time=%s, nothingui_battery_art=%s and nothingui_device_storage_value=%s.\n' \
+        "$_vhw_clock_id" "$_vhw_battery_id" "$_vhw_device_id" \
+        "$_vhw_clock_text" "$_vhw_battery_description" "$_vhw_device_value" \
         > "$ARTIFACTS/home-widgets-verified.txt"
 }
 
-# Fresh Play installs seed both original widgets through the default layout. When
+# Fresh Play installs seed all three original widgets through the default layout. When
 # Android denies the automatic bind, DefaultLayoutParser keeps each own slot as a
-# pending widget. Complete at most those two visible pending widgets through
+# pending widget. Complete at most those three visible pending widgets through
 # ordinary HOME taps and the standard per-widget bind consent, never granting
 # permanent binding. The real hosted-widget proof stays in verify_nothing_home.
 complete_own_widget_setup() {
-    _cows_max_rounds=2
+    _cows_max_rounds=3
     _cows_max_polls=12
     _cows_round=0
     _cows_completed=0
@@ -954,7 +971,7 @@ capture_clean_home_theme() {
             _ccht_failure="clean home $_ccht_name screenshot capture failed"
             break
         fi
-        printf 'Clean HOME (%s): borderless date strip and both original widgets captured under system night %s before the third-party widget test.\n' \
+        printf 'Clean HOME (%s): date pill and all three original widgets captured under system night %s before the third-party widget test.\n' \
             "$_ccht_name" "$_ccht_mode" \
             > "$ARTIFACTS/clean-home-$_ccht_name.txt"
         printf 'Screenshots: clean-home-%s.png.\n' "$_ccht_name" \
@@ -1653,14 +1670,66 @@ capture_widgets_picker() {
                 capture_screenshot_to widgets-home-after-home.png
                 [ -s "$ARTIFACTS/widgets-home-after-home.png" ] ||
                     fail "HOME-after-widget screenshot capture failed"
-                _cwp_survived=$(home_widget_bounds \
-                    "$ARTIFACTS/widgets-home-after-home.xml" "$_cwp_ref")
-                [ -n "$_cwp_survived" ] ||
+                # The widget may have landed on a page other than the one visible
+                # after HOME. Search a bounded number of pages for the exact placed
+                # bounds, return to the original page, then navigate back to the
+                # widget page and re-prove the same bounds.
+                _cwp_search_xml="$ARTIFACTS/widgets-home-after-home.xml"
+                _cwp_page=0
+                _cwp_max_pages=3
+                while ! home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds"; do
+                    [ "$_cwp_page" -lt "$_cwp_max_pages" ] || break
+                    _cwp_page=$((_cwp_page + 1))
+                    _cwp_swipe=$(workspace_page_swipe "$_cwp_search_xml" next)
+                    [ -n "$_cwp_swipe" ] ||
+                        fail "could not compute a bounded HOME page swipe for the widget survival check"
+                    set -- $_cwp_swipe
+                    adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
+                        > "$ARTIFACTS/widgets-page-swipe-$_cwp_page.txt" 2>&1 ||
+                        fail "could not swipe to HOME page $_cwp_page for the widget survival check"
+                    sleep 1
+                    _cwp_search_xml="$ARTIFACTS/widgets-home-page-$_cwp_page.xml"
+                    capture_ui_xml "widgets-home-page-$_cwp_page.xml" ||
+                        fail "could not capture HOME page $_cwp_page for the widget survival check"
+                done
+                home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds" ||
                     fail "the placed widget disappeared after launching Settings and returning HOME"
-                [ "$_cwp_survived" = "$_cwp_placed_bounds" ] ||
-                    fail "the placed widget moved after launching Settings and returning HOME (was $_cwp_placed_bounds, now $_cwp_survived)"
+                _cwp_return=0
+                while [ "$_cwp_return" -lt "$_cwp_page" ]; do
+                    _cwp_return=$((_cwp_return + 1))
+                    _cwp_swipe=$(workspace_page_swipe "$_cwp_search_xml" prev)
+                    [ -n "$_cwp_swipe" ] ||
+                        fail "could not compute the bounded HOME page return swipe"
+                    set -- $_cwp_swipe
+                    adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
+                        > "$ARTIFACTS/widgets-page-return-$_cwp_return.txt" 2>&1 ||
+                        fail "could not return to the original HOME page for the widget survival check"
+                    sleep 1
+                    _cwp_search_xml="$ARTIFACTS/widgets-home-return-$_cwp_return.xml"
+                    capture_ui_xml "widgets-home-return-$_cwp_return.xml" ||
+                        fail "could not capture the returned HOME page for the widget survival check"
+                done
+                if [ "$_cwp_page" -gt 0 ]; then
+                    _cwp_forward=0
+                    while [ "$_cwp_forward" -lt "$_cwp_page" ]; do
+                        _cwp_forward=$((_cwp_forward + 1))
+                        _cwp_swipe=$(workspace_page_swipe "$_cwp_search_xml" next)
+                        [ -n "$_cwp_swipe" ] ||
+                            fail "could not compute the bounded HOME page re-check swipe"
+                        set -- $_cwp_swipe
+                        adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
+                            > "$ARTIFACTS/widgets-page-recheck-$_cwp_forward.txt" 2>&1 ||
+                            fail "could not navigate back to the widget page for the survival re-check"
+                        sleep 1
+                        _cwp_search_xml="$ARTIFACTS/widgets-home-recheck-$_cwp_forward.xml"
+                        capture_ui_xml "widgets-home-recheck-$_cwp_forward.xml" ||
+                            fail "could not capture the widget page for the survival re-check"
+                    done
+                fi
+                home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds" ||
+                    fail "the placed widget did not survive bounded page navigation (expected $_cwp_placed_bounds)"
 
-                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings and returning HOME.\n' \
+                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings, returning HOME and a bounded page search/return that found the widget on its actual page.\n' \
                     "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
                 printf 'Provider: %s\n' "$_cwp_new_providers" \
                     >> "$ARTIFACTS/widgets-picker.txt"

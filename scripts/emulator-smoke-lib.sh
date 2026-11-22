@@ -179,6 +179,21 @@ home_widget_battery_description_is_real() (
     [ "$percent" -le 100 ]
 )
 
+home_widget_device_storage_value() (
+    ui_node_attribute "$1" nothingui_device_storage_value text
+)
+
+# The device card must show either a real formatted free-space reading (for
+# example "83.0 GB free") or the explicit "Storage unavailable" fallback. A
+# fabricated percentage, a blank label or a catalog string is rejected.
+home_widget_device_storage_is_real() (
+    value=$1
+    case "$value" in
+        'Storage unavailable' | '—') return 0 ;;
+    esac
+    printf '%s\n' "$value" | grep -Eq '^[0-9]+([.][0-9]+)? [KMGTP]?B free$'
+)
+
 # Print the top y of the lowest labelled row (the hotseat/dock) from a
 # UIAutomator dump, using the root bounds to exclude the upper workspace. The
 # row is found by position, not by a hard-coded app name, so it survives
@@ -1517,6 +1532,51 @@ home_widget_bounds() (
         '
 )
 
+# Succeed when the hierarchy contains an AppWidgetHostView at exactly the given
+# "x1 y1 x2 y2" bounds. Used to find the placed third-party widget on whichever
+# HOME page it landed on, without assuming the first page.
+home_has_widget_bounds() (
+    xml=$1
+    target=$2
+    [ -s "$xml" ] || return 1
+    [ -n "$target" ] || return 1
+    set -- $target
+    [ $# -eq 4 ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk -v b="[$1,$2][$3,$4]" '
+            /<node[[:space:]]/ && /AppWidgetHostView/ && index($0, b) { found = 1 }
+            END { exit !found }
+        '
+)
+
+# Print "<x1> <y> <x2> <y>" for a bounded horizontal workspace page swipe in the
+# safe band between the measured header and dock. $2 is "next" or "prev".
+workspace_page_swipe() (
+    xml=$1
+    direction=$2
+    [ -s "$xml" ] || return 0
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 0
+    set -- $root
+    origin_x=$1
+    origin_y=$2
+    width=$(($3 - $1))
+    dock_top=$(ui_dock_top "$xml" "$root")
+    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
+    [ -n "$dock_top" ] || return 0
+    [ -n "$header_bottom" ] || return 0
+    y=$((origin_y + (header_bottom + dock_top) / 2))
+    margin=$((width / 5))
+    [ "$margin" -ge 40 ] || margin=40
+    left=$((origin_x + margin))
+    right=$((origin_x + width - margin))
+    case "$direction" in
+        next) printf '%s %s %s %s\n' "$right" "$y" "$left" "$y" ;;
+        prev) printf '%s %s %s %s\n' "$left" "$y" "$right" "$y" ;;
+        *) return 1 ;;
+    esac
+)
+
 # Print the bounds ("x1 y1 x2 y2") of every visible pending AppWidgetHostView
 # in the workspace, ordered left-to-right. A pending widget is the launcher's
 # click-to-setup placeholder after the platform denied an automatic bind; it is
@@ -1720,7 +1780,7 @@ appwidget_new_providers() (
 
 # Print "<numeric AppWidgetId><TAB><provider class>" only when exactly one widget
 # was newly bound between the two dumps, its host and provider package are both
-# the running package, and its provider class is exactly one of the two DotWel
+# the running package, and its provider class is exactly one of the three DotWel
 # providers. Zero records, multiple or mixed records, a non-numeric id, a foreign
 # package and class prefix/suffix lookalikes all print nothing and fail closed.
 own_widget_new_binding() (
@@ -1752,7 +1812,8 @@ own_widget_new_binding() (
                 }
                 class = provider_class($2)
                 if (class != "app.dotwel.widgets.DotWelClockWidgetProvider" &&
-                    class != "app.dotwel.widgets.DotWelBatteryWidgetProvider") {
+                    class != "app.dotwel.widgets.DotWelBatteryWidgetProvider" &&
+                    class != "app.dotwel.widgets.DotWelDeviceWidgetProvider") {
                     bad = 1
                     next
                 }
