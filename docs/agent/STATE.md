@@ -5,9 +5,10 @@ when no task input is given, and continues from "next".
 
 - current_phase: **P5 home-widget-composition-v1 — PR19 CI161 selected-preview caption and primary-HOME restore recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `1557650` (`fix(smoke): use selected widget caption for bind consent`); this STATE
-  commit follows. Previous commits: `e289362`, `80550c1`, `ccf424c`, `3c00ebc`, `62e1afd`,
-  `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`, `709795a`; start `010d928`.
+- head: `a3250b0` (`fix(smoke): keep restore HOME evidence distinct`); this STATE
+  commit follows. Previous commits: `ab2a06e`, `1557650`, `e289362`, `80550c1`, `ccf424c`,
+  `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`,
+  `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI161** (coordinator-reported, not reproduced locally) — compiled, style passed and **69
   JUnit tests passed**. The runtime smoke then selected the Clock provider and its `Analog clock`
