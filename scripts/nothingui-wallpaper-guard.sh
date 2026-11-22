@@ -177,5 +177,7 @@ grep -Fq 'Cancel preview' "$SMOKE" ||
     fail "the smoke does not exercise the explicit Cancel preview control"
 grep -Fq 'wallpaper_lock_preserved' "$SMOKE" ||
     fail "the smoke does not prove the lock wallpaper survived"
+grep -Fq 'wallpaper-home-after-' "$SMOKE" ||
+    fail "the smoke does not capture HOME pixels after each explicit apply"
 
 printf 'nothingui-wallpaper-guard: OK\n'

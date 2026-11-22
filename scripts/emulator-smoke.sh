@@ -2445,6 +2445,9 @@ _cwg_apply_wallpaper() {
     capture_screenshot_to "wallpaper-apply-$_caw_slug.png"
     return_home "wallpaper-$_caw_slug"
     sleep 1
+    capture_screenshot_to "wallpaper-home-after-$_caw_slug.png"
+    [ -s "$ARTIFACTS/wallpaper-home-after-$_caw_slug.png" ] ||
+        fail "could not capture the HOME pixels after applying $_caw_label"
     _caw_widgets=$(_cwg_widget_ids "$ARTIFACTS/wallpaper-apply-$_caw_slug-widgets.txt") ||
         fail "could not re-dump widgets after applying $_caw_label"
     [ "$_caw_widgets" = "$_cwg_widgets_before" ] ||
