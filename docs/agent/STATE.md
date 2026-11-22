@@ -3,23 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **A1 settings palette — partial checkpoint, slice A not done**. The real Compose
-  settings entry (`LawnchairTheme`) now delegates to the existing `NothingUiTheme` only when the
-  Play-only `NothingUiFeature.themeEnabled` flag is set, passing the already-resolved `darkTheme`
-  argument. That gives the real `PreferenceActivity` the original charcoal/white/red dark and light
-  schemes and `NothingUiTypography`; headline styles and `titleLarge` use Doto while body/labels
-  stay on the readable platform sans-serif. LIGHT/DARK/SYSTEM resolution and all non-Play behavior
-  are unchanged. The smoke now captures the real settings dashboard under system night yes/no with
-  the `pref_launcherTheme` choice required to be `system`, then restores the previous night mode.
-  Native `ThemeProvider`, popup, drawer and picker surfaces are still untouched and are next.
+- current_phase: **A1 settings palette — debug-warning contrast fixed; native surfaces still next**.
+  The Play settings dashboard debug warning rendered red text/icons on the Material dark-red
+  `errorContainer` (1.86:1). `NothingUiColors` now carries an explicit neutral
+  `warningContainer`/`onWarningContainer` pair mapped to `errorContainer`/`onErrorContainer`, and
+  `PreferencesDebugWarning` passes that content color to both text and icon on Play only. Contrast
+  is now 10.16:1 dark and 15.77:1 light; non-Play and all other red accents are unchanged. Native
+  `ThemeProvider`, popup, drawer and picker surfaces are still untouched and are next.
 - branch: `agent/a1-settings-palette-tiny-check`
-- head: app `236f00f` (`feat(settings): apply NothingUi palette to Play settings`), guards/tests
-  `b1f5d10`, smoke `e17b860`; this STATE commit follows.
-- pr: not opened in this run because the runner has no `GH_TOKEN`; the branch is pushed and the
-  agent-dev workflow/supervisor should open the PR. Main/supervisor owns approval. CI builds via PR
-  review; no Gradle build or emulator run happened in this run.
+- head: app `550d5b2` (`fix(settings): use neutral high-contrast debug warning on Play`); this STATE
+  commit follows. Prior A1 checkpoint is `236f00f`/`b1f5d10`/`e17b860`.
+- pr: #17 (https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/17). CI128 was green on
+  build/unit/style/emulator; the only blocker was the debug-warning contrast in the captured pixels.
+  This run is source/fixtures only — no Gradle build or emulator run here.
 
-## done (this run — A1 settings palette partial checkpoint)
+## done (this run — A1 debug warning contrast)
+
+- **Root cause read from the source:** `PreferencesDebugWarning` passed
+  `MaterialTheme.colorScheme.errorContainer` to `WarningPreference`, whose text/icon default to
+  `MaterialTheme.colorScheme.error`. The NothingUi converters never set
+  `errorContainer`/`onErrorContainer`, so Play fell back to Material's dark-red container
+  (`#93000A`) under the accent-red text (`#D7261E`) — 1.86:1, the unreadable pixels CI captured.
+- **Neutral warning tokens:** `NothingUiColors` gains `warningContainer`/`onWarningContainer`.
+  Dark uses `Gray700` on `Paper` (10.16:1); light uses `Gray100` on `Ink` (15.77:1). Both
+  containers are true neutral greys; `error` stays `AccentRed` and `onError` stays `onAccent`, so
+  restrained red elsewhere is unchanged.
+- **Converter mapping:** both `toDarkColorScheme()` and `toLightColorScheme()` now set
+  `errorContainer = warningContainer` and `onErrorContainer = onWarningContainer` instead of
+  inheriting Material defaults.
+- **Play-only debug warning:** `PreferencesDebugWarning` computes the content color as
+  `onErrorContainer` on Play and `error` otherwise, passing it as both `textColor` and `iconTint`.
+  The warning is still shown in exactly the same debug/nightly condition; non-Play pixels are
+  identical because the fallback is the previous default value.
+- **Regression coverage:** `NothingUiTokenTest` adds dark and light warning-content contrast checks
+  (`>= 4.5:1`, plus neutral-channel assertions) and a converter-mapping check that
+  `errorContainer`/`onErrorContainer` equal the palette values while `error` stays the accent.
+  Existing typography and screenshot-smoke assertions are untouched.
+- **Scope:** no workflow, Gradle, SDK, manifest, permission, applicationId, signing, asset, native
+  popup/drawer/picker or other-repo change. Patch is 3 files, 46 insertions.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-theme-guard.sh "$PWD"` OK;
+  `nothingui-theme-guard-test.sh` 12/12; `verify-play-build-test.sh` 11/11; `sh -n` clean on the
+  edited scripts; `git diff --check` clean. The new JUnit contrast/mapping test and the CI pixel
+  recapture are left to PR #17 CI, which builds and runs the unit tests.
+- **Next:** native `ThemeProvider`, popup, drawer and picker surfaces. Slice A is still not complete.
+
+## done (previous run — A1 settings palette partial checkpoint)
 
 - **Real settings entry wired, not the sample:** `LawnchairTheme` previously always built the
   inherited `MaterialExpressiveTheme`/`ThemeProvider` color scheme. It now short-circuits through
