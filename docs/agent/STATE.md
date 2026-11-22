@@ -17,6 +17,7 @@ when no task input is given, and continues from "next".
   app fix `31d0963`.
 - pr: **PR16** for `agent/p11-preview-header` at
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/16; main/supervisor owns approval.
+  CI is `action_required` (maintainer approval needed), so the APK/pixels are not yet produced.
   APK110 remains the fallback and is independent of this branch.
 
 ## done (this run — P11 preview header parity)
@@ -839,10 +840,12 @@ when no task input is given, and continues from "next".
 
 ## blockers
 
-- No local Gradle build or emulator run is allowed here, so the Android compile, unit test,
-  `spotlessCheck` and the API 37 `grid-settings.png` pixels are unverified until CI runs on
-  `df2bfbc`.
-- Main/supervisor must approve PR16 for `agent/p11-preview-header`.
+- The two PR16 CI runs (`df2bfbc` run `44987132494` and `941ffca` run `44987210606`) completed with
+  `action_required`, not success/failure: GitHub is waiting for a maintainer to approve the
+  workflow. The branch push used the runner's GitHub Actions token, so `gh` is unauthenticated and
+  a `workflow_dispatch` returns 403. The Android compile, unit tests, `spotlessCheck` and the
+  API 37 `grid-settings.png` pixels are therefore still unverified.
+- Main/supervisor must approve PR16 and approve/re-run CI for `agent/p11-preview-header`.
 - The preview mirrors the live workspace's smartspace availability fallback in memory only; it
   deliberately does not write the `smartspace_mode` preference from a preview renderer. If the real
   HOME would persist a fallback, the preview may briefly show the fallback layout until HOME reloads.
