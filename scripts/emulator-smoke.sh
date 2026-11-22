@@ -174,6 +174,53 @@ return_home() {
         fail "launcher is not the resumed foreground after $_rh_label"
 }
 
+# Succeed only when the captured hierarchy is the existing primary/default HOME:
+# the date pill, the live clock text and the three original widget child ids are
+# all visible. This is the same primary-page identity verify_nothing_home asserts,
+# so it can gate a bounded restore without weakening the later assertion.
+primary_home_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$xml" || return 1
+    grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$xml" || return 1
+    grep -Eq 'resource-id="[^"]*/nothingui_clock_time"' "$xml" || return 1
+    grep -Eq 'resource-id="[^"]*/nothingui_battery_art"' "$xml" || return 1
+    grep -Eq 'resource-id="[^"]*/nothingui_device_storage_value"' "$xml" || return 1
+    grep -Eq 'resource-id="[^"]*/nothingui_device_storage_progress"' "$xml" || return 1
+)
+
+# After every third-party proof (exact placed host and new launcher-owned id,
+# Settings/HOME survival and the bounded page recheck) restore the existing
+# primary/default HOME with an ordinary HOME key. Launcher.onNewIntent moves the
+# workspace to its default page for that normal MAIN intent; do not reset, move
+# or delete any workspace item. Poll the real hierarchy, bounded, and fail closed
+# if the primary page does not become ready.
+restore_primary_home() {
+    _rph_label=$1
+    adb_cmd shell input keyevent KEYCODE_HOME > "$ARTIFACTS/home-key-$_rph_label.txt" 2>&1 ||
+        fail "could not send the HOME key ($_rph_label)"
+    _rph_attempt=1
+    while [ "$_rph_attempt" -le 10 ]; do
+        if wait_for_foreground "$PKG" "$ARTIFACTS/activities-$_rph_label-$_rph_attempt.txt" 2 &&
+            capture_ui_xml "home-primary-$_rph_label-$_rph_attempt.xml" &&
+            primary_home_is_ready "$ARTIFACTS/home-primary-$_rph_label-$_rph_attempt.xml"; then
+            cp "$ARTIFACTS/home-primary-$_rph_label-$_rph_attempt.xml" \
+                "$ARTIFACTS/home-primary.xml"
+            capture_screenshot_to home-primary.png
+            [ -s "$ARTIFACTS/home-primary.png" ] ||
+                fail "primary HOME screenshot capture failed"
+            printf 'Restored the existing primary/default HOME through the normal HOME key after all third-party widget proof; the date pill, live clock and three original widget children are visible.\n' \
+                > "$ARTIFACTS/primary-home-restored.txt"
+            printf 'Evidence: home-primary-$_rph_label-*.xml, home-primary.xml, home-primary.png.\n' \
+                >> "$ARTIFACTS/primary-home-restored.txt"
+            return 0
+        fi
+        _rph_attempt=$((_rph_attempt + 1))
+        sleep 1
+    done
+    fail "the primary/default HOME did not become ready after the normal HOME key ($_rph_label)"
+}
+
 capture_app_info() {
     if ! _cai_out=$(adb_cmd shell am start -W \
         -a android.settings.APPLICATION_DETAILS_SETTINGS \
@@ -1644,8 +1691,19 @@ capture_widgets_picker() {
                     capture_screenshot_to widgets-add-last.png
                     fail "the native widget picker exposed no Clock/Calendar provider with a fully visible preview above the navigation bar (clipped previews are rejected)"
                 fi
-                printf 'provider=%s header=%s preview=%s\n' \
+                # Two identities: the provider/app title ("Clock") stays the
+                # HOME host and page-search identity, while the consent names
+                # the selected preview's own widget caption ("Analog clock").
+                # Read the caption only from the actual WidgetCell that owns the
+                # measured preview; never the provider header or a global
+                # widget_name. A missing or ambiguous caption fails closed.
+                _cwp_widget_caption=$(widget_picker_selected_caption \
+                    "$_cwp_provider_xml" "$_cwp_preview")
+                [ -n "$_cwp_widget_caption" ] ||
+                    fail "the selected preview WidgetCell exposes no unambiguous widget_name caption; refusing to guess the bind consent identity"
+                printf 'provider=%s header=%s preview=%s widget_caption=%s\n' \
                     "$_cwp_provider_title" "$_cwp_header" "$_cwp_preview" \
+                    "$_cwp_widget_caption" \
                     >> "$ARTIFACTS/widgets-add-log.txt"
                 cp "$_cwp_provider_xml" "$ARTIFACTS/widgets-provider.xml"
                 capture_screenshot_to widgets-provider.png
@@ -1761,7 +1819,7 @@ capture_widgets_picker() {
                         _cwp_candidate_xml="$ARTIFACTS/widgets-home-placed-attempt-$_cwp_place_poll.xml"
                         _cwp_last_xml=$_cwp_candidate_xml
                         if widget_bind_consent_is_ready \
-                            "$_cwp_candidate_xml" "$EXPECTED_LABEL" "$_cwp_provider_title"; then
+                            "$_cwp_candidate_xml" "$EXPECTED_LABEL" "$_cwp_widget_caption"; then
                             if [ "$_cwp_bind_tapped" -eq 0 ]; then
                                 cp "$_cwp_candidate_xml" "$ARTIFACTS/widgets-bind-consent.xml"
                                 capture_screenshot_to widgets-bind-consent.png
@@ -1773,7 +1831,7 @@ capture_widgets_picker() {
                                 fi
                                 _cwp_bind_create=$(widget_bind_create_button_bounds \
                                     "$ARTIFACTS/widgets-bind-consent.xml" \
-                                    "$EXPECTED_LABEL" "$_cwp_provider_title")
+                                    "$EXPECTED_LABEL" "$_cwp_widget_caption")
                                 [ -n "$_cwp_bind_create" ] ||
                                     fail "could not find the measured android:id/button1 Create control in the widget bind consent"
                                 tap_center_of_bounds "$_cwp_bind_create" ||
@@ -1955,6 +2013,12 @@ capture_widgets_picker() {
                     >> "$ARTIFACTS/widgets-picker.txt"
                 printf 'Screenshots: home-popup.png, widgets-picker.png, widgets-provider.png, widgets-add.png, widgets-bind-consent.png, widgets-home-placed.png, widgets-settings-launched.png, widgets-home-after-home.png.\n' \
                     >> "$ARTIFACTS/widgets-picker.txt"
+                # All third-party proof is complete. The bounded search may have
+                # left the added widget's later page visible, so restore the
+                # existing primary/default HOME with the normal HOME key before
+                # the primary-page date-pill/own-widget assertion. No workspace
+                # item is reset, moved or deleted.
+                restore_primary_home widgets-picker
                 verify_nothing_home
                 return 0
             fi

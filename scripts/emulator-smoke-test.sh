@@ -684,6 +684,145 @@ assert_eq 'the expanded title header associates the preview with the selected pr
     '80 360 500 660' \
     "$(widget_picker_preview_bounds "$widget_headers_expanded_xml" '0 200 1080 320')"
 
+# CI161: one provider can expose several WidgetCells at the same vertical
+# position. The selected consent identity is the widget_name of the exact cell
+# that owns the measured preview, never the provider header or the first global
+# widget_name. The left/right cells below share a y range, so only the measured
+# preview bounds can disambiguate them.
+widget_caption_cells_xml="$TMP_DIR/widget-caption-cells.xml"
+cat > "$widget_caption_cells_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+      <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+      <node index="1" text="2 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+    </node>
+    <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][500,860]" />
+      <node index="1" text="" class="android.widget.FrameLayout" bounds="[40,860][520,900]">
+        <node index="0" text="" class="android.widget.LinearLayout" resource-id="com.launchernos.dotwellabs.debug:id/widget_text_container" bounds="[40,860][520,900]">
+          <node index="0" text="Analog clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[180,860][400,900]" />
+        </node>
+      </node>
+    </node>
+    <node index="2" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[580,460][1020,860]" />
+      <node index="1" text="" class="android.widget.FrameLayout" bounds="[560,860][1040,900]">
+        <node index="0" text="" class="android.widget.LinearLayout" resource-id="com.launchernos.dotwellabs.debug:id/widget_text_container" bounds="[560,860][1040,900]">
+          <node index="0" text="Digital clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[700,860][920,900]" />
+        </node>
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the selected left preview maps to its own Analog clock caption' \
+    '60 460 500 860' \
+    "$(widget_picker_preview_bounds "$widget_caption_cells_xml" '0 300 1080 420')"
+assert_eq 'the left preview caption is Analog clock, not the provider header Clock' \
+    'Analog clock' \
+    "$(widget_picker_selected_caption "$widget_caption_cells_xml" '60 460 500 860')"
+assert_eq 'the same-row right preview maps to its own Digital clock caption' \
+    'Digital clock' \
+    "$(widget_picker_selected_caption "$widget_caption_cells_xml" '580 460 1020 860')"
+assert_eq 'the provider title Clock is not a preview caption' \
+    '' \
+    "$(widget_picker_selected_caption "$widget_caption_cells_xml" '0 300 1080 420')"
+
+widget_caption_calendar_xml="$TMP_DIR/widget-caption-calendar.xml"
+cat > "$widget_caption_calendar_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+      <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+      <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+    </node>
+    <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][1040,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][1020,860]" />
+      <node index="1" text="" class="android.widget.FrameLayout" bounds="[40,860][1040,900]">
+        <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[400,860][680,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a provider and widget with the same Calendar name is accepted from the same cell' \
+    'Calendar' \
+    "$(widget_picker_selected_caption "$widget_caption_calendar_xml" '60 460 1020 860')"
+
+widget_caption_dotwel_xml="$TMP_DIR/widget-caption-dotwel.xml"
+cat > "$widget_caption_dotwel_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+      <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+      <node index="1" text="2 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+    </node>
+    <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+      <node index="1" text="DotWel Clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[180,860][400,900]" />
+    </node>
+    <node index="2" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[580,460][1020,860]" />
+      <node index="1" text="DotWel Battery" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[700,860][920,900]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the own DotWel group keeps distinct per-cell captions' \
+    'DotWel Clock' \
+    "$(widget_picker_selected_caption "$widget_caption_dotwel_xml" '60 460 500 860')"
+assert_eq 'the other own DotWel cell keeps its own caption' \
+    'DotWel Battery' \
+    "$(widget_picker_selected_caption "$widget_caption_dotwel_xml" '580 460 1020 860')"
+
+widget_caption_missing_xml="$TMP_DIR/widget-caption-missing.xml"
+cat > "$widget_caption_missing_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a WidgetCell without a widget_name caption fails closed' \
+    '' \
+    "$(widget_picker_selected_caption "$widget_caption_missing_xml" '60 460 500 860')"
+
+widget_caption_ambiguous_xml="$TMP_DIR/widget-caption-ambiguous.xml"
+cat > "$widget_caption_ambiguous_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+    <node index="1" text="Analog clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[180,860][400,900]" />
+    <node index="2" text="Digital clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[180,900][400,940]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a WidgetCell with two different widget_name captions fails closed' \
+    '' \
+    "$(widget_picker_selected_caption "$widget_caption_ambiguous_xml" '60 460 500 860')"
+
+widget_caption_unrelated_xml="$TMP_DIR/widget-caption-unrelated.xml"
+cat > "$widget_caption_unrelated_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+  </node>
+  <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+    <node index="0" text="Digital clock" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[700,860][920,900]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a caption from another WidgetCell is never used for the selected preview' \
+    '' \
+    "$(widget_picker_selected_caption "$widget_caption_unrelated_xml" '60 460 500 860')"
+
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
@@ -1696,6 +1835,30 @@ assert_eq 'the uppercase platform Create control resolves its measured bounds' \
 assert_false 'the platform consent Always allow checkbox starts unchecked' \
     widget_bind_always_allow_is_checked "$widget_bind_platform_xml"
 
+# CI161: the provider header was Clock but the selected preview was Analog
+# clock. Consent must use the captured caption, and Clock/Digital clock must not
+# satisfy it even though they name the provider or a sibling preview.
+widget_bind_analog_xml="$TMP_DIR/widget-bind-analog.xml"
+sed 's/Widget: Calendar/Widget: Analog clock/' "$widget_bind_platform_xml" \
+    > "$widget_bind_analog_xml"
+assert_true 'the CI161 Analog clock consent is accepted with the captured caption' \
+    widget_bind_consent_is_ready "$widget_bind_analog_xml" 'DotWel Launcher' 'Analog clock'
+assert_eq 'the CI161 Analog clock consent measures its Create control' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_analog_xml" 'DotWel Launcher' 'Analog clock')"
+assert_false 'the provider header Clock is rejected as the widget caption' \
+    widget_bind_consent_is_ready "$widget_bind_analog_xml" 'DotWel Launcher' Clock
+assert_eq 'a Clock caption expectation exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_analog_xml" 'DotWel Launcher' Clock)"
+assert_false 'the sibling Digital clock caption is rejected for the Analog clock consent' \
+    widget_bind_consent_is_ready "$widget_bind_analog_xml" 'DotWel Launcher' 'Digital clock'
+assert_eq 'a Digital clock caption expectation exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_analog_xml" 'DotWel Launcher' 'Digital clock')"
+assert_false 'the CI161 Analog clock consent still starts with Always allow unchecked' \
+    widget_bind_always_allow_is_checked "$widget_bind_analog_xml"
+
 widget_bind_unrelated_xml="$TMP_DIR/widget-bind-unrelated.xml"
 cat > "$widget_bind_unrelated_xml" <<'EOF'
 <hierarchy rotation="0">
@@ -2036,6 +2199,9 @@ sed -n '/^capture_grid_settings() {/,/^}/p' "$SMOKE" > "$grid_body"
 widgets_body="$TMP_DIR/capture_widgets_picker.sh"
 sed -n '/^capture_widgets_picker() {/,/^}/p' "$SMOKE" > "$widgets_body"
 
+primary_restore_body="$TMP_DIR/restore_primary_home.sh"
+sed -n '/^restore_primary_home() {/,/^}/p' "$SMOKE" > "$primary_restore_body"
+
 clean_home_body="$TMP_DIR/capture_clean_home_theme.sh"
 sed -n '/^capture_clean_home_theme() {/,/^}/p' "$SMOKE" > "$clean_home_body"
 
@@ -2246,7 +2412,15 @@ assert_true 'the widgets capture re-resolves Add after a measured list scroll' \
     grep -Fq 'widgets-add-scroll-$_cwp_add_scroll.xml' "$widgets_body"
 assert_true 'the widgets capture detects the exact launcher/widget bind consent' \
     grep -Fq 'widget_bind_consent_is_ready' "$widgets_body"
-assert_true 'the widgets capture requires the launcher identity and widget name' \
+assert_true 'the widgets capture requires the launcher identity and captured widget caption' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_widget_caption"' "$widgets_body"
+assert_true 'the widgets capture reads the selected caption from the measured preview WidgetCell' \
+    grep -Fq 'widget_picker_selected_caption' "$widgets_body"
+assert_true 'the widgets capture fails closed when the selected caption is missing or ambiguous' \
+    grep -Fq 'exposes no unambiguous widget_name caption' "$widgets_body"
+assert_true 'the widgets capture keeps the provider title for HOME host and page identity' \
+    grep -Fq '"$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
+assert_false 'the widgets capture never passes the provider header to consent as the widget name' \
     grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$widgets_body"
 assert_true 'the widgets capture stores the bind consent XML' \
     grep -Fq 'widgets-bind-consent.xml' "$widgets_body"
@@ -2256,8 +2430,8 @@ assert_true 'the widgets capture measures the android:id/button1 Create control'
     grep -Fq 'widget_bind_create_button_bounds' "$widgets_body"
 create_bounds_context=$(grep -A2 -F 'widget_bind_create_button_bounds' "$widgets_body" || true)
 printf '%s\n' "$create_bounds_context" > "$TMP_DIR/create-bounds-context.txt"
-assert_true 'the widgets capture passes the launcher/widget identity to the Create bounds' \
-    grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$TMP_DIR/create-bounds-context.txt"
+assert_true 'the widgets capture passes the launcher/captured caption to the Create bounds' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_widget_caption"' "$TMP_DIR/create-bounds-context.txt"
 assert_true 'the widgets capture taps the measured Create control' \
     grep -Fq 'tap_center_of_bounds "$_cwp_bind_create"' "$widgets_body"
 assert_true 'the widgets capture refuses a checked Always allow control' \
@@ -2337,6 +2511,27 @@ assert_true 'the widgets capture records the survival page' \
     grep -Fq 'survival-page=' "$widgets_body"
 assert_true 'the widgets capture re-proves the exact placed bounds after page navigation' \
     grep -Fq '_cwp_recheck_bounds' "$widgets_body"
+assert_true 'the widgets capture restores the primary HOME through the normal HOME key' \
+    grep -Fq 'restore_primary_home widgets-picker' "$widgets_body"
+assert_true 'the primary HOME restore keys HOME rather than resetting or moving workspace items' \
+    grep -Fq 'KEYCODE_HOME' "$primary_restore_body"
+assert_true 'the primary HOME restore polls the real primary-page readiness' \
+    grep -Fq 'primary_home_is_ready' "$primary_restore_body"
+assert_false 'the primary HOME restore never clears, moves or deletes workspace items' \
+    grep -Eq 'pm clear|deleteItem|moveItem|addItemToDatabase|LauncherSettings|content://|sqlite' \
+    "$primary_restore_body"
+recheck_line=$(grep -n '_cwp_recheck_bounds' "$widgets_body" | sed -n '1s/:.*//p')
+restore_line=$(grep -n 'restore_primary_home widgets-picker' "$widgets_body" |
+    sed -n '1s/:.*//p')
+primary_assert_line=$(grep -n 'verify_nothing_home' "$widgets_body" |
+    sed -n '1s/:.*//p')
+if [ -n "$recheck_line" ] && [ -n "$restore_line" ] && [ -n "$primary_assert_line" ] &&
+    [ "$recheck_line" -lt "$restore_line" ] &&
+    [ "$restore_line" -lt "$primary_assert_line" ]; then
+    pass 'third-party proof completes before the primary HOME restore, which precedes verify_nothing_home'
+else
+    fail 'third-party proof completes before the primary HOME restore, which precedes verify_nothing_home'
+fi
 assert_true 'the device settings check taps each measured pill child bound' \
     grep -Fq 'tap_center_of_bounds "$_eds_bounds"' "$device_settings_body"
 assert_true 'the device settings check measures the real device child ids' \

@@ -135,7 +135,15 @@ a view.
   to three genuine vertical swipes inside the measured widget list, re-resolves the Add after every
   scroll, and fails with `widgets-add-last.xml`/`.png` rather than guessing a coordinate. It
   captures `widgets-add.xml`/`.png` and logs the original and safe bounds. The platform may then show
-  the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
+  the real `AllowBindAppWidgetActivity` consent. Two identities are kept separate: the selected
+  provider/app header (`Clock`) is used only for HOME host and page-search matching, while the
+  consent names the selected preview's own `widget_name` caption. CI161 showed that one Clock
+  provider can expose both an `Analog clock` and a `Digital clock` cell at the same vertical
+  position, so the caption is read strictly from the actual `WidgetCell` that owns the measured
+  `widget_preview_container` in the saved pre-Add XML. The provider header and the first global
+  `widget_name` are never used; a missing, foreign or ambiguous caption (including two different
+  `widget_name` nodes in the selected cell) fails closed rather than guessing. Both consent calls
+  receive the captured caption. The smoke accepts only the exact
   `Create widget and allow access?` dialog owned by `com.android.settings`, whose `android:id/message`
   names the launcher (`DotWel Launcher`) and the selected widget, and which exposes an enabled,
   clickable `android:id/button1` control whose label is `Create` or the platform-rendered `CREATE`,
@@ -175,7 +183,14 @@ a view.
   `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
   captures `widgets-settings-launched.xml`/`.png`, presses HOME, and searches the same bounded pages
   by provider label plus the exact placed bounds. It captures `widgets-home-after-home.xml`/`.png`
-  and requires that exact host to remain. It never starts the picker or a configuration activity
+  and requires that exact host to remain. After that exact-host/new-id proof, the Settings/HOME
+  survival check and the bounded page recheck all succeed, the smoke restores the existing
+  primary/default HOME with an ordinary HOME key. `Launcher.onNewIntent` moves the workspace to its
+  default page for that normal MAIN intent; the smoke does not reset, move or delete any workspace
+  item. A bounded readiness poll requires the primary page's date pill, live clock and all three
+  original widget child ids before `verify_nothing_home` runs again, so a widget-only later page
+  left visible by the page search cannot weaken the primary-page assertion. It never starts the
+  picker or a configuration activity
   directly, never binds an app widget itself, and never writes preferences or the database.
 
 Evidence for these phases:
@@ -239,6 +254,10 @@ widgets-settings-launched.png
 activities-widget-settings.txt
 widgets-home-after-home.xml
 widgets-home-after-home.png
+home-primary-N.xml
+home-primary.xml
+home-primary.png
+primary-home-restored.txt
 device-settings-before.xml
 device-settings-before.png
 activities-device-settings-wifi.txt

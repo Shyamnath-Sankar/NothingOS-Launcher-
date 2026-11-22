@@ -1083,6 +1083,78 @@ widget_picker_preview_bounds() (
         '
 )
 
+# Print the selected preview widget's own caption from the same actual
+# WidgetCell that contains the measured widget_preview_container bounds. The
+# picker can show several widget cells for one provider at the same vertical
+# position (CI161: "Analog clock" and "Digital clock" under the Clock header),
+# so neither the provider header nor the first global widget_name is the
+# consent identity. The caption is printed only when exactly one WidgetCell
+# owns the selected preview and that cell exposes exactly one non-empty
+# widget_name text. Missing, foreign or ambiguous captions print nothing so the
+# caller can fail closed.
+widget_picker_selected_caption() (
+    xml=$1
+    preview=$2
+    [ -s "$xml" ] || return 0
+    set -- $preview
+    [ "$#" -eq 4 ] || return 0
+    want="[$1,$2][$3,$4]"
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                cell = (sp > 0 ? stack_cell[sp] : 0)
+                if (cls ~ /(^|\.)WidgetCell$/ && !selfclose) {
+                    cell_count++
+                    cell = cell_count
+                }
+                if (cell > 0) {
+                    if (rid ~ /(^|\/)widget_preview_container$/ &&
+                        bounds == want) {
+                        cell_preview[cell]++
+                    }
+                    if (rid ~ /(^|\/)widget_name$/ && text != "") {
+                        cell_captions[cell]++
+                        cell_caption[cell] = text
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_cell[sp] = cell
+                }
+            }
+            END {
+                matched = 0
+                for (i = 1; i <= cell_count; i++) {
+                    if (cell_preview[i] > 0) {
+                        matched++
+                        selected = i
+                    }
+                }
+                if (matched != 1) exit
+                if (cell_captions[selected] != 1) exit
+                print cell_caption[selected]
+            }
+        '
+)
+
 # Print the bounds ("x1 y1 x2 y2") of the widget picker search bar. The real
 # inherited picker exposes widgets_search_bar_edit_text; the outer
 # search_bar_container/widgets_search_bar is the fallback so the viewport still
