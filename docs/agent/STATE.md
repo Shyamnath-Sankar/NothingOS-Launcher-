@@ -6,8 +6,9 @@ when no task input is given, and continues from "next".
 - current_phase: **P5 home-widget-composition-v1 — pre-CI repair of the offline AMOLED wallpaper
   gallery slice (combined CI/pixels still pending)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `ea278df` (`fix(wallpaper): show licence links, guard apply, gate route`). This STATE commit
-  follows. Parser/fixtures commit `fb35da9`. Candidate base was the reviewed `88c05dd1`; asset commit
+- head: `25ce386` (`fix(smoke): capture HOME pixels after each explicit wallpaper apply`). This
+  STATE commit follows. Parser/fixtures commit `fb35da9`, UI/guard commit `ea278df`. Candidate base
+  was the reviewed `88c05dd1`; asset commit
   `7e5822f`, gallery commit `6322e84`, prior smoke commit `9bd0a8d`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: last verified runtime checkpoint is **CI181** (`6824907`). No CI result is claimed for this
