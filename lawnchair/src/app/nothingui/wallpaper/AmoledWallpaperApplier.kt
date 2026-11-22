@@ -20,10 +20,10 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.IOException
 
 /**
  * Applies exactly one of the two bundled wallpapers to the Home target only,
@@ -32,38 +32,37 @@ import java.io.IOException
  */
 object AmoledWallpaperApplier {
 
-    suspend fun apply(context: Context, wallpaper: AmoledWallpaper): AmoledWallpaperApplyResult =
-        withContext(Dispatchers.IO) {
-            val manager = WallpaperManager.getInstance(context.applicationContext)
-            try {
-                if (!manager.isWallpaperSupported) {
-                    return@withContext AmoledWallpaperApplyResult.Unsupported
-                }
-                if (!manager.isSetWallpaperAllowed) {
-                    return@withContext AmoledWallpaperApplyResult.NotAllowedByPolicy
-                }
-                val returnedId = when (wallpaper.kind) {
-                    AmoledWallpaperKind.PNG -> setPng(context, manager, wallpaper)
-                    AmoledWallpaperKind.VECTOR -> setVector(context, manager, wallpaper)
-                }
-                val currentHomeId = manager.getWallpaperId(AmoledWallpaperTarget.FLAGS)
-                if (AmoledWallpaperTarget.accepted(returnedId, currentHomeId)) {
-                    AmoledWallpaperApplyResult.Applied(returnedId)
-                } else {
-                    AmoledWallpaperApplyResult.Unconfirmed(returnedId, currentHomeId)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (denied: SecurityException) {
-                AmoledWallpaperApplyResult.SecurityDenied
-            } catch (io: IOException) {
-                AmoledWallpaperApplyResult.IoFailed
-            } catch (unsupported: IllegalArgumentException) {
-                AmoledWallpaperApplyResult.Unsupported
-            } catch (error: RuntimeException) {
-                AmoledWallpaperApplyResult.Failed(error.message)
+    suspend fun apply(context: Context, wallpaper: AmoledWallpaper): AmoledWallpaperApplyResult = withContext(Dispatchers.IO) {
+        val manager = WallpaperManager.getInstance(context.applicationContext)
+        try {
+            if (!manager.isWallpaperSupported) {
+                return@withContext AmoledWallpaperApplyResult.Unsupported
             }
+            if (!manager.isSetWallpaperAllowed) {
+                return@withContext AmoledWallpaperApplyResult.NotAllowedByPolicy
+            }
+            val returnedId = when (wallpaper.kind) {
+                AmoledWallpaperKind.PNG -> setPng(context, manager, wallpaper)
+                AmoledWallpaperKind.VECTOR -> setVector(context, manager, wallpaper)
+            }
+            val currentHomeId = manager.getWallpaperId(AmoledWallpaperTarget.FLAGS)
+            if (AmoledWallpaperTarget.accepted(returnedId, currentHomeId)) {
+                AmoledWallpaperApplyResult.Applied(returnedId)
+            } else {
+                AmoledWallpaperApplyResult.Unconfirmed(returnedId, currentHomeId)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (denied: SecurityException) {
+            AmoledWallpaperApplyResult.SecurityDenied
+        } catch (io: IOException) {
+            AmoledWallpaperApplyResult.IoFailed
+        } catch (unsupported: IllegalArgumentException) {
+            AmoledWallpaperApplyResult.Unsupported
+        } catch (error: RuntimeException) {
+            AmoledWallpaperApplyResult.Failed(error.message)
         }
+    }
 
     private fun setPng(
         context: Context,

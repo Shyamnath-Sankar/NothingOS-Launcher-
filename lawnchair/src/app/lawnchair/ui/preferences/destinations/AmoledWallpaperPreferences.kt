@@ -58,8 +58,8 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.nothingui.theme.NothingUiPalette
 import app.nothingui.theme.NothingUiSpacing
 import app.nothingui.wallpaper.AmoledWallpaper
-import app.nothingui.wallpaper.AmoledWallpaperApplyResult
 import app.nothingui.wallpaper.AmoledWallpaperApplier
+import app.nothingui.wallpaper.AmoledWallpaperApplyResult
 import app.nothingui.wallpaper.AmoledWallpaperCatalog
 import com.android.launcher3.R
 import kotlinx.coroutines.launch
@@ -169,18 +169,25 @@ fun AmoledWallpaperPreferences(
                                     ) {
                                         is AmoledWallpaperApplyResult.Applied ->
                                             R.string.dotwel_wallpaper_applied
+
                                         AmoledWallpaperApplyResult.Unsupported ->
                                             R.string.dotwel_wallpaper_unsupported
+
                                         AmoledWallpaperApplyResult.NotAllowedByPolicy ->
                                             R.string.dotwel_wallpaper_not_allowed
+
                                         AmoledWallpaperApplyResult.SecurityDenied ->
                                             R.string.dotwel_wallpaper_security_denied
+
                                         AmoledWallpaperApplyResult.IoFailed ->
                                             R.string.dotwel_wallpaper_io_failed
+
                                         AmoledWallpaperApplyResult.Cancelled ->
                                             R.string.dotwel_wallpaper_failed
+
                                         is AmoledWallpaperApplyResult.Unconfirmed ->
                                             R.string.dotwel_wallpaper_unconfirmed
+
                                         is AmoledWallpaperApplyResult.Failed ->
                                             R.string.dotwel_wallpaper_failed
                                     }

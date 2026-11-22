@@ -25,8 +25,7 @@ import android.app.WallpaperManager
 object AmoledWallpaperTarget {
     const val FLAGS: Int = WallpaperManager.FLAG_SYSTEM
 
-    fun accepted(returnedId: Int, currentHomeId: Int): Boolean =
-        returnedId > 0 && returnedId == currentHomeId
+    fun accepted(returnedId: Int, currentHomeId: Int): Boolean = returnedId > 0 && returnedId == currentHomeId
 }
 
 sealed interface AmoledWallpaperApplyResult {
