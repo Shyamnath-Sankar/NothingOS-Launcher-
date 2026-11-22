@@ -36,8 +36,7 @@ object NothingUiDeviceStorage {
     private val UNITS = arrayOf("B", "KB", "MB", "GB", "TB", "PB")
     private const val STEP = 1024.0
 
-    fun isKnown(total: Long, available: Long): Boolean =
-        total > 0L && available >= 0L && available <= total
+    fun isKnown(total: Long, available: Long): Boolean = total > 0L && available >= 0L && available <= total
 
     fun formatSize(bytes: Long, locale: Locale = Locale.getDefault()): String {
         if (bytes < 0L) return UNKNOWN_MARKER
