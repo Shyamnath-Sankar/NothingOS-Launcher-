@@ -3,19 +3,27 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — bounded pre-CI checkpoint (RemoteViews
-  ImageView, compiled package ids, hosted-widget smoke proof)**.
+- current_phase: **P5 home-widget-composition-v1 — PR19/CI136 formatter-only correction**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `c8dbd25` (`test(widgets): prove hosted widget instances in smoke`); the app fix is
-  `690f5cd` (`fix(widgets): use RemoteViews ImageView and compiled package ids`); original
-  `b373ab5f`. This STATE commit follows.
-- pr: none opened this run (branch push only; no PR, build, emulator or visual claim).
-- next: rerun CI for this branch (Play debug build, `spotlessKotlinCheck`, unit tests including
-  `WidgetPackageResolverTest`, API 37 emulator smoke); inspect the smoke artifacts
-  `home-widgets*.txt`, `clean-home-*-widgets*.txt` and `clean-home-*.xml`/`.png`. No further app
-  change is planned in this checkpoint.
+- head: `e9df3ab` (`fix(widgets): keep pitchFor expression body on one line for spotless`); base
+  `452ffb4`. This STATE commit follows.
+- pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
+- ci: **CI136** run `45004303499` — `check-style` failed only `spotlessKotlinCheck` on
+  `DotText.kt:122`; the Android build was still running and the unit-tests job passed. Do not
+  cancel it; this correction push re-triggers CI.
+- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, unit tests, API 37 smoke) and
+  inspect the dark/light home artifacts. No further app change planned. Do not merge from here.
 
-## done (this run — home-widget-composition-v1 pre-CI checkpoint)
+## done (this run — PR19 CI136 spotless Kotlin correction)
+
+- **Formatter-only:** `DotText.pitchFor`'s short expression body now has `=` and
+  `minOf(boxW / cols(text), boxH / ROWS).coerceAtLeast(0.5f)` on the same single line, as the
+  formatter requested. One file, 1 insertion / 2 deletions; no behavior change.
+- **Untouched:** layout data, workflows, Gradle/SDK, permissions, applicationId, signing and every
+  other file. No Gradle build was run here.
+- **Verification actually run:** `git diff --check` clean; the source diff is the single line above.
+
+## done (previous run — home-widget-composition-v1 pre-CI checkpoint)
 
 - **RemoteViews composition:** the clock layout's bare `<View>` surface is now an
   `<ImageView android:id="@+id/nothingui_clock_surface">`; the provider's runtime
