@@ -2771,6 +2771,9 @@ assert_false 'the settings theme capture never writes a preference' \
 native_theme_body="$TMP_DIR/capture_native_surfaces_theme.sh"
 sed -n '/^capture_native_surfaces_theme() {/,/^}/p' "$SMOKE" > "$native_theme_body"
 
+native_theme_state_body="$TMP_DIR/wait_for_native_theme_state.sh"
+sed -n '/^wait_for_native_theme_state() {/,/^}/p' "$SMOKE" > "$native_theme_state_body"
+
 native_popup_body="$TMP_DIR/capture_native_home_popup.sh"
 sed -n '/^capture_native_home_popup() {/,/^}/p' "$SMOKE" > "$native_popup_body"
 
@@ -2778,6 +2781,18 @@ assert_true 'the native surfaces capture uses the system night yes/no modes' \
     grep -Fq 'for _cnst_mode in yes no; do' "$native_theme_body"
 assert_true 'the native surfaces capture switches the emulator night mode' \
     grep -Fq 'cmd uimode night "$_cnst_mode"' "$native_theme_body"
+assert_true 'the native surfaces capture checks the emulator night result' \
+    grep -Fq '_cnst_actual_night' "$native_theme_body"
+assert_true 'the native surfaces capture waits for resolved native theme readiness' \
+    grep -Fq 'wait_for_native_theme_state' "$native_theme_body"
+assert_true 'the native theme readiness reads the debug-only theme trace' \
+    grep -Fq 'DotWelTheme:D' "$native_theme_state_body"
+assert_true 'the native theme readiness requires expected night and resolved dark state' \
+    grep -Fq 'night=$_wnst_night resolvedDark=$_wnst_dark' "$native_theme_state_body"
+assert_true 'the native theme readiness excludes earlier capture lines' \
+    grep -Fq '_wnst_baseline' "$native_theme_state_body"
+assert_true 'the native surfaces capture stores the resolved theme state' \
+    grep -Fq 'native-theme-$_cnst_name-system-night.txt' "$native_theme_body"
 assert_true 'the native surfaces capture requires the SYSTEM theme choice' \
     grep -Fq 'assert_settings_theme_choice_system' "$native_theme_body"
 assert_true 'the native surfaces capture opens the real HOME popup' \

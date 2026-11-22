@@ -496,6 +496,39 @@ capture_native_home_popup() {
     fail "the real HOME long-press did not open the $_cnhp_name native popup after $_cnhp_max_attempts bounded attempts"
 }
 
+# Poll the debug-only theme-refresh trace until the launcher reports the expected
+# night configuration and a resolved native activity theme whose uiColorMode
+# matches it. The baseline excludes earlier captures, so a stale line cannot
+# satisfy a later mode. This is evidence only; no preference is read or written.
+wait_for_native_theme_state() {
+    _wnst_label=$1
+    _wnst_night=$2
+    _wnst_dark=$3
+    _wnst_baseline=$4
+    _wnst_attempt=1
+    _wnst_last=
+    while [ "$_wnst_attempt" -le 20 ]; do
+        ADB_TIMEOUT=30 adb_cmd logcat -d -s DotWelTheme:D -v brief \
+            > "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null || true
+        _wnst_last=$(tail -n +"$((_wnst_baseline + 1))" \
+            "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null |
+            grep -F 'theme-refresh' | tail -n 1)
+        case "$_wnst_last" in
+            *"night=$_wnst_night resolvedDark=$_wnst_dark"*)
+                printf '%s\n' "$_wnst_last" \
+                    > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
+                return 0
+                ;;
+        esac
+        _wnst_attempt=$((_wnst_attempt + 1))
+        sleep 1
+    done
+    printf 'expected night=%s resolvedDark=%s\nlast theme-refresh: %s\n' \
+        "$_wnst_night" "$_wnst_dark" "${_wnst_last:-<none>}" \
+        > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
+    return 1
+}
+
 # Capture the real HOME long-press popup and the real app drawer in both system
 # night modes while the launcher preference stays SYSTEM. The previous night mode
 # is restored even when a capture fails. The diagnostic theme sample is not used.
@@ -512,11 +545,23 @@ capture_native_surfaces_theme() {
 
     assert_settings_theme_choice_system
 
+    _cnst_theme_baseline=$(ADB_TIMEOUT=30 adb_cmd logcat -d -s DotWelTheme:D -v brief 2>/dev/null |
+        wc -l | tr -d ' ')
+    _cnst_theme_baseline=${_cnst_theme_baseline:-0}
+
     _cnst_failure=
     for _cnst_mode in yes no; do
         case "$_cnst_mode" in
-            yes) _cnst_name=dark ;;
-            no) _cnst_name=light ;;
+            yes)
+                _cnst_name=dark
+                _cnst_night=true
+                _cnst_dark=true
+                ;;
+            no)
+                _cnst_name=light
+                _cnst_night=false
+                _cnst_dark=false
+                ;;
         esac
         if ! _cnst_out=$(adb_cmd shell cmd uimode night "$_cnst_mode" 2>&1); then
             printf '%s\n' "$_cnst_out" \
@@ -527,6 +572,19 @@ capture_native_surfaces_theme() {
         printf '%s\n' "$_cnst_out" \
             > "$ARTIFACTS/native-surfaces-$_cnst_name-night.txt"
         sleep 2
+        _cnst_actual_night=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r' |
+            sed -n 's/^[Nn]ight mode:[[:space:]]*//p' | sed -n '1p')
+        printf '%s\n' "$_cnst_actual_night" \
+            > "$ARTIFACTS/native-theme-$_cnst_name-system-night.txt"
+        if [ "$_cnst_actual_night" != "$_cnst_mode" ]; then
+            _cnst_failure="the emulator reported night $_cnst_actual_night instead of $_cnst_mode for the $_cnst_name native surfaces"
+            break
+        fi
+        if ! ( wait_for_native_theme_state \
+            "$_cnst_name" "$_cnst_night" "$_cnst_dark" "$_cnst_theme_baseline" ); then
+            _cnst_failure="the $_cnst_name native theme was not ready: expected night $_cnst_mode and resolved native dark=$_cnst_dark"
+            break
+        fi
 
         # A subshell lets a failed helper exit without skipping the night-mode
         # restore below; its artifact writes still land in $ARTIFACTS.
