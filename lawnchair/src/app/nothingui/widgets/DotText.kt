@@ -119,8 +119,7 @@ _ ...../...../...../...../...../...../#####
         return count.coerceAtLeast(1)
     }
 
-    fun pitchFor(text: String, boxW: Float, boxH: Float): Float =
-        minOf(boxW / cols(text), boxH / ROWS).coerceAtLeast(0.5f)
+    fun pitchFor(text: String, boxW: Float, boxH: Float): Float = minOf(boxW / cols(text), boxH / ROWS).coerceAtLeast(0.5f)
 
     class Art(val bmp: Bitmap, val wDp: Float, val hDp: Float)
 
