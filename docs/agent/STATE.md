@@ -3,23 +3,62 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10b FINAL — native widget-picker viewport correction (clipped preview, search,
-  bounded scroll)**. The smoke no longer taps a preview clipped under the navigation bar. It measures
-  a viewport below the real search bar and 100 px above the root bottom, accepts a preview only when
-  fully inside it and at least 100 px tall, brings Clock/Calendar into view with the real
-  `widgets_search_bar_edit_text` + `input text Clock` first, and falls back to a bounded genuine
-  scroll inside the measured widget list. The ordinary workspace-swipe drag fallback is removed; if
-  Add is not exposed the run captures `widgets-add-last.xml/.png` and fails. Placement proof
-  (new workspace host + new bound AppWidgetId + HOME persistence) is unchanged; APK110 is frozen.
-  Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle, manifest,
+- current_phase: **P10b FINAL — native widget-picker bind consent and Settings survival**. The smoke
+  now handles the real `AllowBindAppWidgetActivity` after Add: it accepts only the exact
+  `Create widget and allow access?` dialog naming `DotWel Launcher` and the selected widget, captures
+  `widgets-bind-consent.xml/.png`, refuses a pre-checked `Always allow`, and taps Create through the
+  measured `android:id/button1` bounds. Placement proof now requires the new `AppWidgetId` host
+  package to be this launcher, parsing both current `[N] id=N`/`host=HostId{..., pkg:...}` and legacy
+  `AppWidgetId=N`/`hostPackage=` dumps. Survival launches Settings, waits for the exact
+  `com.android.settings` foreground, returns HOME, and requires the same widget bounds. APK110 is
+  frozen. Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle, manifest,
   permission, applicationId, paid, signing or asset change.
 - branch: `agent/p10b-widget-placement`
-- head: `8c915e8` (`fix(smoke): reject clipped widget previews and remove the fake drag`) on base
-  `b1f18ab`; prior head `b1f18ab`.
+- head: `92708dc` (`fix(smoke): handle widget bind consent and prove launcher-owned placement`) on
+  base `6cf242c`; prior head `9a37bdb`.
 - pr: **PR15** for `agent/p10b-widget-placement`; main/supervisor owns creation/approval. APK110 is
   frozen and independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
 
-## done (this run — P10b FINAL native picker viewport correction)
+## done (this run — P10b bind consent and Settings survival)
+
+- **Evidence read, not guessed:** CI116 stopped after the Calendar preview Add on the genuine Android
+  `AllowBindAppWidgetActivity`; the previous harness polled only for a workspace host and never
+  handled the dialog. The actual AOSP dialog is an `AlertActivity` titled
+  `Create widget and allow access?` with `Application:`/`Widget:` message text, the
+  `android:id/alwaysUse` checkbox, `android:id/button1` Create and `android:id/button2` Cancel.
+- **Exact consent gate:** `widget_bind_consent_is_ready` requires the exact title, `Application:` and
+  `Widget:` labels, the launcher label, the selected provider title, the `button1` Create control and
+  the `alwaysUse` checkbox. A generic Create dialog, another launcher, another widget, a missing
+  button1 or a compact single-line dump is handled; only the exact dialog is accepted.
+- **Safe Create route:** the flow captures the consent XML and PNG, refuses to continue if
+  `Always allow` is already checked, measures `android:id/button1` and taps its centre. A second
+  Create tap is suppressed while the dialog is still visible, and a dismissed dialog is never treated
+  as success. The route and unchecked state are recorded in `widgets-add-log.txt`.
+- **Launcher-owned instance:** `appwidget_new_providers` now parses current
+  `Widgets:`/`[N] id=N`/`host=HostId{..., pkg:...}` dumps as well as legacy
+  `AppWidgetId=N`/`hostPackage=` dumps, and accepts the new instance only when its host package is
+  `$PKG`. The smoke polls `dumpsys appwidget` five times, so an installed provider or another
+  launcher's host cannot satisfy placement.
+- **Settings survival:** after placement it launches `android.settings.SETTINGS`, waits for the
+  exact `com.android.settings` foreground, captures `widgets-settings-launched.xml/.png`, presses
+  HOME, captures `widgets-home-after-home.xml/.png`, and requires the same widget bounds as before
+  the app switch.
+- **Fixtures:** modern launcher-owned, other-launcher and missing-ownership dumps, unchanged modern
+  dump, legacy `hostPackage` positive/negative, pretty/compact consent, unrelated dialog, other
+  launcher, other widget, missing button1, checked Always allow, and measured Create bounds. Static
+  checks now require the consent/Settings path and only reject picker-specific direct starts.
+- **Preserved:** the real long-press, measured Widgets tap, picker readiness, search/scroll viewport
+  correction, no fake drag, no direct picker/config start, no preference/DB write and no direct
+  widget binding. APK110 remains frozen.
+- **Docs:** `docs/agent/emulator-verification.md` records the consent, launcher-owned appwidget and
+  Settings-survival phases and artifacts.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 237/237;
+  `emulator-smoke-drawer-test.sh` 38/38; `verify-play-build-test.sh` all pass;
+  `verify-play-build.sh` passes every source guard and stops only at the expected missing
+  `build/intermediates`; `sh -n` clean on every edited script; `git diff --check` clean. This is
+  source/fixture verification only, not a runtime claim.
+
+## done (previous run — P10b FINAL native picker viewport correction)
 
 - **Evidence read, not guessed (CI114 / `11444966646679`):** the Calendar `widgets_list_header`
   expanded at `[29,1592][1051,1827]`; the `widget_preview_container` was `[297,1869][783,1920]`,
