@@ -41,6 +41,7 @@ sh "$SCRIPT_DIR/nothingui-native-surfaces-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-widget-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-role-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-polish-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-test.sh"
@@ -77,6 +78,12 @@ fi
 # Play-only user-initiated HOME role consent (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/settings" ]; then
     sh "$SCRIPT_DIR/nothingui-home-role-guard.sh" "$ROOT"
+fi
+
+# Play settings entry, drawer-opacity default and default-home status (skipped
+# for minimal fixtures).
+if [ -f "$ROOT/lawnchair/src/app/nothingui/drawer/DrawerOpacityDefaults.kt" ]; then
+    sh "$SCRIPT_DIR/nothingui-polish-guard.sh" "$ROOT"
 fi
 
 # Play-only icon renderer policy wiring (skipped for minimal fixtures).

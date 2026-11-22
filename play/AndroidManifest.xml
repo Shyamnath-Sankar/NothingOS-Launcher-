@@ -116,6 +116,22 @@
                 android:value="${applicationId}.grid_control" />
         </activity>
 
+        <!--
+          Play-only discoverability: surface the existing preferences dashboard as
+          a normal app-drawer entry. This adds only MAIN/LAUNCHER; HOME resolution
+          stays on the launcher activity above, and the activity keeps its
+          APPLICATION_PREFERENCES and lawnchair://settings filters from lawnchair/.
+        -->
+        <activity
+            android:name="app.lawnchair.ui.preferences.PreferenceActivity"
+            android:label="@string/play_settings_label"
+            tools:replace="android:label">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Play compliance: third-party QSB / Smartspacer components. -->
         <activity
             android:name="app.lawnchair.smartspace.SmartspacePreferencesShortcut"
