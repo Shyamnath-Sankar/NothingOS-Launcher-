@@ -705,10 +705,10 @@ verify_home_widgets() {
     appwidget_launcher_instances "$ARTIFACTS/home-widgets.txt" "$PKG" \
         > "$ARTIFACTS/home-widgets-instances.txt"
     _vhw_clock_id=$(awk -F '\t' \
-        '$2 ~ /app\.nothingui\.widgets\.NothingUiClockWidgetProvider}/ { print $1; exit }' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelClockWidgetProvider}/ { print $1; exit }' \
         "$ARTIFACTS/home-widgets-instances.txt")
     _vhw_battery_id=$(awk -F '\t' \
-        '$2 ~ /app\.nothingui\.widgets\.NothingUiBatteryWidgetProvider}/ { print $1; exit }' \
+        '$2 ~ /app\.dotwel\.widgets\.DotWelBatteryWidgetProvider}/ { print $1; exit }' \
         "$ARTIFACTS/home-widgets-instances.txt")
     [ -n "$_vhw_clock_id" ] ||
         fail "the clock widget has no launcher-owned AppWidgetId on the fresh Play HOME"

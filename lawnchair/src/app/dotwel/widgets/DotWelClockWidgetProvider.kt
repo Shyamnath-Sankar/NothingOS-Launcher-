@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app.nothingui.widgets
+package app.dotwel.widgets
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -26,6 +26,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.AlarmClock
 import android.widget.RemoteViews
+import app.nothingui.widgets.NothingUiWidgetColors
 import com.android.launcher3.R
 
 /**
@@ -37,7 +38,7 @@ import com.android.launcher3.R
  * theme-resolved rounded tile and content colour, a safe clock tap and the actual widget size; it
  * never paints a static clock.
  */
-class NothingUiClockWidgetProvider : AppWidgetProvider() {
+class DotWelClockWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,
@@ -63,7 +64,7 @@ class NothingUiClockWidgetProvider : AppWidgetProvider() {
         fun refreshAll(context: Context) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val ids = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, NothingUiClockWidgetProvider::class.java),
+                ComponentName(context, DotWelClockWidgetProvider::class.java),
             )
             if (ids.isEmpty()) return
             ids.forEach { appWidgetId ->

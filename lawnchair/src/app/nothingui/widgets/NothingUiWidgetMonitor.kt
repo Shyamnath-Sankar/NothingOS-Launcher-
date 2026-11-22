@@ -21,6 +21,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import androidx.core.content.ContextCompat
+import app.dotwel.widgets.DotWelBatteryWidgetProvider
+import app.dotwel.widgets.DotWelClockWidgetProvider
 
 /**
  * Lifecycle-bounded foreground monitor for the Play home widgets.
@@ -46,11 +48,11 @@ object NothingUiWidgetMonitor {
             override fun onReceive(receiverContext: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_BATTERY_CHANGED ->
-                        NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)
+                        DotWelBatteryWidgetProvider.refreshAll(appContext, intent)
 
                     Intent.ACTION_POWER_CONNECTED,
                     Intent.ACTION_POWER_DISCONNECTED,
-                    -> NothingUiBatteryWidgetProvider.refreshAll(appContext)
+                    -> DotWelBatteryWidgetProvider.refreshAll(appContext)
 
                     Intent.ACTION_CONFIGURATION_CHANGED -> refreshAll(appContext)
                 }
@@ -79,7 +81,7 @@ object NothingUiWidgetMonitor {
     }
 
     private fun refreshAll(context: Context) {
-        NothingUiClockWidgetProvider.refreshAll(context)
-        NothingUiBatteryWidgetProvider.refreshAll(context)
+        DotWelClockWidgetProvider.refreshAll(context)
+        DotWelBatteryWidgetProvider.refreshAll(context)
     }
 }

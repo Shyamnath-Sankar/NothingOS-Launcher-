@@ -31,7 +31,7 @@ build_fixture() {
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <receiver
-            android:name="app.nothingui.widgets.NothingUiClockWidgetProvider"
+            android:name="app.dotwel.widgets.DotWelClockWidgetProvider"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -41,7 +41,7 @@ build_fixture() {
                 android:resource="@xml/nothingui_clock_widget_info" />
         </receiver>
         <receiver
-            android:name="app.nothingui.widgets.NothingUiBatteryWidgetProvider"
+            android:name="app.dotwel.widgets.DotWelBatteryWidgetProvider"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -54,12 +54,13 @@ build_fixture() {
 </manifest>
 EOF
 
-    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt" <<'EOF'
-package app.nothingui.widgets
+    write_file "$root/lawnchair/src/app/dotwel/widgets/DotWelClockWidgetProvider.kt" <<'EOF'
+package app.dotwel.widgets
 
 import android.provider.AlarmClock
+import app.nothingui.widgets.NothingUiWidgetColors
 
-class NothingUiClockWidgetProvider : AppWidgetProvider() {
+class DotWelClockWidgetProvider : AppWidgetProvider() {
     companion object {
         fun refreshAll(context: Context) {
             val action = AlarmClock.ACTION_SHOW_ALARMS
@@ -85,10 +86,15 @@ object NothingUiWidgetColors {
 }
 EOF
 
-    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt" <<'EOF'
-package app.nothingui.widgets
+    write_file "$root/lawnchair/src/app/dotwel/widgets/DotWelBatteryWidgetProvider.kt" <<'EOF'
+package app.dotwel.widgets
 
-class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
+import app.nothingui.widgets.NothingUiBatteryArt
+import app.nothingui.widgets.NothingUiWidgetBudget
+import app.nothingui.widgets.NothingUiWidgetColors
+import app.nothingui.widgets.NothingUiWidgetMonitor
+
+class DotWelBatteryWidgetProvider : AppWidgetProvider() {
     override fun onAppWidgetOptionsChanged() {
         val level = BatteryManager.EXTRA_LEVEL
         val scale = BatteryManager.EXTRA_SCALE
@@ -119,6 +125,9 @@ EOF
     write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt" <<'EOF'
 package app.nothingui.widgets
 
+import app.dotwel.widgets.DotWelBatteryWidgetProvider
+import app.dotwel.widgets.DotWelClockWidgetProvider
+
 object NothingUiWidgetMonitor {
     fun start(context: Context) {
         val appContext = context.applicationContext
@@ -126,10 +135,10 @@ object NothingUiWidgetMonitor {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_BATTERY_CHANGED ->
-                        NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)
+                        DotWelBatteryWidgetProvider.refreshAll(appContext, intent)
                     Intent.ACTION_POWER_CONNECTED,
                     Intent.ACTION_POWER_DISCONNECTED,
-                    -> NothingUiBatteryWidgetProvider.refreshAll(appContext)
+                    -> DotWelBatteryWidgetProvider.refreshAll(appContext)
                     Intent.ACTION_CONFIGURATION_CHANGED -> refreshAll(appContext)
                 }
             }
@@ -144,8 +153,8 @@ object NothingUiWidgetMonitor {
     }
 
     private fun refreshAll(context: Context) {
-        NothingUiClockWidgetProvider.refreshAll(context)
-        NothingUiBatteryWidgetProvider.refreshAll(context)
+        DotWelClockWidgetProvider.refreshAll(context)
+        DotWelBatteryWidgetProvider.refreshAll(context)
     }
 }
 EOF
@@ -240,12 +249,12 @@ EOF
     write_file "$root/play/res/xml/default_workspace_4x5.xml" <<'EOF'
 <favorites>
     <appwidget
-        launcher:className="app.nothingui.widgets.NothingUiClockWidgetProvider"
+        launcher:className="app.dotwel.widgets.DotWelClockWidgetProvider"
         launcher:packageName="@string/launcher_component"
         launcher:x="0"
         launcher:y="1" />
     <appwidget
-        launcher:className="app.nothingui.widgets.NothingUiBatteryWidgetProvider"
+        launcher:className="app.dotwel.widgets.DotWelBatteryWidgetProvider"
         launcher:packageName="@string/launcher_component"
         launcher:x="2"
         launcher:y="1" />
@@ -393,7 +402,7 @@ expect_fail_contains 'wrong 24-hour clock format fails' "$wrong_24h" '24-hour HH
 partial_update="$TMP_DIR/partial-update"
 cp -R "$clean" "$partial_update"
 printf '%s\n' 'appWidgetManager.partiallyUpdateAppWidget(id, views)' \
-    >> "$partial_update/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt"
+    >> "$partial_update/lawnchair/src/app/dotwel/widgets/DotWelBatteryWidgetProvider.kt"
 expect_fail_contains 'partial RemoteViews update fails' "$partial_update" 'partial RemoteViews'
 
 display_metrics="$TMP_DIR/display-metrics"
@@ -407,7 +416,7 @@ cp -R "$clean" "$missing_battery"
 write_file "$missing_battery/play/res/xml/default_workspace_4x5.xml" <<'EOF'
 <favorites>
     <appwidget
-        launcher:className="app.nothingui.widgets.NothingUiClockWidgetProvider"
+        launcher:className="app.dotwel.widgets.DotWelClockWidgetProvider"
         launcher:packageName="@string/launcher_component"
         launcher:x="0"
         launcher:y="1" />
@@ -449,7 +458,7 @@ expect_fail_contains 'unsymmetrical battery lifecycle fails' "$no_stop" 'never s
 fake_data="$TMP_DIR/fake-data"
 cp -R "$clean" "$fake_data"
 printf '%s\n' 'val fake = Random.nextInt(100)' \
-    >> "$fake_data/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt"
+    >> "$fake_data/lawnchair/src/app/dotwel/widgets/DotWelBatteryWidgetProvider.kt"
 expect_fail_contains 'random/fake battery data fails' "$fake_data" 'fake/random data'
 
 no_resolver="$TMP_DIR/no-resolver"
@@ -492,14 +501,14 @@ expect_fail_contains 'clock tile using an unsupported bare View fails' \
 wrong_alarm="$TMP_DIR/wrong-alarm"
 cp -R "$clean" "$wrong_alarm"
 sed -i 's/import android.provider.AlarmClock/import android.app.AlarmClock/' \
-    "$wrong_alarm/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt"
+    "$wrong_alarm/lawnchair/src/app/dotwel/widgets/DotWelClockWidgetProvider.kt"
 expect_fail_contains 'wrong AlarmClock namespace fails' \
     "$wrong_alarm" 'wrong AlarmClock namespace'
 
 provider_theme_attr="$TMP_DIR/provider-theme-attr"
 cp -R "$clean" "$provider_theme_attr"
 printf '%s\n' 'val ink = NothingUiHomeChrome.textColor(context)' \
-    >> "$provider_theme_attr/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt"
+    >> "$provider_theme_attr/lawnchair/src/app/dotwel/widgets/DotWelClockWidgetProvider.kt"
 expect_fail_contains 'provider theme-attribute lookup fails' \
     "$provider_theme_attr" 'still reads the launcher theme attributes'
 
@@ -512,7 +521,7 @@ expect_fail_contains 'widget colour theme-attribute lookup fails' \
 
 no_clock_refresh="$TMP_DIR/no-clock-refresh"
 cp -R "$clean" "$no_clock_refresh"
-sed -i '/NothingUiClockWidgetProvider.refreshAll/d' \
+sed -i '/DotWelClockWidgetProvider.refreshAll/d' \
     "$no_clock_refresh/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
 expect_fail_contains 'monitor without clock refresh fails' \
     "$no_clock_refresh" 'does not refresh the clock widget'
@@ -520,13 +529,13 @@ expect_fail_contains 'monitor without clock refresh fails' \
 power_intent="$TMP_DIR/power-intent"
 cp -R "$clean" "$power_intent"
 sed -i 's/-> refreshAll(context)$/-> refreshAll(context, intent)/' \
-    "$power_intent/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt"
+    "$power_intent/lawnchair/src/app/dotwel/widgets/DotWelBatteryWidgetProvider.kt"
 expect_fail_contains 'battery power event reusing the power intent fails' \
     "$power_intent" 'passes the power intent into BatteryState.from'
 
 monitor_power_intent="$TMP_DIR/monitor-power-intent"
 cp -R "$clean" "$monitor_power_intent"
-sed -i 's/-> NothingUiBatteryWidgetProvider.refreshAll(appContext)$/-> NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)/' \
+sed -i 's/-> DotWelBatteryWidgetProvider.refreshAll(appContext)$/-> DotWelBatteryWidgetProvider.refreshAll(appContext, intent)/' \
     "$monitor_power_intent/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
 expect_fail_contains 'monitor power event reusing the power intent fails' \
     "$monitor_power_intent" 'passes the power intent into BatteryState.from'

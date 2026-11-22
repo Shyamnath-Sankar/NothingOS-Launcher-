@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package app.nothingui.widgets
+package app.dotwel.widgets
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -28,6 +28,10 @@ import android.os.BatteryManager
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.RemoteViews
+import app.nothingui.widgets.NothingUiBatteryArt
+import app.nothingui.widgets.NothingUiWidgetBudget
+import app.nothingui.widgets.NothingUiWidgetColors
+import app.nothingui.widgets.NothingUiWidgetMonitor
 import com.android.launcher3.R
 
 /**
@@ -41,7 +45,7 @@ import com.android.launcher3.R
  * rendering `--`. A missing or invalid level renders the neutral `--` fallback instead of a guessed
  * percentage.
  */
-class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
+class DotWelBatteryWidgetProvider : AppWidgetProvider() {
 
     override fun onUpdate(
         context: Context,
@@ -83,7 +87,7 @@ class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
         fun refreshAll(context: Context, batteryIntent: Intent? = null) {
             val appWidgetManager = AppWidgetManager.getInstance(context)
             val ids = appWidgetManager.getAppWidgetIds(
-                ComponentName(context, NothingUiBatteryWidgetProvider::class.java),
+                ComponentName(context, DotWelBatteryWidgetProvider::class.java),
             )
             if (ids.isEmpty()) return
             val state = batteryIntent ?: readStickyBattery(context)

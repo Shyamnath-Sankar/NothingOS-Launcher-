@@ -25,8 +25,8 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
 - proves the two original widgets are actually hosted: `dumpsys appwidget` must contain distinct
-  launcher-owned `AppWidgetId` records for `NothingUiClockWidgetProvider` and
-  `NothingUiBatteryWidgetProvider` (current `[N] id=N`/`HostId` and legacy `AppWidgetId`/
+  launcher-owned `AppWidgetId` records for `DotWelClockWidgetProvider` and
+  `DotWelBatteryWidgetProvider` (current `[N] id=N`/`HostId` and legacy `AppWidgetId`/
   `hostPackage` shapes, including the API 37 `ProviderId{cmp:ComponentInfo{...}}` wrapper). A
   provider catalog or a widget owned by another host fails. The measured HOME XML must expose the
   `nothingui_clock_time` child with a live `H:mm`/`HH:mm` value and the `nothingui_battery_art`

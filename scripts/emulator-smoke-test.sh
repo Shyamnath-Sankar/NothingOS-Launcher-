@@ -1087,16 +1087,16 @@ cat > "$appwidget_api37_instances" <<'EOF'
 Widgets:
   [0] id=4
     host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
-    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}, profile:0}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
   [1] id=5
     host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
-    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiBatteryWidgetProvider}, profile:0}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelBatteryWidgetProvider}, profile:0}
 Hosts:
   [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
     widgets.size=2
 EOF
 assert_eq 'API37 launcher-owned clock and battery instances keep distinct ids' \
-    "$(printf '4\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}\n5\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiBatteryWidgetProvider}')" \
+    "$(printf '4\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}\n5\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelBatteryWidgetProvider}')" \
     "$(appwidget_launcher_instances "$appwidget_api37_instances" com.launchernos.dotwellabs.debug)"
 assert_eq 'a provider catalog alone yields no launcher-owned instances' \
     '' \
@@ -1107,7 +1107,7 @@ cat > "$appwidget_other_host_only" <<'EOF'
 Widgets:
   [0] id=7
     host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
-    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}, profile:0}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
 EOF
 assert_eq 'instances owned by another host are rejected' \
     '' \
@@ -1118,10 +1118,10 @@ cat > "$appwidget_legacy_instances" <<'EOF'
 AppWidgets:
   AppWidgetId=9:
     hostPackage=com.launchernos.dotwellabs.debug
-    provider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}
+    provider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}
 EOF
 assert_eq 'a legacy launcher-owned instance keeps its id' \
-    "$(printf '9\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}')" \
+    "$(printf '9\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}')" \
     "$(appwidget_launcher_instances "$appwidget_legacy_instances" com.launchernos.dotwellabs.debug)"
 
 # --- widget bind consent fixtures ------------------------------------------
@@ -1434,9 +1434,9 @@ assert_true 'the HOME verification proves both original widgets are bound' \
 assert_true 'the widget binding check dumps the real appwidget host' \
     grep -Fq 'dumpsys appwidget' "$home_widgets_body"
 assert_true 'the widget binding check requires the clock provider' \
-    grep -Fq 'NothingUiClockWidgetProvider' "$home_widgets_body"
+    grep -Fq 'DotWelClockWidgetProvider' "$home_widgets_body"
 assert_true 'the widget binding check requires the battery provider' \
-    grep -Fq 'NothingUiBatteryWidgetProvider' "$home_widgets_body"
+    grep -Fq 'DotWelBatteryWidgetProvider' "$home_widgets_body"
 assert_true 'the widget binding check requires a launcher-owned instance id' \
     grep -Fq 'appwidget_launcher_instances' "$home_widgets_body"
 assert_true 'the widget binding check requires distinct clock and battery ids' \

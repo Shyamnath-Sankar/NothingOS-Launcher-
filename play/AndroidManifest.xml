@@ -155,7 +155,7 @@
           reads the sticky BATTERY_CHANGED broadcast through the launcher's lifecycle receiver.
         -->
         <receiver
-            android:name="app.nothingui.widgets.NothingUiClockWidgetProvider"
+            android:name="app.dotwel.widgets.DotWelClockWidgetProvider"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -166,7 +166,7 @@
         </receiver>
 
         <receiver
-            android:name="app.nothingui.widgets.NothingUiBatteryWidgetProvider"
+            android:name="app.dotwel.widgets.DotWelBatteryWidgetProvider"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />

@@ -38,8 +38,9 @@ forbid_grep() {
 }
 
 WIDGET_DIR=lawnchair/src/app/nothingui/widgets
-CLOCK_PROVIDER=$WIDGET_DIR/NothingUiClockWidgetProvider.kt
-BATTERY_PROVIDER=$WIDGET_DIR/NothingUiBatteryWidgetProvider.kt
+PROVIDER_DIR=lawnchair/src/app/dotwel/widgets
+CLOCK_PROVIDER=$PROVIDER_DIR/DotWelClockWidgetProvider.kt
+BATTERY_PROVIDER=$PROVIDER_DIR/DotWelBatteryWidgetProvider.kt
 WIDGET_MONITOR=$WIDGET_DIR/NothingUiWidgetMonitor.kt
 WIDGET_COLORS=$WIDGET_DIR/NothingUiWidgetColors.kt
 BATTERY_ART=$WIDGET_DIR/NothingUiBatteryArt.kt
@@ -73,16 +74,20 @@ done
 
 # Play-only registration. Both receivers must be present and not exported; a manifest receiver
 # also must not claim the sticky battery action, which cannot be delivered to a manifest receiver.
-require_grep "$PLAY_MANIFEST" 'app.nothingui.widgets.NothingUiClockWidgetProvider' \
+require_grep "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
     "the Play manifest does not register the clock widget"
-require_grep "$PLAY_MANIFEST" 'app.nothingui.widgets.NothingUiBatteryWidgetProvider' \
+require_grep "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
     "the Play manifest does not register the battery widget"
-for receiver in NothingUiClockWidgetProvider NothingUiBatteryWidgetProvider; do
-    if ! grep -A6 "app.nothingui.widgets.$receiver" "$ROOT/$PLAY_MANIFEST" |
+for receiver in DotWelClockWidgetProvider DotWelBatteryWidgetProvider; do
+    if ! grep -A6 "app.dotwel.widgets.$receiver" "$ROOT/$PLAY_MANIFEST" |
         grep -Fq 'android:exported="false"'; then
         fail "$receiver is exported or has no exported=false declaration"
     fi
 done
+require_grep "$CLOCK_PROVIDER" 'package app.dotwel.widgets' \
+    "the clock provider is not in the DotWel widget package"
+require_grep "$BATTERY_PROVIDER" 'package app.dotwel.widgets' \
+    "the battery provider is not in the DotWel widget package"
 forbid_grep "$PLAY_MANIFEST" 'android.intent.action.BATTERY_CHANGED' \
     "the Play manifest tries to receive sticky BATTERY_CHANGED"
 forbid_grep "$PLAY_MANIFEST" 'BATTERY_STATS' \
@@ -202,16 +207,16 @@ require_grep "$WIDGET_MONITOR" 'Intent.ACTION_BATTERY_CHANGED' \
     "the widget monitor does not listen for BATTERY_CHANGED"
 require_grep "$WIDGET_MONITOR" 'Intent.ACTION_CONFIGURATION_CHANGED' \
     "the widget monitor does not refresh on configuration changes"
-require_grep "$WIDGET_MONITOR" 'NothingUiClockWidgetProvider.refreshAll' \
+require_grep "$WIDGET_MONITOR" 'DotWelClockWidgetProvider.refreshAll' \
     "the widget monitor does not refresh the clock widget"
-require_grep "$WIDGET_MONITOR" 'NothingUiBatteryWidgetProvider.refreshAll' \
+require_grep "$WIDGET_MONITOR" 'DotWelBatteryWidgetProvider.refreshAll' \
     "the widget monitor does not refresh the battery widget"
 if grep -A3 'Intent.ACTION_POWER_CONNECTED' "$ROOT/$WIDGET_MONITOR" |
-    grep -Fq 'NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)'; then
+    grep -Fq 'DotWelBatteryWidgetProvider.refreshAll(appContext, intent)'; then
     fail "the widget monitor passes the power intent into BatteryState.from"
 fi
 if ! grep -A3 'Intent.ACTION_POWER_CONNECTED' "$ROOT/$WIDGET_MONITOR" |
-    grep -Fq 'NothingUiBatteryWidgetProvider.refreshAll(appContext)'; then
+    grep -Fq 'DotWelBatteryWidgetProvider.refreshAll(appContext)'; then
     fail "the widget monitor does not re-read the sticky battery on power events"
 fi
 forbid_grep "$WIDGET_MONITOR" 'Service' \
@@ -256,9 +261,9 @@ require_grep "$NOTICE" 'dotline-widgets' \
     "NOTICE.md does not mention the adapted dotline-widgets renderer"
 
 # Fresh-install Play default: both 2x2 widgets, variant-safe package, no Google clock.
-require_grep "$DEFAULT_LAYOUT" 'app.nothingui.widgets.NothingUiClockWidgetProvider' \
+require_grep "$DEFAULT_LAYOUT" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
     "the fresh Play layout does not seed the clock widget"
-require_grep "$DEFAULT_LAYOUT" 'app.nothingui.widgets.NothingUiBatteryWidgetProvider' \
+require_grep "$DEFAULT_LAYOUT" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
     "the fresh Play layout does not seed the battery widget"
 require_grep "$DEFAULT_LAYOUT" 'launcher:packageName="@string/launcher_component"' \
     "the fresh Play layout does not resolve the variant applicationId"
