@@ -643,6 +643,69 @@ assert_eq 'an English Add label without the add-button id is rejected' \
     '' \
     "$(widget_picker_add_button_bounds "$home_xml")"
 
+# A real CI114 picker: the Calendar header sits near the bottom and its preview
+# is clipped to 51 px under the navigation bar. The usable viewport is below the
+# search bar and 100 px above the root bottom, so the clipped preview must be
+# rejected even though its resource id is valid.
+widget_picker_clipped_xml="$TMP_DIR/widget-picker-clipped.xml"
+cat > "$widget_picker_clipped_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[29,1592][1051,1827]">
+        <node index="0" text="Calendar" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,1620][300,1680]" />
+        <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,1690][300,1740]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[297,1869][783,1920]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the real widgets_search_bar_edit_text bounds are measured' \
+    '40 310 1040 350' \
+    "$(widget_picker_search_bar_bounds "$widget_picker_clipped_xml")"
+assert_eq 'the viewport starts below the search bar and ends 100 px above the root bottom' \
+    '0 350 1080 1820' \
+    "$(widget_picker_viewport_bounds "$widget_picker_clipped_xml")"
+assert_false 'the CI114 clipped 51 px preview is rejected even with a valid id' \
+    widget_picker_preview_is_visible '297 1869 783 1920' \
+    "$(widget_picker_viewport_bounds "$widget_picker_clipped_xml")"
+assert_eq 'the genuine scroll stays inside the measured list above the navigation margin' \
+    '540 1528 652' \
+    "$(widget_picker_scroll_target "$widget_picker_clipped_xml")"
+
+widget_picker_visible_xml="$TMP_DIR/widget-picker-visible.xml"
+cat > "$widget_picker_visible_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[29,400][1051,480]">
+        <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,420][300,460]" />
+        <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,465][300,500]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[297,500][783,800]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_true 'a fully visible Clock preview above the navigation margin is accepted' \
+    widget_picker_preview_is_visible '297 500 783 800' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+assert_false 'a preview above the search bar is rejected' \
+    widget_picker_preview_is_visible '297 200 783 400' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+assert_false 'a tall preview whose bottom is under the navigation margin is rejected' \
+    widget_picker_preview_is_visible '297 1750 783 1850' \
+    "$(widget_picker_viewport_bounds "$widget_picker_visible_xml")"
+
 placed_home_xml="$TMP_DIR/placed-home.xml"
 cat > "$placed_home_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -760,10 +823,6 @@ assert_eq 'a bound widget instance is found when the before dump is empty' \
     'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
     "$(appwidget_new_providers '' "$appwidget_new_instance")"
 
-assert_eq 'the widget drag fallback targets the measured right workspace, away from centre' \
-    '810 834' \
-    "$(widget_drop_target "$actual_home_xml")"
-
 # --- HOME long-press geometry fixtures -------------------------------------
 
 assert_eq 'the HOME long-press target is the empty centre between header and dock' \
@@ -803,8 +862,6 @@ awk '
 ' "$actual_home_xml" > "$blocked_home_xml"
 assert_false 'a HOME whose whole long-press band is occupied has no unsafe fallback' \
     home_longpress_target "$blocked_home_xml"
-assert_false 'a HOME whose whole drop band is occupied has no unsafe widget drop target' \
-    widget_drop_target "$blocked_home_xml"
 
 empty_xml="$TMP_DIR/empty.xml"
 printf '<hierarchy rotation="0"></hierarchy>\n' > "$empty_xml"
@@ -1019,8 +1076,20 @@ assert_true 'the widgets capture keeps the placed widget above the measured dock
     grep -Fq 'ui_dock_top' "$widgets_body"
 assert_true 'the widgets capture keeps the placed widget below the measured header' \
     grep -Fq 'ui_header_bottom' "$widgets_body"
-assert_true 'the widgets capture has a measured drag fallback' \
+assert_true 'the widgets capture focuses the real picker search input' \
+    grep -Fq 'widget_picker_search_bar_bounds' "$widgets_body"
+assert_true 'the widgets capture types Clock into the real picker search' \
+    grep -Fq 'input text Clock' "$widgets_body"
+assert_true 'the widgets capture rejects a preview outside the measured viewport' \
+    grep -Fq 'widget_picker_preview_is_visible' "$widgets_body"
+assert_true 'the widgets capture scrolls the measured widget list when the preview is clipped' \
+    grep -Fq 'widget_picker_scroll_target' "$widgets_body"
+assert_true 'the widgets capture fails when the Add button is not exposed' \
+    grep -Fq 'the widget Add button was not exposed' "$widgets_body"
+assert_false 'the widgets capture has no ordinary swipe drag fallback' \
     grep -Fq 'widget_drop_target' "$widgets_body"
+assert_false 'the widgets capture never swipes a preview to a fixed workspace point' \
+    grep -Fq 'input swipe "$_cwp_px"' "$widgets_body"
 assert_true 'the widgets capture saves the last failed placement stage before cleanup' \
     grep -Fq 'widgets-add-last' "$widgets_body"
 assert_false 'the widgets capture never binds a widget or edits the database directly' \

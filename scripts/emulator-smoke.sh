@@ -753,73 +753,160 @@ capture_widgets_picker() {
                 # P10b: add a real third-party widget through the native picker,
                 # then prove it survives HOME. Select a provider header that
                 # reports a real widget, never a shortcut-only row.
-                _cwp_provider_title=
-                _cwp_header=
-                for _cwp_title in Clock Calendar; do
-                    _cwp_candidate_header=$(widget_picker_provider_bounds \
-                        "$ARTIFACTS/widgets-picker.xml" "$_cwp_title")
-                    if [ -n "$_cwp_candidate_header" ]; then
-                        _cwp_provider_title=$_cwp_title
-                        _cwp_header=$_cwp_candidate_header
-                        break
-                    fi
-                done
-                if [ -z "$_cwp_header" ]; then
-                    capture_ui_xml widgets-add-last.xml || true
-                    capture_screenshot_to widgets-add-last.png
-                    fail "the native widget picker exposed no Clock/Calendar provider with a real widget (shortcut-only rows are ignored)"
-                fi
-                printf 'provider=%s header=%s\n' \
-                    "$_cwp_provider_title" "$_cwp_header" \
-                    >> "$ARTIFACTS/widgets-add-log.txt"
-
-                # A provider can already be expanded. Otherwise tap its measured
-                # header and poll for the widget_preview_container below it.
-                _cwp_preview=$(widget_picker_preview_bounds \
-                    "$ARTIFACTS/widgets-picker.xml" "$_cwp_header")
-                _cwp_provider_xml="$ARTIFACTS/widgets-picker.xml"
-                _cwp_expand=1
-                while [ -z "$_cwp_preview" ] && [ "$_cwp_expand" -le 2 ]; do
-                    tap_center_of_bounds "$_cwp_header" ||
-                        fail "could not tap the measured $_cwp_provider_title provider header"
-                    _cwp_expand_poll=1
-                    while [ "$_cwp_expand_poll" -le 5 ]; do
+                #
+                # A picker row can sit at the bottom with its preview clipped
+                # under the navigation bar (CI114: 51 px visible). Bring the
+                # provider into the measured viewport before selecting it: the
+                # real search input first, then a bounded genuine scroll inside
+                # the measured widget list. A clipped preview is never tapped,
+                # even when its resource id is valid.
+                _cwp_picker_xml="$ARTIFACTS/widgets-picker.xml"
+                _cwp_search_input=$(widget_picker_search_bar_bounds "$_cwp_picker_xml")
+                if [ -n "$_cwp_search_input" ]; then
+                    tap_center_of_bounds "$_cwp_search_input" ||
+                        fail "could not focus the native widget picker search input"
+                    adb_cmd shell input text Clock \
+                        >> "$ARTIFACTS/widgets-add-log.txt" 2>&1 ||
+                        fail "could not type Clock into the native widget picker search"
+                    _cwp_search=
+                    _cwp_search_poll=1
+                    while [ "$_cwp_search_poll" -le 6 ]; do
                         sleep 1
                         if capture_ui_xml \
-                            "widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"; then
-                            _cwp_candidate_xml="$ARTIFACTS/widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"
-                            _cwp_candidate_header=$(widget_picker_provider_bounds \
-                                "$_cwp_candidate_xml" "$_cwp_provider_title")
-                            if [ -n "$_cwp_candidate_header" ]; then
-                                _cwp_candidate_preview=$(widget_picker_preview_bounds \
-                                    "$_cwp_candidate_xml" "$_cwp_candidate_header")
-                                if [ -n "$_cwp_candidate_preview" ]; then
-                                    _cwp_header=$_cwp_candidate_header
-                                    _cwp_preview=$_cwp_candidate_preview
-                                    _cwp_provider_xml=$_cwp_candidate_xml
+                            "widgets-search-$_cwp_search_poll.xml" &&
+                            [ -n "$(widget_picker_provider_bounds \
+                                "$ARTIFACTS/widgets-search-$_cwp_search_poll.xml" Clock)" ]; then
+                            _cwp_search="$ARTIFACTS/widgets-search-$_cwp_search_poll.xml"
+                            break
+                        fi
+                        _cwp_search_poll=$((_cwp_search_poll + 1))
+                    done
+                    if [ -n "$_cwp_search" ]; then
+                        cp "$_cwp_search" "$ARTIFACTS/widgets-search.xml"
+                        _cwp_picker_xml="$ARTIFACTS/widgets-search.xml"
+                        printf 'search=Clock results=%s\n' "$_cwp_search" \
+                            >> "$ARTIFACTS/widgets-add-log.txt"
+                    else
+                        # Clear the failed query so the measured list is usable
+                        # again; the cursor is at the end after input text.
+                        printf 'search=Clock no-matching-header; clearing and using the measured list\n' \
+                            >> "$ARTIFACTS/widgets-add-log.txt"
+                        _cwp_clear=0
+                        while [ "$_cwp_clear" -lt 8 ]; do
+                            adb_cmd shell input keyevent KEYCODE_DEL \
+                                >> "$ARTIFACTS/widgets-add-log.txt" 2>&1 || true
+                            _cwp_clear=$((_cwp_clear + 1))
+                        done
+                        sleep 1
+                        if capture_ui_xml widgets-picker-cleared.xml; then
+                            _cwp_picker_xml="$ARTIFACTS/widgets-picker-cleared.xml"
+                        fi
+                    fi
+                fi
+
+                _cwp_provider_title=
+                _cwp_header=
+                _cwp_preview=
+                _cwp_provider_xml=
+                _cwp_expand=0
+                _cwp_scroll=0
+                _cwp_max_scrolls=3
+                _cwp_selected=0
+                while [ "$_cwp_selected" -eq 0 ]; do
+                    _cwp_candidate_expand=
+                    for _cwp_title in Clock Calendar; do
+                        _cwp_candidate_header=$(widget_picker_provider_bounds \
+                            "$_cwp_picker_xml" "$_cwp_title")
+                        [ -n "$_cwp_candidate_header" ] || continue
+                        _cwp_candidate_preview=$(widget_picker_preview_bounds \
+                            "$_cwp_picker_xml" "$_cwp_candidate_header")
+                        _cwp_candidate_viewport=$(widget_picker_viewport_bounds \
+                            "$_cwp_picker_xml")
+                        if widget_picker_preview_is_visible \
+                            "$_cwp_candidate_preview" "$_cwp_candidate_viewport"; then
+                            _cwp_provider_title=$_cwp_title
+                            _cwp_header=$_cwp_candidate_header
+                            _cwp_preview=$_cwp_candidate_preview
+                            _cwp_provider_xml=$_cwp_picker_xml
+                            _cwp_selected=1
+                            break
+                        fi
+                        if [ -z "$_cwp_candidate_preview" ] &&
+                            [ -z "$_cwp_candidate_expand" ]; then
+                            _cwp_candidate_expand="$_cwp_title $_cwp_candidate_header"
+                        fi
+                    done
+                    if [ "$_cwp_selected" -eq 1 ]; then
+                        break
+                    fi
+
+                    # No fully visible preview. If a provider is still collapsed,
+                    # expand it and re-resolve. A clipped preview is never
+                    # re-tapped because that would collapse it.
+                    if [ -n "$_cwp_candidate_expand" ] && [ "$_cwp_expand" -lt 2 ]; then
+                        set -- $_cwp_candidate_expand
+                        _cwp_expand_title=$1
+                        shift
+                        _cwp_expand_header="$*"
+                        tap_center_of_bounds "$_cwp_expand_header" ||
+                            fail "could not tap the measured $_cwp_expand_title provider header"
+                        _cwp_expand=$((_cwp_expand + 1))
+                        _cwp_expand_poll=1
+                        while [ "$_cwp_expand_poll" -le 5 ]; do
+                            sleep 1
+                            if capture_ui_xml \
+                                "widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"; then
+                                _cwp_candidate_xml="$ARTIFACTS/widgets-provider-$_cwp_expand-$_cwp_expand_poll.xml"
+                                _cwp_candidate_header=$(widget_picker_provider_bounds \
+                                    "$_cwp_candidate_xml" "$_cwp_expand_title")
+                                if [ -n "$_cwp_candidate_header" ]; then
+                                    _cwp_picker_xml=$_cwp_candidate_xml
                                     break
                                 fi
                             fi
-                        fi
-                        _cwp_expand_poll=$((_cwp_expand_poll + 1))
-                    done
-                    _cwp_expand=$((_cwp_expand + 1))
+                            _cwp_expand_poll=$((_cwp_expand_poll + 1))
+                        done
+                        continue
+                    fi
+
+                    # Still clipped or off-screen: one bounded genuine scroll
+                    # inside the measured widget list, then re-resolve.
+                    if [ "$_cwp_scroll" -ge "$_cwp_max_scrolls" ]; then
+                        break
+                    fi
+                    _cwp_scroll_target=$(widget_picker_scroll_target "$_cwp_picker_xml") ||
+                        break
+                    set -- $_cwp_scroll_target
+                    printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+                        "$((_cwp_scroll + 1))" "$1" "$2" "$1" "$3" \
+                        >> "$ARTIFACTS/widgets-add-log.txt"
+                    adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
+                        >> "$ARTIFACTS/widgets-add-log.txt" 2>&1 ||
+                        fail "could not scroll the measured native widget list"
+                    _cwp_scroll=$((_cwp_scroll + 1))
+                    sleep 1
+                    if ! capture_ui_xml "widgets-scroll-$_cwp_scroll.xml"; then
+                        break
+                    fi
+                    _cwp_picker_xml="$ARTIFACTS/widgets-scroll-$_cwp_scroll.xml"
                 done
-                if [ -z "$_cwp_preview" ]; then
+
+                if [ "$_cwp_selected" -eq 0 ]; then
                     capture_ui_xml widgets-add-last.xml || true
                     capture_screenshot_to widgets-add-last.png
-                    fail "the measured $_cwp_provider_title header did not expose a clickable/long-clickable widget_preview_container"
+                    fail "the native widget picker exposed no Clock/Calendar provider with a fully visible preview above the navigation bar (clipped previews are rejected)"
                 fi
+                printf 'provider=%s header=%s preview=%s\n' \
+                    "$_cwp_provider_title" "$_cwp_header" "$_cwp_preview" \
+                    >> "$ARTIFACTS/widgets-add-log.txt"
                 cp "$_cwp_provider_xml" "$ARTIFACTS/widgets-provider.xml"
                 capture_screenshot_to widgets-provider.png
                 [ -s "$ARTIFACTS/widgets-provider.png" ] ||
                     fail "widget provider screenshot capture failed"
-                printf 'preview=%s\n' "$_cwp_preview" \
-                    >> "$ARTIFACTS/widgets-add-log.txt"
                 adb_cmd shell dumpsys appwidget \
                     > "$ARTIFACTS/widgets-appwidget-before.txt" 2>&1 || true
 
-                # Tap the preview to expose the real Add button.
+                # Tap the fully visible preview to expose the real Add button.
                 tap_center_of_bounds "$_cwp_preview" ||
                     fail "could not tap the measured widget preview"
                 _cwp_add=
@@ -839,36 +926,22 @@ capture_widgets_picker() {
                     fi
                     _cwp_add_poll=$((_cwp_add_poll + 1))
                 done
-                if [ -n "$_cwp_add" ]; then
-                    cp "$_cwp_add_xml" "$ARTIFACTS/widgets-add.xml"
-                    capture_screenshot_to widgets-add.png
-                    [ -s "$ARTIFACTS/widgets-add.png" ] ||
-                        fail "widget Add screenshot capture failed"
-                    printf 'route=add-button add=%s\n' "$_cwp_add" \
-                        >> "$ARTIFACTS/widgets-add-log.txt"
-                    tap_center_of_bounds "$_cwp_add" ||
-                        fail "could not tap the measured widget Add button"
-                else
-                    # Genuine measured drag fallback when the Add button is not
-                    # exposed. The drop point is derived from the pre-widget HOME
-                    # and avoids the header, dock and central drawer swipe.
-                    _cwp_drop=$(widget_drop_target "$_cwp_ref") || _cwp_drop=
-                    if [ -z "$_cwp_drop" ]; then
-                        capture_ui_xml widgets-add-last.xml || true
-                        capture_screenshot_to widgets-add-last.png
-                        fail "the widget Add button was not exposed and no measured free workspace drop point exists"
-                    fi
-                    set -- $_cwp_preview
-                    _cwp_px=$((($1 + $3) / 2))
-                    _cwp_py=$((($2 + $4) / 2))
-                    set -- $_cwp_drop
-                    printf 'route=drag from=%s,%s to=%s,%s\n' \
-                        "$_cwp_px" "$_cwp_py" "$1" "$2" \
-                        >> "$ARTIFACTS/widgets-add-log.txt"
-                    adb_cmd shell input swipe "$_cwp_px" "$_cwp_py" "$1" "$2" 1000 \
-                        > "$ARTIFACTS/widgets-drag.txt" 2>&1 ||
-                        fail "could not drag the measured widget preview to the workspace"
+                if [ -z "$_cwp_add" ]; then
+                    # No ordinary swipe fallback: a workspace drag is a different
+                    # gesture from the picker's long-press drag. Fail with the
+                    # captured hierarchy and PNG instead of faking it.
+                    capture_ui_xml widgets-add-last.xml || true
+                    capture_screenshot_to widgets-add-last.png
+                    fail "the widget Add button was not exposed after tapping the fully visible preview (no fake drag fallback)"
                 fi
+                cp "$_cwp_add_xml" "$ARTIFACTS/widgets-add.xml"
+                capture_screenshot_to widgets-add.png
+                [ -s "$ARTIFACTS/widgets-add.png" ] ||
+                    fail "widget Add screenshot capture failed"
+                printf 'route=add-button add=%s\n' "$_cwp_add" \
+                    >> "$ARTIFACTS/widgets-add-log.txt"
+                tap_center_of_bounds "$_cwp_add" ||
+                    fail "could not tap the measured widget Add button"
 
                 # Wait, bounded, for the sheet to close and a real
                 # AppWidgetHostView to appear in the workspace. A configuration

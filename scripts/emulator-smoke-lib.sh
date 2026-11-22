@@ -913,6 +913,206 @@ widget_picker_preview_bounds() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of the widget picker search bar. The real
+# inherited picker exposes widgets_search_bar_edit_text; the outer
+# search_bar_container/widgets_search_bar is the fallback so the viewport still
+# has a measured top edge. No class name or English placeholder is assumed.
+widget_picker_search_bar_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                b = attr($0, "bounds")
+                if (rid ~ /(^|\/)widgets_search_bar_edit_text$/ && input_b == "")
+                    input_b = b
+                if (rid ~ /(^|\/)(search_bar_container|widgets_search_bar)$/ && outer_b == "")
+                    outer_b = b
+            }
+            END {
+                if (input_b != "") emit(input_b)
+                else if (outer_b != "") emit(outer_b)
+            }
+        '
+)
+
+# Print the usable widget-preview viewport ("x1 y1 x2 y2"): inside the root,
+# below the search bar and 100 px above the root bottom. The bottom margin keeps
+# a preview off the navigation bar; the root is the real UIAutomator window
+# bounds, never a fixed display size. Prints nothing when either edge is
+# unavailable.
+widget_picker_viewport_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    root=$(ui_root_bounds "$xml")
+    [ -n "$root" ] || return 0
+    search=$(widget_picker_search_bar_bounds "$xml")
+    [ -n "$search" ] || return 0
+    set -- $root
+    rx1=$1
+    ry1=$2
+    rx2=$3
+    ry2=$4
+    set -- $search
+    top=$4
+    if [ "$top" -lt "$ry1" ]; then
+        top=$ry1
+    fi
+    bottom=$((ry2 - 100))
+    if [ "$bottom" -le "$top" ]; then
+        return 0
+    fi
+    printf '%s %s %s %s\n' "$rx1" "$top" "$rx2" "$bottom"
+)
+
+# Succeed only when a preview is fully inside the measured viewport and at least
+# 100 px tall. A 51 px preview clipped by the navigation bar is rejected even
+# when its resource id is valid.
+widget_picker_preview_is_visible() (
+    preview=$1
+    viewport=$2
+    if [ -z "$preview" ] || [ -z "$viewport" ]; then
+        return 1
+    fi
+    set -- $preview
+    if [ "$#" -ne 4 ]; then
+        return 1
+    fi
+    px1=$1
+    py1=$2
+    px2=$3
+    py2=$4
+    set -- $viewport
+    if [ "$#" -ne 4 ]; then
+        return 1
+    fi
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    if [ "$py2" -le "$py1" ]; then
+        return 1
+    fi
+    if [ "$((py2 - py1))" -lt 100 ]; then
+        return 1
+    fi
+    if [ "$py1" -lt "$vy1" ]; then
+        return 1
+    fi
+    if [ "$py2" -ge "$vy2" ]; then
+        return 1
+    fi
+    if [ "$px1" -lt "$vx1" ]; then
+        return 1
+    fi
+    if [ "$px2" -gt "$vx2" ]; then
+        return 1
+    fi
+    return 0
+)
+
+# Print the bounds of the measured widget list (inherited primary/search list or
+# the Compose catalog) used for a bounded genuine scroll.
+widget_picker_list_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (best != "") next
+                rid = attr($0, "resource-id")
+                if (rid ~ /(^|\/)(primary_widgets_list_view|search_widgets_list_view|widgets_catalog)$/)
+                    best = attr($0, "bounds")
+            }
+            END { if (best != "") emit(best) }
+        '
+)
+
+# Print "x y_from y_to" for a genuine vertical scroll inside the measured widget
+# list, clamped to the usable viewport so the gesture never lands on the
+# navigation bar. Prints nothing when the list or viewport is unavailable.
+widget_picker_scroll_target() (
+    xml=$1
+    list=$(widget_picker_list_bounds "$xml")
+    viewport=$(widget_picker_viewport_bounds "$xml")
+    if [ -z "$list" ] || [ -z "$viewport" ]; then
+        return 1
+    fi
+    set -- $list
+    lx1=$1
+    ly1=$2
+    lx2=$3
+    ly2=$4
+    set -- $viewport
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    x=$(((lx1 + lx2) / 2))
+    top=$ly1
+    if [ "$top" -lt "$vy1" ]; then
+        top=$vy1
+    fi
+    bottom=$ly2
+    if [ "$bottom" -gt "$vy2" ]; then
+        bottom=$vy2
+    fi
+    if [ "$bottom" -le "$top" ]; then
+        return 1
+    fi
+    span=$((bottom - top))
+    if [ "$span" -lt 200 ]; then
+        return 1
+    fi
+    y_from=$((bottom - span / 5))
+    y_to=$((top + span / 5))
+    if [ "$y_from" -le "$y_to" ]; then
+        return 1
+    fi
+    printf '%s %s %s\n' "$x" "$y_from" "$y_to"
+)
+
 # Print the bounds of the exposed widget Add button by its real resource id.
 # The button may be icon-only, so English text is not required.
 widget_picker_add_button_bounds() (
@@ -1090,41 +1290,6 @@ appwidget_new_providers() (
                 }
             }
         '
-)
-
-# Compute a measured free workspace point for the drag fallback. It uses the
-# right-hand workspace (away from the central drawer swipe) and stays between
-# the measured header bottom and dock top. Returns "x y" or nothing.
-widget_drop_target() (
-    xml=$1
-    root=$(ui_root_bounds "$xml")
-    [ -n "$root" ] || return 1
-    set -- $root
-    rx1=$1
-    ry1=$2
-    rx2=$3
-    ry2=$4
-    width=$((rx2 - rx1))
-    height=$((ry2 - ry1))
-    [ "$width" -gt 0 ] && [ "$height" -gt 0 ] || return 1
-    dock_top=$(ui_dock_top "$xml" "$root")
-    [ -n "$dock_top" ] || dock_top=$((ry1 + height * 85 / 100))
-    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
-    [ -n "$header_bottom" ] || header_bottom=$((ry1 + height * 15 / 100))
-    margin=$((height * 4 / 100))
-    band_top=$((header_bottom + margin))
-    band_bottom=$((dock_top - margin))
-    [ "$band_bottom" -gt "$band_top" ] || return 1
-    x=$((rx1 + width * 3 / 4))
-    band=$((band_bottom - band_top))
-    for pct in 50 40 60 30 70 20 80; do
-        y=$((band_top + band * pct / 100))
-        if ui_point_is_free "$xml" "$x" "$y"; then
-            printf '%s %s\n' "$x" "$y"
-            return 0
-        fi
-    done
-    return 1
 )
 
 # Succeed only when the native widget picker search/list is visible and differs

@@ -75,18 +75,27 @@ a view.
 - **Real widget placement and HOME survival (P10b).** Inside the native picker it selects a
   clickable `widgets_list_header` whose `app_title` is `Clock` or `Calendar` and whose `app_subtitle`
   reports a positive widget count. A shortcut-only header such as the one-shortcut DotWel row is
-  rejected. It expands the measured header if needed, re-resolves the expanded title header by its
-  `app_title` so a stale collapsed position cannot pick a later provider's preview, captures
-  `widgets-provider.xml`/`.png`, and measures the `widget_preview_container` below that header and
-  above the next header. It taps the preview, polls for the real `widget_add_button` resource id,
-  captures `widgets-add.xml`/`.png`, and taps the measured Add button. If Add is not exposed it uses a
-  measured drag to a free right-hand workspace point derived from the pre-widget HOME. It then polls
-  for a new `AppWidgetHostView`-suffixed node in the workspace and a newly bound
-  `AppWidgetId`/provider pair in `dumpsys appwidget`. The HOME comparison parses both hierarchies as
-  node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
-  picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
-  `widgets-add-last.xml`/`.png` if a configuration activity or an unbound provider blocks placement.
-  The placed widget must sit between
+  rejected. A picker row can sit at the bottom with its preview clipped under the navigation bar
+  (CI114: the Calendar header at `[29,1592][1051,1827]` and a `[297,1869][783,1920]` preview, only
+  51 px visible). The smoke therefore measures a viewport below the real
+  `widgets_search_bar_edit_text`/`search_bar_container` and 100 px above the root bottom, and
+  accepts a preview only when it is fully inside that viewport and at least 100 px tall. It brings
+  the provider into view first by focusing the real search input and typing `Clock` (polling the
+  search results for a Clock `widgets_list_header`), then falls back to a bounded genuine scroll
+  inside the measured widget list (`primary_widgets_list_view`/`search_widgets_list_view`/
+  `widgets_catalog`), re-resolving the header and preview after every scroll. A clipped preview is
+  never tapped, even when its resource id is valid. It expands the measured header only when no
+  preview exists yet, re-resolves the expanded title header by its `app_title` so a stale collapsed
+  position cannot pick a later provider's preview, captures `widgets-provider.xml`/`.png`, and taps
+  the fully visible `widget_preview_container`. It then polls for the real `widget_add_button`
+  resource id, captures `widgets-add.xml`/`.png`, and taps the measured Add button. There is no
+  ordinary workspace swipe fallback; if Add is not exposed it saves `widgets-add-last.xml`/`.png`
+  and fails instead of faking the picker's long-press drag. It then polls for a new
+  `AppWidgetHostView`-suffixed node in the workspace and a newly bound `AppWidgetId`/provider pair in
+  `dumpsys appwidget`. The HOME comparison parses both hierarchies as node records, so a compact
+  single-line UIAutomator dump is handled, and it ignores hosts inside picker/sheet previews. It
+  captures `widgets-home-placed.xml`/`.png`, and fails with saved `widgets-add-last.xml`/`.png` if a
+  configuration activity or an unbound provider blocks placement. The placed widget must sit between
   the measured header bottom and dock top, so it cannot cover the later drawer swipe start. It then
   presses HOME, captures `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to
   remain. It never starts the picker or a configuration activity directly, never binds an app widget,
@@ -112,15 +121,18 @@ home-popup.png
 widgets-picker-attempt-N-P.xml
 widgets-picker.xml
 widgets-picker.png
+widgets-picker-cleared.xml
+widgets-search-N.xml
+widgets-search.xml
 widgets-picker.txt
 widgets-add-log.txt
 widgets-provider-N-P.xml
 widgets-provider.xml
 widgets-provider.png
+widgets-scroll-N.xml
 widgets-add-attempt-N.xml
 widgets-add.xml
 widgets-add.png
-widgets-drag.txt
 widgets-home-placed-attempt-N.xml
 widgets-home-placed.xml
 widgets-home-placed.png
