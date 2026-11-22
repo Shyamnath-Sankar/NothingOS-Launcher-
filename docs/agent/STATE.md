@@ -3,24 +3,63 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10b harness correction — safe Add intersection and API37 ProviderId parsing**.
-  CI120 exposed Add at `[434,1755][645,1881]` with the navigation bar from about 1800; tapping the
-  original centre 1818 opened Android HOME. The smoke now remeasures the viewport from the exposed
-  Add hierarchy, intersects the enabled clickable Add with it, pulls the intersection 32 px above the
-  viewport bottom, and taps only a safe intersection of at least 24x24 px. If no safe box remains it
-  performs up to three genuine measured list scrolls and re-resolves, then fails with pixels. The
-  `dumpsys appwidget` parser now accepts API37 `ProviderId{cmp:ComponentInfo{...}}` only inside a
-  real widget-id block owned by this launcher and rejects provider catalogs and other hosts. APK110 is
-  frozen. Harness/fixtures/docs only: no app source, preference/DB/widget binding, SDK, workflow,
-  Gradle, manifest, permission, applicationId, paid, signing or asset change.
-- branch: `agent/p10b-widget-placement`
-- head: `694d943` (`fix(smoke): tap a safe Add intersection and parse API37 providers`) on base
-  `6cf242c`; prior head `d18ad89`/`871f351`.
-- pr: **PR15** for `agent/p10b-widget-placement` at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/15; main/supervisor owns approval.
-  APK110 is frozen and independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
+- current_phase: **P11 grid-preview header parity with live HOME**. The grid/launcher preview now
+  resolves its first-page smartspace from the same selected `SmartspaceMode.layoutResourceId` the
+  real workspace uses, before the model is bound. On Play the lawnchair mode resolves to
+  `nothingui_home_header`, so the preview shows `NothingUiHomeHeaderView`; github/nightly keep the
+  inherited `smartspace_container`. Disabled smartspace, the explicit dummy backup placeholder and
+  the other selected modes are preserved. The dummy placeholder is now passed through the
+  constructor so an already-loaded model that binds synchronously cannot race it. App source +
+  static guard/fixtures only: no grid values, Apply behavior, SDK, workflow, manifest, permission,
+  applicationId, paid, signing or asset change.
+- branch: `agent/p11-preview-header`
+- head: `df2bfbc` (`test(preview): guard preview smartspace layout source`) on base `e7c9240d`;
+  app fix `31d0963`.
+- pr: **PR16** for `agent/p11-preview-header` at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/16; main/supervisor owns approval.
+  APK110 remains the fallback and is independent of this branch.
 
-## done (this run — P10b safe Add tap and API37 ProviderId parser)
+## done (this run — P11 preview header parity)
+
+- **Root cause from the source, not guessed:** `LauncherPreviewRenderer` initialized
+  `mWorkspaceSearchContainer` to `R.layout.smartspace_container` at field declaration, before the
+  model callbacks. The real workspace instead inflates the selected `SmartspaceMode`'s
+  `layoutResourceId` in `Workspace.bindAndInitFirstWorkspaceScreen()`, and `LawnchairSmartspace`
+  resolves that to `nothingui_home_header` on Play (`NothingUiFeature.homeEnabled`) and to
+  `smartspace_container` on github/nightly. The preview therefore always showed the inherited
+  welcome card on Play while live HOME showed the NothingUI header.
+- **Preview parity:** the field no longer has a hardcoded layout. The new pre-bind
+  `getDefaultSmartspaceLayout(context, preferenceManager)` reads
+  `PreferenceCacheExtensionsKt.firstCached(getSmartspaceMode())`, falls back in memory to
+  `LawnchairSmartspace.INSTANCE` when the selected mode is unavailable (mirroring Workspace, without
+  writing the preference from a preview), and returns `mode.getLayoutResourceId()`. It runs at the
+  top of the constructor, before `model.addCallbacksAndLoad(this)`, so it is set before any bind.
+- **Race review:** `LauncherModel.addCallbacksAndLoad()` can bind synchronously when the model is
+  already loaded, so `LauncherPreviewView` now passes the dummy
+  `R.layout.smartspace_widget_placeholder` override as a new constructor argument instead of calling
+  `setWorkspaceSearchContainer()` after construction. The 5-arg and 6-arg constructors still
+  delegate with a `0` sentinel, so `PreviewSurfaceRenderer` and other callers are unchanged apart
+  from the corrected default.
+- **Preserved:** `bindCompleteModel` still gates the first-page item on `getEnableSmartspace()`;
+  the explicit dummy override still wins; `SmartspaceMode` keeps its `NothingUiFeature.homeEnabled`
+  gate and inherited fallback; Google/Smartspacer selections still use their own layouts. No dot
+  clock layout duplication and no hardcoded preview clock text — the preview inflates the existing
+  `nothingui_home_header` / `NothingUiHomeHeaderView`.
+- **Regression coverage:** `scripts/nothingui-home-guard.sh` now requires the preview renderer to
+  read `getSmartspaceMode` and `getLayoutResourceId`, rejects a hardcoded
+  `mWorkspaceSearchContainer = R.layout.smartspace_container`, requires the pre-bind override
+  parameter, requires `LauncherPreviewView` to keep the dummy placeholder and to not call
+  `setWorkspaceSearchContainer` after construction, and still requires `getEnableSmartspace`.
+  `scripts/nothingui-home-guard-test.sh` adds three negatives (hardcoded container, missing selected
+  mode, post-construction dummy override). JUnit sources were not added to `src/`.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-home-guard.sh "$PWD"` OK;
+  `nothingui-home-guard-test.sh` 16/16; `verify-play-build-test.sh` 11/11;
+  `emulator-smoke-test.sh` all pass; `emulator-smoke-drawer-test.sh` all pass; the identity,
+  manifest, brand, theme, home-role, icon-render and drawer-trace fixture suites all pass; `sh -n`
+  clean on both edited scripts; `git diff --check` clean. The Android build, unit tests, `spotlessCheck`
+  and the API 37 emulator `grid-settings.png` pixel capture are left to CI.
+
+## done (previous run — P10b safe Add tap and API37 ProviderId parser)
 
 - **Root cause from CI120, not guessed:** the real picker exposed Add at `[434,1755][645,1881]`
   while the navigation bar begins around 1800. `tap_center_of_bounds` used the original centre 1818,
@@ -769,91 +808,49 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> 269/269 pass, including the CI120 partially hidden
-  Add safe intersection, the fully visible / fully hidden / barely visible / horizontally outside Add
-  cases, the disabled Add reject, the API37 wrapped-provider positive, legacy/other-host/catalog
-  negatives, and the static safe-Add/scroll checks.
-- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> 38/38 pass; the genuine 1500 ms /
-  4-attempt drawer assertions are unchanged.
+- This run: `sh scripts/nothingui-home-guard.sh "$PWD"` -> OK.
+- This run: `sh scripts/nothingui-home-guard-test.sh` -> 16/16 pass, including the new hardcoded
+  preview container, missing selected smartspace mode and post-construction dummy override negatives.
 - This run: `sh scripts/verify-play-build-test.sh` -> 11/11 pass.
-- This run: `sh -n` clean on every edited script; `git diff --check` clean.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass (unchanged widget placement coverage).
+- This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass (unchanged 1500 ms/4-attempt drawer).
+- This run: identity, manifest, brand, theme, home-role, icon-render and drawer-trace fixture suites
+  -> all pass.
+- This run: `sh -n` clean on both edited scripts; `git diff --check` clean.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. This is
   source/fixture verification only; it is not a runtime or pixel claim.
 
 ## next
 
-- Main/supervisor owns PR15 approval for `agent/p10b-widget-placement` at head `694d943`.
-  APK110 is frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
+- Main/supervisor owns PR16 approval for `agent/p11-preview-header` at head `df2bfbc` (app fix
+  `31d0963`). APK110 remains the fallback and does not depend on this branch.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
-- Inspect the new runtime artifacts after the run:
-  - `widgets-bind-consent.xml` / `.png`: the real `com.android.settings` dialog with
-    `android:id/alertTitle`, an `android:id/message` naming DotWel Launcher and the selected widget,
-    an unchecked `android:id/alwaysUse`, and `android:id/button1` labelled `CREATE` or `Create` with
-    `enabled="true" clickable="true"`. If the actual XML differs, update the helper from that capture;
-    do not return to a whole-tree text grep.
-  - `widgets-search-N.xml` / `widgets-search.xml` and `widgets-picker-cleared.xml`: whether the real
-    `widgets_search_bar_edit_text` accepted `Clock` and exposed a Clock `widgets_list_header`; the
-    cleared dump is the fallback list when the query matched nothing.
-  - `widgets-scroll-N.xml` and `widgets-add-log.txt`: the measured scroll target and the re-resolved
-    header/preview after each genuine swipe. If the picker still clips the preview, update the
-    viewport/search/scroll from the captured XML; never tap a preview whose bottom is under the
-    navigation margin.
-  - `widgets-provider.xml` / `.png`: the selected Clock/Calendar header re-resolved by title with a
-    fully visible `widget_preview_container` below it and above the next header.
-  - `widgets-add.xml` / `.png` and `widgets-add-log.txt`: the exposed enabled clickable
-    `widget_add_button`, the remeasured viewport, the original and safe intersection, and any
-    `add-scroll=` re-resolve. CI120 expects a safe box like `434 1755 645 1788` and a tap centre
-    above 1800, never the original 1818. If no safe box remains the flow saves
-    `widgets-add-last.xml`/`.png` and fails; there is no drag fallback or fixed coordinate.
-  - `widgets-home-placed.xml` / `.png` and `widgets-home-after-home.xml` / `.png`: a new
-    `AppWidgetHostView`-suffixed node inside the real workspace, its bounds between the measured
-    header bottom and dock top, unchanged after KEYCODE_HOME. If these dumps are compact single-line
-    XML, the node-record parser must find the nested host; if they expose no workspace node, record
-    that limitation from the actual XML rather than weakening the check.
-  - `widgets-appwidget-before.txt` / `widgets-appwidget-after.txt` /
-    `widgets-appwidget-providers.txt`: a new `AppWidgetId=N` with its provider, either direct
-    `provider=ComponentInfo{...}` or API37 `provider=ProviderId{cmp:ComponentInfo{...}}`, in a block
-    whose host is this launcher. An installed-provider catalog or another host must not satisfy it.
-  - Existing grid/popup/drawer artifacts remain unchanged and must still pass.
-- If the actual picker exposes a different provider header or Add route, update the helpers from the
-  captured XML; do not weaken the assertions or fall back to fixed coordinates.
+- Inspect the CI `grid-settings.png` from the API 37 run: the preview's first page should now show
+  the neutral NothingUI header card with a live Doto clock/date, red accent and dot strip, matching
+  the real Play HOME `home.png`. If it still shows the inherited welcome card, capture
+  `grid-settings.xml`/`.png` and verify the preview process resolved `getSmartspaceMode()` to
+  `LawnchairSmartspace` with `NothingUiFeature.homeEnabled=true`; do not hardcode the header or add
+  fake clock text.
+- The existing widget-placement, bind-consent, safe-Add, role-consent and drawer artifacts must
+  still pass unchanged.
 - P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
   onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
-- No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `694d943`.
-- Main/supervisor must approve PR15 for `agent/p10b-widget-placement`.
-- The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
-  script fails closed if it does not; the captured XML will name the exact label to add.
-- The picker readiness assumes one of the two known native picker markers. If the API 37 image
-  exposes a different marker, the captured `widgets-picker-attempt-N-P.xml` must drive the update;
-  do not accept a closed HOME with incidental English text.
-- The viewport gate assumes the real picker exposes `widgets_search_bar_edit_text` (or
-  `search_bar_container`/`widgets_search_bar`) and a list resource id. If the actual picker omits the
-  search bar, the flow fails closed with `widgets-add-last.xml`/`.png`; the captured XML must drive
-  an update, not a guessed coordinate.
-- Widget placement assumes the picker exposes a Clock or Calendar header with a positive widget
-  count and the real `widget_add_button`. If the provider is absent, the flow fails with
-  `widgets-add-last.xml`/`.png` rather than selecting a shortcut. If Add auto-places the widget
-  outside the measured header/dock band, the captured `widgets-home-placed.xml` drives a later
-  placement change; do not relax the band assertion.
-- The compact HOME parser rejects known picker/sheet preview ancestors and, when a workspace node is
-  present, requires the host inside that workspace. If the actual HOME dump exposes no workspace
-  node, workspace membership cannot be proven from the hierarchy alone; inspect the captured CI110
-  XML instead of treating a non-preview host as workspace evidence.
-- The bound-instance proof accepts `AppWidgetId=N`/`[N] id=N` blocks containing either a direct
-  `provider=ComponentInfo{...}` or API37 `provider=ProviderId{cmp:ComponentInfo{...}}` line, and
-  requires the same block to name this launcher. If the real dump shape differs, the helper fails
-  closed; the captured before/after dumps must drive the update, not an installed-provider list.
-- The Add safety gate assumes the exposed Add hierarchy still exposes the picker search bar so
-  `widget_picker_viewport_bounds` can remeasure a viewport. If it does not, the flow scrolls only
-  when a measured list target exists and otherwise fails with `widgets-add-last.xml`/`.png`; the
-  captured XML must drive any update, never the unsafe original centre.
-- The local branch `agent/p10b-widget-placement-verifica` was a stale pre-existing branch with no
-  commits; the work is on the correctly named `agent/p10b-widget-placement`.
+- No local Gradle build or emulator run is allowed here, so the Android compile, unit test,
+  `spotlessCheck` and the API 37 `grid-settings.png` pixels are unverified until CI runs on
+  `df2bfbc`.
+- Main/supervisor must approve PR16 for `agent/p11-preview-header`.
+- The preview mirrors the live workspace's smartspace availability fallback in memory only; it
+  deliberately does not write the `smartspace_mode` preference from a preview renderer. If the real
+  HOME would persist a fallback, the preview may briefly show the fallback layout until HOME reloads.
+- The preview header is the same `nothingui_home_header`/`NothingUiHomeHeaderView` as HOME, so any
+  future header layout change automatically affects the preview; the guard requires the preview to
+  keep following `SmartspaceMode.getLayoutResourceId()` rather than a copied layout.
+- The pre-existing local branch `agent/p11-preview-header-fix-only-gr` was at the same base and had
+  no commits; the work is on the correctly named `agent/p11-preview-header`.
 
 ## decisions locked
 
@@ -987,6 +984,19 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-22: P11 grid-preview header parity on `agent/p11-preview-header` (`31d0963`, `df2bfbc`),
+  from `main` `e7c9240d` (P10b PR15 merged). `LauncherPreviewRenderer` no longer hardcodes
+  `R.layout.smartspace_container`; it resolves the selected `SmartspaceMode.layoutResourceId` in the
+  constructor before `addCallbacksAndLoad`, with an in-memory `LawnchairSmartspace` fallback when the
+  mode is unavailable. On Play that is `nothingui_home_header`, so the grid/launcher preview matches
+  the live HOME header; github/nightly keep the inherited container. Disabled smartspace, the dummy
+  backup placeholder and the Google/Smartspacer modes are preserved. The dummy placeholder is passed
+  through a new constructor argument so a synchronous bind cannot race the post-construction setter.
+  The static home guard and its fixture suite now lock the preview source, reject the hardcoded
+  container and the post-construction override, and require the disabled-smartspace gate. Local
+  guard/verify/smoke/drawer/identity/brand/theme/role/icon/trace suites pass; `sh -n` and
+  `git diff --check` clean. No grid values, Apply behavior, workflow, Gradle, SDK, manifest,
+  permission, applicationId, signing or asset change. CI and `grid-settings.png` pixels still pending.
 - 2026-11-21: P10a grid/widget harness correction on `agent/p10-grid-widget-smoke` (`f51fcb3`),
   from `main` `55a25a2`. CI106 (`10644959244281`) was assembly/style/unit green and the real grid
   editor opened, but the new readiness assumed a `LauncherPreviewView` class and an `enabled=false`
