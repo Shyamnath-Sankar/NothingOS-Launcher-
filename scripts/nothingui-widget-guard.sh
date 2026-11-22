@@ -59,7 +59,10 @@ PLAY_CONFIG=play/res/values/config.xml
 PLAY_DIMENS=play/res/values/dimens.xml
 LAUNCHER=lawnchair/src/app/lawnchair/LawnchairLauncher.kt
 PARSER=src/com/android/launcher3/AutoInstallsLayout.java
+PARSER_APPWIDGET=src/com/android/launcher3/DefaultLayoutParser.java
 PARSER_RESOLVER=src/com/android/launcher3/WidgetPackageResolver.java
+PROVIDER_POLICY=src/com/android/launcher3/DotWelWidgetProviderPolicy.java
+SMOKE=scripts/emulator-smoke.sh
 NOTICE=NOTICE.md
 MIT=licenses/third-party/dotline-widgets-MIT.txt
 
@@ -68,7 +71,8 @@ for file in \
     "$BATTERY_ART" "$BUDGET" "$DOT_TEXT" "$CLOCK_LAYOUT" "$BATTERY_LAYOUT" \
     "$CLOCK_TILE_DARK" "$CLOCK_TILE_LIGHT" "$COLORS" "$CLOCK_INFO" \
     "$BATTERY_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT" "$PLAY_CONFIG" \
-    "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$PARSER_RESOLVER" "$NOTICE" "$MIT"; do
+    "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$PARSER_APPWIDGET" "$PARSER_RESOLVER" \
+    "$PROVIDER_POLICY" "$SMOKE" "$NOTICE" "$MIT"; do
     require_file "$file"
 done
 
@@ -293,6 +297,33 @@ forbid_grep "$PARSER" 'com.launchernos.dotwellabs' \
     "the default-layout parser hardcodes the applicationId"
 forbid_grep "$PARSER_RESOLVER" 'com.launchernos.dotwellabs' \
     "the package resolver hardcodes the applicationId"
+
+# Denied bind fallback: only our exact two own-package providers may keep the fresh-layout slot as
+# a pending widget. The policy must compare the running package exactly and name both classes, and
+# the parser must delete the failed id before delegating to the pending insertion. No bind
+# permission, runtime grant or adb/database bypass is allowed.
+require_grep "$PARSER_APPWIDGET" 'DotWelWidgetProviderPolicy.isOwnDotWelProvider' \
+    "the appwidget parser does not gate the denied-bind fallback by the own-provider policy"
+require_grep "$PARSER_APPWIDGET" 'super.verifyAndInsert(cn, extras)' \
+    "the appwidget parser does not preserve an own provider through the pending-widget insertion"
+require_grep "$PROVIDER_POLICY" 'ownPackage.equals(componentPackage)' \
+    "the own-provider policy does not require the exact own package"
+require_grep "$PROVIDER_POLICY" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
+    "the own-provider policy does not pin the exact clock provider class"
+require_grep "$PROVIDER_POLICY" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
+    "the own-provider policy does not pin the exact battery provider class"
+forbid_grep "$PLAY_MANIFEST" 'BIND_APPWIDGET' \
+    "the Play manifest requests the widget-bind permission"
+forbid_grep "$PARSER_APPWIDGET" 'grantRuntimePermission' \
+    "the appwidget parser tries to grant the widget-bind permission at runtime"
+forbid_grep "$SMOKE" 'appwidget bind' \
+    "the emulator smoke tries to bind widgets through adb"
+forbid_grep "$SMOKE" 'grantRuntimePermission' \
+    "the emulator smoke tries to grant the widget-bind permission"
+forbid_grep "$SMOKE" 'content://' \
+    "the emulator smoke injects launcher database content"
+forbid_grep "$SMOKE" 'sqlite' \
+    "the emulator smoke edits the launcher database directly"
 
 # Play-only sizing: smaller home icons and a real 48dp QSB, drawer unchanged.
 require_grep "$PLAY_CONFIG" 'config_default_home_icon_size_factor' \

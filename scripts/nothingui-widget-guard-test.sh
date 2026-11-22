@@ -328,6 +328,48 @@ class WidgetPackageResolver {
 }
 EOF
 
+    write_file "$root/src/com/android/launcher3/DefaultLayoutParser.java" <<'EOF'
+class DefaultLayoutParser {
+    protected int verifyAndInsert(ComponentName cn, Bundle extras) {
+        if (!bind(cn)) {
+            delete(id);
+            if (DotWelWidgetProviderPolicy.isOwnDotWelProvider(
+                    mContext.getPackageName(), cn.getPackageName(), cn.getClassName())) {
+                return super.verifyAndInsert(cn, extras);
+            }
+            return -1;
+        }
+        return insert(cn);
+    }
+}
+EOF
+
+    write_file "$root/src/com/android/launcher3/DotWelWidgetProviderPolicy.java" <<'EOF'
+final class DotWelWidgetProviderPolicy {
+    static final String CLOCK_PROVIDER_CLASS =
+            "app.dotwel.widgets.DotWelClockWidgetProvider";
+    static final String BATTERY_PROVIDER_CLASS =
+            "app.dotwel.widgets.DotWelBatteryWidgetProvider";
+
+    static boolean isOwnDotWelProvider(
+            String ownPackage, String componentPackage, String componentClass) {
+        if (ownPackage == null || componentPackage == null || componentClass == null) {
+            return false;
+        }
+        if (!ownPackage.equals(componentPackage)) {
+            return false;
+        }
+        return CLOCK_PROVIDER_CLASS.equals(componentClass)
+                || BATTERY_PROVIDER_CLASS.equals(componentClass);
+    }
+}
+EOF
+
+    write_file "$root/scripts/emulator-smoke.sh" <<'EOF'
+#!/bin/sh
+# Minimal fixture for the widget guard's no-bypass checks.
+EOF
+
     write_file "$root/NOTICE.md" <<'EOF'
 ## Third-party widget renderer
 
@@ -560,6 +602,41 @@ sed -i '/ACTION_CONFIGURATION_CHANGED/d' \
     "$no_config_refresh/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
 expect_fail_contains 'monitor without configuration refresh fails' \
     "$no_config_refresh" 'does not refresh on configuration changes'
+
+no_pending_fallback="$TMP_DIR/no-pending-fallback"
+cp -R "$clean" "$no_pending_fallback"
+sed -i '/super.verifyAndInsert(cn, extras)/d' \
+    "$no_pending_fallback/src/com/android/launcher3/DefaultLayoutParser.java"
+expect_fail_contains 'own provider without the pending fallback fails' \
+    "$no_pending_fallback" 'does not preserve an own provider'
+
+loose_policy="$TMP_DIR/loose-policy"
+cp -R "$clean" "$loose_policy"
+sed -i 's/ownPackage.equals(componentPackage)/true/' \
+    "$loose_policy/src/com/android/launcher3/DotWelWidgetProviderPolicy.java"
+expect_fail_contains 'own-provider policy without the exact package check fails' \
+    "$loose_policy" 'does not require the exact own package'
+
+bind_permission="$TMP_DIR/bind-permission"
+cp -R "$clean" "$bind_permission"
+printf '%s\n' '<uses-permission android:name="android.permission.BIND_APPWIDGET" />' \
+    >> "$bind_permission/play/AndroidManifest.xml"
+expect_fail_contains 'Play manifest requesting widget bind fails' \
+    "$bind_permission" 'requests the widget-bind permission'
+
+adb_bind="$TMP_DIR/adb-bind"
+cp -R "$clean" "$adb_bind"
+printf '%s\n' 'adb shell appwidget bind 1' \
+    >> "$adb_bind/scripts/emulator-smoke.sh"
+expect_fail_contains 'smoke binding widgets through adb fails' \
+    "$adb_bind" 'bind widgets through adb'
+
+runtime_grant="$TMP_DIR/runtime-grant"
+cp -R "$clean" "$runtime_grant"
+printf '%s\n' 'grantRuntimePermission' \
+    >> "$runtime_grant/src/com/android/launcher3/DefaultLayoutParser.java"
+expect_fail_contains 'parser granting the widget bind at runtime fails' \
+    "$runtime_grant" 'tries to grant the widget-bind permission'
 
 if [ "$failures" -ne 0 ]; then
     printf '\n%d test(s) failed\n' "$failures" >&2
