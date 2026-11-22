@@ -54,6 +54,7 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
 
     private val dateView = TextView(context)
     private val accentView = View(context)
+    private val pill = LinearLayout(context)
     private var receiverRegistered = false
 
     private val timeReceiver = object : BroadcastReceiver() {
@@ -66,13 +67,18 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         setPadding(dp(14), dp(2), dp(14), dp(2))
 
-        val strip = LinearLayout(context).apply {
+        pill.apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                dp(PILL_H_PADDING_DP),
+                dp(PILL_V_PADDING_DP),
+                dp(PILL_H_PADDING_DP),
+                dp(PILL_V_PADDING_DP),
+            )
         }
 
         dateView.apply {
-            setTextColor(textColor())
             setTextSize(TypedValue.COMPLEX_UNIT_SP, DATE_TEXT_SP)
             letterSpacing = 0.24f
             typeface = dotoRegular()
@@ -80,9 +86,12 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
             maxLines = 1
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
         }
-        strip.addView(
+        pill.addView(
             dateView,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f),
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ),
         )
 
         accentView.apply {
@@ -92,7 +101,7 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
             }
             importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
         }
-        strip.addView(
+        pill.addView(
             accentView,
             LinearLayout.LayoutParams(dp(ACCENT_DOT_DP), dp(ACCENT_DOT_DP)).apply {
                 marginStart = dp(8)
@@ -100,17 +109,32 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
         )
 
         addView(
-            strip,
-            LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+            pill,
+            LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER_VERTICAL or Gravity.START,
+            ),
         )
 
+        applyTheme()
         updateDate()
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        applyTheme()
         registerTimeReceiver()
         updateDate()
+    }
+
+    private fun applyTheme() {
+        pill.background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(PILL_CORNER_DP).toFloat()
+            setColor(NothingUiHomeChrome.surfaceColor(context))
+        }
+        dateView.setTextColor(NothingUiHomeChrome.textColor(context))
     }
 
     override fun onDetachedFromWindow() {
@@ -150,8 +174,6 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
         return if (locales.isEmpty) Locale.getDefault() else locales[0]
     }
 
-    private fun textColor(): Int = NothingUiHomeChrome.textColor(context)
-
     private fun dotoRegular(): Typeface {
         return ResourcesCompat.getFont(context, R.font.doto_regular) ?: Typeface.SANS_SERIF
     }
@@ -163,5 +185,8 @@ class NothingUiHomeHeaderView @JvmOverloads constructor(
     private companion object {
         const val DATE_TEXT_SP = 11f
         const val ACCENT_DOT_DP = 4
+        const val PILL_H_PADDING_DP = 10
+        const val PILL_V_PADDING_DP = 3
+        const val PILL_CORNER_DP = 12
     }
 }

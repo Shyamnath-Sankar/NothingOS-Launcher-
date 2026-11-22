@@ -144,9 +144,10 @@ fi
 grep -Fq 'app.nothingui.home.NothingUiHomeHeaderView' "$HEADER_LAYOUT" ||
     fail "the NothingUI header layout does not inflate NothingUiHomeHeaderView"
 
-# The home header is a quiet borderless date strip, not a second full-width clock card. The
-# time is owned by the square dot clock widget; a giant header clock or a card background here
-# would duplicate it and rebuild the fat banner the owner rejected.
+# The home header is a quiet date strip, not a second full-width clock card. The time is owned by
+# the square dot clock widget; a giant header clock would duplicate it. The date and accent dot sit
+# inside a small wrap-content pill so the date stays readable over a busy wallpaper without
+# rebuilding the fat full-width banner the owner rejected.
 grep -Fq 'R.font.doto_regular' "$HEADER_VIEW" ||
     fail "the home date strip does not use the bundled Doto font"
 grep -Fq 'DATE_TEXT_SP = 11f' "$HEADER_VIEW" ||
@@ -156,10 +157,14 @@ if grep -Fq 'CLOCK_TEXT_SP' "$HEADER_VIEW" ||
     grep -Fq 'R.font.doto_bold' "$HEADER_VIEW"; then
     fail "the home header still renders a giant clock instead of a quiet date strip"
 fi
-if grep -Fq 'setStroke' "$HEADER_VIEW" ||
-    grep -Fq 'cornerRadius' "$HEADER_VIEW" ||
+grep -Fq 'NothingUiHomeChrome.surfaceColor' "$HEADER_VIEW" ||
+    fail "the home date pill does not use the contrast-controlled chrome surface"
+grep -Fq 'ViewGroup.LayoutParams.WRAP_CONTENT' "$HEADER_VIEW" ||
+    fail "the home date pill is not a small wrap-content group"
+if grep -Fq 'LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT' "$HEADER_VIEW" ||
+    grep -Fq 'setStroke' "$HEADER_VIEW" ||
     grep -Fq 'cardColor' "$HEADER_VIEW"; then
-    fail "the home header is still a bordered card instead of a borderless date strip"
+    fail "the home header is still a full-width bordered card instead of a small date pill"
 fi
 grep -Fq 'NothingUiPalette.AccentRed' "$HEADER_VIEW" ||
     fail "the home date strip is missing the restrained red accent"

@@ -266,7 +266,9 @@ EOF
         android:fontFamily="@font/doto_bold"
         android:format12Hour="h:mm"
         android:format24Hour="HH:mm"
-        android:autoSizeTextType="uniform" />
+        android:autoSizeTextType="uniform"
+        android:autoSizeMaxTextSize="64sp"
+        android:paddingHorizontal="14dp" />
 </FrameLayout>
 EOF
 

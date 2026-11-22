@@ -120,6 +120,10 @@ require_grep "$CLOCK_LAYOUT" '@font/doto_bold' \
     "the clock widget does not use the bundled Doto font"
 require_grep "$CLOCK_LAYOUT" 'android:autoSizeTextType="uniform"' \
     "the clock widget does not scale to the 2x2 cell"
+require_grep "$CLOCK_LAYOUT" 'android:paddingHorizontal="14dp"' \
+    "the clock digits have no clear horizontal inset inside the tile"
+require_grep "$CLOCK_LAYOUT" 'android:autoSizeMaxTextSize="64sp"' \
+    "the clock widget has no responsive maximum text size"
 require_grep "$CLOCK_INFO" 'android:updatePeriodMillis="0"' \
     "the clock widget should rely on TextClock, not a periodic update"
 forbid_grep "$CLOCK_PROVIDER" 'AlarmManager' \

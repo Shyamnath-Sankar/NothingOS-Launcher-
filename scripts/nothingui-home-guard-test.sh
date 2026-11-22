@@ -76,6 +76,8 @@ class NothingUiHomeHeaderView {
     val tickAction = "ACTION_TIME_TICK"
     val label = "contentDescription"
     val ink = NothingUiHomeChrome.textColor(context)
+    val surface = NothingUiHomeChrome.surfaceColor(context)
+    val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
     const val DATE_TEXT_SP = 11f
 }
 EOF
@@ -423,15 +425,40 @@ class NothingUiHomeHeaderView {
     val tickAction = "ACTION_TIME_TICK"
     val label = "contentDescription"
     val ink = NothingUiHomeChrome.textColor(context)
+    val surface = NothingUiHomeChrome.surfaceColor(context)
+    val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
     const val DATE_TEXT_SP = 11f
     fun card() {
         setStroke(1, 0)
-        cornerRadius = 22f
     }
 }
 EOF
 expect_fail_contains 'bordered header card fails' \
-    "$header_card" 'bordered card instead of a borderless date strip'
+    "$header_card" 'full-width bordered card instead of a small date pill'
+
+header_full_width="$TMP_DIR/header-full-width"
+cp -R "$clean" "$header_full_width"
+write_file "$header_full_width/lawnchair/src/app/nothingui/home/NothingUiHomeHeaderView.kt" <<'EOF'
+package app.nothingui.home
+
+class NothingUiHomeHeaderView {
+    val regular = R.font.doto_regular
+    val accent = "NothingUiPalette.AccentRed"
+    val tickAction = "ACTION_TIME_TICK"
+    val label = "contentDescription"
+    val ink = NothingUiHomeChrome.textColor(context)
+    val surface = NothingUiHomeChrome.surfaceColor(context)
+    val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
+    fun slab() {
+        val params = LayoutParams(
+            LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+    }
+    const val DATE_TEXT_SP = 11f
+}
+EOF
+expect_fail_contains 'full-width header slab fails' \
+    "$header_full_width" 'full-width bordered card instead of a small date pill'
 
 header_giant_clock="$TMP_DIR/header-giant-clock"
 cp -R "$clean" "$header_giant_clock"
