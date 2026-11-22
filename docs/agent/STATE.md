@@ -6,14 +6,14 @@ when no task input is given, and continues from "next".
 - current_phase: **P5 home-widget-composition-v1 — Play polish checkpoint: opaque unset drawer,
   discoverable settings entry and default-home status**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `5e5f071` (`feat(settings): surface Play settings and default-home status`); this STATE
-  commit follows. This run's code commits: `79e8080`, `5e5f071`. Start `ca472427`.
+- head: `2120284` (`test(drawer): avoid ambiguous float assert overload`); this STATE commit
+  follows. This run's code commits: `79e8080`, `5e5f071`, `2120284`. Start `ca472427`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI174** (coordinator-reported, not reproduced locally): assembly, style and **70 unit
   tests** passed, but the API 37 **native dark readiness check failed**. Native theme switching is
   therefore still NOT fixed. `ca472427` is the Run66 checkpoint that saved diagnostics only; its
   earlier stale-theme refresh hypothesis is unproven. This run makes no runtime/APK/pixel claim and
-  needs a fresh CI at `5e5f071`.
+  needs a fresh CI at `2120284`.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, the
   expanded unit tests (72+ with the new drawer-default JUnit), Verify Play manifest and identity
   including the new polish guard, and the API 37 smoke. Confirm the merged manifest has exactly one
