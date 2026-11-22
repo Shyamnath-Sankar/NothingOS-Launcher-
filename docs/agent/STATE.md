@@ -3,24 +3,59 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P11 grid-preview header parity with live HOME**. The grid/launcher preview now
-  resolves its first-page smartspace from the same selected `SmartspaceMode.layoutResourceId` the
-  real workspace uses, before the model is bound. On Play the lawnchair mode resolves to
-  `nothingui_home_header`, so the preview shows `NothingUiHomeHeaderView`; github/nightly keep the
-  inherited `smartspace_container`. Disabled smartspace, the explicit dummy backup placeholder and
-  the other selected modes are preserved. The dummy placeholder is now passed through the
-  constructor so an already-loaded model that binds synchronously cannot race it. App source +
-  static guard/fixtures only: no grid values, Apply behavior, SDK, workflow, manifest, permission,
-  applicationId, paid, signing or asset change.
-- branch: `agent/p11-preview-header`
-- head: `df2bfbc` (`test(preview): guard preview smartspace layout source`) on base `e7c9240d`;
-  app fix `31d0963`.
-- pr: **PR16** for `agent/p11-preview-header` at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/16; main/supervisor owns approval.
-  CI is `action_required` (maintainer approval needed), so the APK/pixels are not yet produced.
-  APK110 remains the fallback and is independent of this branch.
+- current_phase: **A1 settings palette — partial checkpoint, slice A not done**. The real Compose
+  settings entry (`LawnchairTheme`) now delegates to the existing `NothingUiTheme` only when the
+  Play-only `NothingUiFeature.themeEnabled` flag is set, passing the already-resolved `darkTheme`
+  argument. That gives the real `PreferenceActivity` the original charcoal/white/red dark and light
+  schemes and `NothingUiTypography`; headline styles and `titleLarge` use Doto while body/labels
+  stay on the readable platform sans-serif. LIGHT/DARK/SYSTEM resolution and all non-Play behavior
+  are unchanged. The smoke now captures the real settings dashboard under system night yes/no with
+  the `pref_launcherTheme` choice required to be `system`, then restores the previous night mode.
+  Native `ThemeProvider`, popup, drawer and picker surfaces are still untouched and are next.
+- branch: `agent/a1-settings-palette-tiny-check`
+- head: app `236f00f` (`feat(settings): apply NothingUi palette to Play settings`), guards/tests
+  `b1f5d10`, smoke `e17b860`; this STATE commit follows.
+- pr: created for `agent/a1-settings-palette-tiny-check` after the final push; main/supervisor owns
+  approval. CI builds via PR review; no Gradle build or emulator run happened in this run.
 
-## done (this run — P11 preview header parity)
+## done (this run — A1 settings palette partial checkpoint)
+
+- **Real settings entry wired, not the sample:** `LawnchairTheme` previously always built the
+  inherited `MaterialExpressiveTheme`/`ThemeProvider` color scheme. It now short-circuits through
+  `NothingUiTheme(darkTheme = darkTheme, content = content)` when
+  `NothingUiFeature.themeEnabled` is true. The default parameter remains
+  `isSelectedThemeDark`, so LIGHT, DARK and SYSTEM resolve exactly as before; github/nightly still
+  take the inherited branch with the same `getColorScheme`, shapes and expressive motion.
+- **Typography:** `NothingUiTypography` now uses `DotoFontFamily` for `headlineLarge`,
+  `headlineMedium`, `headlineSmall`, `titleLarge` and their emphasized variants (normal headings
+  keep normal weight; emphasized headings keep bold). `titleMedium`/`titleSmall`, all body and all
+  label styles remain `FontFamily.SansSerif`, so settings copy stays readable.
+- **Preserved:** no change to `ThemeProvider`, popup, drawer, picker, grid values, Apply behavior,
+  manifest, permissions, SDK, applicationId, signing, assets, workflows or other repos. The
+  diagnostic `THEME_SAMPLE` route remains debug + Play gated and is unchanged.
+- **Regression tests outside production `src`:** `tests/unit/java/app/nothingui/theme/
+  NothingUiTokenTest.kt` now requires Doto on the display/headline/titleLarge styles and sans on
+  titleMedium/titleSmall/body/label. `scripts/nothingui-theme-guard.sh` now requires the Play gate,
+  the resolved `darkTheme` call, the inherited non-Play branch, and Doto on every headline/titleLarge
+  style. Its fixture suite adds missing-gate, hardcoded-dark, and sans-headline negatives (and
+  updates the existing EdgeToEdge fixture so it still tests only its own rule).
+- **Smoke:** `scripts/emulator-smoke.sh` adds `capture_settings_theme` and
+  `assert_settings_theme_choice_system`. It reads `shared_prefs/com.android.launcher3.prefs.xml`
+  through `run-as` and requires `pref_launcherTheme=system` (a clean install default; no write),
+  records the current `cmd uimode night`, captures the real `PreferenceActivity` under night
+  `yes`/`no` without the sample extra as `settings-theme-dark.xml`/`.png` and
+  `settings-theme-light.xml`/`.png`, requires the real `Settings`/`General` dashboard and rejects
+  the `DOTWEL` sample, then restores the previous night mode and returns HOME even when a capture
+  fails. The existing grid-preview and widget-placement phases are unchanged.
+- **Verification actually run (no Gradle, no emulator):** `nothingui-theme-guard.sh "$PWD"` OK;
+  `nothingui-theme-guard-test.sh` all pass (13/13); `emulator-smoke-test.sh` all pass including the
+  new settings-theme static checks; `sh -n` clean on the edited scripts; `git diff --check` clean.
+  The Android build, JUnit, `spotlessCheck`, and the API 37 emulator dark/light captures are left
+  to CI/PR review.
+- **Next:** native `ThemeProvider`, popup, drawer and picker surfaces. Slice A is not complete; this
+  is only the settings palette checkpoint.
+
+## done (previous run — P11 preview header parity)
 
 - **Root cause from the source, not guessed:** `LauncherPreviewRenderer` initialized
   `mWorkspaceSearchContainer` to `R.layout.smartspace_container` at field declaration, before the
