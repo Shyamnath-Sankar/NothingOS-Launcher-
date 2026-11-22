@@ -733,6 +733,147 @@ verify_home_widgets() {
         > "$ARTIFACTS/home-widgets-verified.txt"
 }
 
+# Fresh Play installs seed both original widgets through the default layout. When
+# Android denies the automatic bind, DefaultLayoutParser keeps each own slot as a
+# pending widget. Complete at most those two visible pending widgets through
+# ordinary HOME taps and the standard per-widget bind consent, never granting
+# permanent binding. The real hosted-widget proof stays in verify_nothing_home.
+complete_own_widget_setup() {
+    _cows_max_rounds=2
+    _cows_max_polls=12
+    _cows_round=0
+    _cows_completed=0
+    : > "$ARTIFACTS/own-widget-setup-log.txt"
+    while [ "$_cows_round" -lt "$_cows_max_rounds" ]; do
+        _cows_round=$((_cows_round + 1))
+        if ! capture_ui_xml "own-widget-before-$_cows_round.xml"; then
+            fail "could not capture HOME before own-widget setup round $_cows_round"
+        fi
+        capture_screenshot_to "own-widget-before-$_cows_round.png"
+        [ -s "$ARTIFACTS/own-widget-before-$_cows_round.png" ] ||
+            fail "own-widget before screenshot capture failed"
+        _cows_pending=$(home_pending_widget_bounds \
+            "$ARTIFACTS/own-widget-before-$_cows_round.xml")
+        if [ -z "$_cows_pending" ]; then
+            printf 'round=%s pending=none\n' "$_cows_round" \
+                >> "$ARTIFACTS/own-widget-setup-log.txt"
+            break
+        fi
+        _cows_target=$(printf '%s\n' "$_cows_pending" | sed -n '1p')
+        printf 'round=%s pending=%s target=%s\n' \
+            "$_cows_round" "$(printf '%s\n' "$_cows_pending" | tr '\n' ';')" \
+            "$_cows_target" >> "$ARTIFACTS/own-widget-setup-log.txt"
+        adb_cmd shell dumpsys appwidget \
+            > "$ARTIFACTS/own-widget-appwidget-before-$_cows_round.txt" 2>&1 || true
+        tap_center_of_bounds "$_cows_target" ||
+            fail "could not tap the pending own widget in round $_cows_round"
+
+        _cows_bind_tapped=0
+        _cows_dialog_polls=0
+        _cows_bound=
+        _cows_xml=
+        _cows_poll=1
+        while [ "$_cows_poll" -le "$_cows_max_polls" ]; do
+            sleep 1
+            _cows_xml="$ARTIFACTS/own-widget-poll-$_cows_round-$_cows_poll.xml"
+            capture_ui_xml "own-widget-poll-$_cows_round-$_cows_poll.xml" || true
+            adb_cmd shell dumpsys activity activities \
+                > "$ARTIFACTS/own-widget-activity-$_cows_round-$_cows_poll.txt" 2>&1 || true
+            if [ "$_cows_bind_tapped" -eq 0 ] &&
+                widget_bind_consent_is_ready \
+                    "$_cows_xml" "$EXPECTED_LABEL" "$EXPECTED_LABEL"; then
+                foreground_is \
+                    "$ARTIFACTS/own-widget-activity-$_cows_round-$_cows_poll.txt" \
+                    com.android.settings ||
+                    fail "the own-widget bind consent is not the exact Settings activity"
+                cp "$_cows_xml" "$ARTIFACTS/own-widget-consent-$_cows_round.xml"
+                capture_screenshot_to "own-widget-consent-$_cows_round.png"
+                [ -s "$ARTIFACTS/own-widget-consent-$_cows_round.png" ] ||
+                    fail "own-widget consent screenshot capture failed"
+                if widget_bind_always_allow_is_checked \
+                    "$ARTIFACTS/own-widget-consent-$_cows_round.xml"; then
+                    fail "the own-widget bind consent has Always allow checked; refusing permanent binding"
+                fi
+                _cows_create=$(widget_bind_create_button_bounds \
+                    "$ARTIFACTS/own-widget-consent-$_cows_round.xml" \
+                    "$EXPECTED_LABEL" "$EXPECTED_LABEL")
+                [ -n "$_cows_create" ] ||
+                    fail "could not find the measured Create control in the own-widget consent"
+                tap_center_of_bounds "$_cows_create" ||
+                    fail "could not tap Create in the own-widget consent"
+                printf 'round=%s route=bind-consent create=%s always_allow=unchecked\n' \
+                    "$_cows_round" "$_cows_create" \
+                    >> "$ARTIFACTS/own-widget-setup-log.txt"
+                _cows_bind_tapped=1
+            elif [ "$_cows_bind_tapped" -eq 0 ] &&
+                [ -s "$_cows_xml" ] &&
+                grep -Fq 'android:id/alertTitle' "$_cows_xml" &&
+                grep -Fq 'com.android.settings' "$_cows_xml"; then
+                _cows_dialog_polls=$((_cows_dialog_polls + 1))
+                if [ "$_cows_dialog_polls" -ge 3 ]; then
+                    cp "$_cows_xml" "$ARTIFACTS/own-widget-unexpected-dialog.xml"
+                    capture_screenshot_to own-widget-unexpected-dialog.png
+                    fail "unexpected own-widget bind dialog (expected Application/Widget $EXPECTED_LABEL)"
+                fi
+            fi
+            if [ "$_cows_bind_tapped" -eq 1 ]; then
+                adb_cmd shell dumpsys appwidget \
+                    > "$ARTIFACTS/own-widget-appwidget-after-$_cows_round-$_cows_poll.txt" \
+                    2>&1 || true
+                _cows_new=$(appwidget_new_providers \
+                    "$ARTIFACTS/own-widget-appwidget-before-$_cows_round.txt" \
+                    "$ARTIFACTS/own-widget-appwidget-after-$_cows_round-$_cows_poll.txt" \
+                    "$PKG" id)
+                if [ -n "$_cows_new" ]; then
+                    case "$_cows_new" in
+                        *app.dotwel.widgets.DotWelClockWidgetProvider* | \
+                            *app.dotwel.widgets.DotWelBatteryWidgetProvider*)
+                            _cows_bound=$_cows_new
+                            ;;
+                        *)
+                            cp "$_cows_xml" "$ARTIFACTS/own-widget-wrong-provider.xml"
+                            capture_screenshot_to own-widget-wrong-provider.png
+                            fail "the own-widget setup bound an unexpected provider: $_cows_new"
+                            ;;
+                    esac
+                fi
+                _cows_remaining=$(home_pending_widget_bounds "$_cows_xml")
+                _cows_dialog_still_open=0
+                widget_bind_consent_is_ready \
+                    "$_cows_xml" "$EXPECTED_LABEL" "$EXPECTED_LABEL" &&
+                    _cows_dialog_still_open=1
+                if [ -n "$_cows_bound" ] && [ "$_cows_dialog_still_open" -eq 0 ] &&
+                    [ -z "$_cows_remaining" ]; then
+                    break
+                fi
+            fi
+            _cows_poll=$((_cows_poll + 1))
+        done
+        if [ -z "$_cows_bound" ]; then
+            [ -z "$_cows_xml" ] || cp "$_cows_xml" "$ARTIFACTS/own-widget-setup-last.xml"
+            capture_screenshot_to own-widget-setup-last.png
+            fail "the own widget was not bound after the per-widget consent in round $_cows_round"
+        fi
+        printf 'round=%s bound=%s\n' "$_cows_round" "$_cows_bound" \
+            >> "$ARTIFACTS/own-widget-setup-log.txt"
+        _cows_completed=$((_cows_completed + 1))
+    done
+
+    if ! capture_ui_xml own-widget-after.xml; then
+        fail "could not capture HOME after own-widget setup"
+    fi
+    capture_screenshot_to own-widget-after.png
+    [ -s "$ARTIFACTS/own-widget-after.png" ] ||
+        fail "own-widget after screenshot capture failed"
+    _cows_remaining=$(home_pending_widget_bounds "$ARTIFACTS/own-widget-after.xml")
+    [ -z "$_cows_remaining" ] ||
+        fail "own widgets are still pending after $_cows_completed setup action(s)"
+    printf 'Own widgets: completed %s pending setup action(s) through the standard per-widget bind consent with Always allow unchecked; no pending placeholders remain.\n' \
+        "$_cows_completed" > "$ARTIFACTS/own-widget-setup.txt"
+    printf 'Evidence: own-widget-before-*.xml/.png, own-widget-consent-*.xml/.png, own-widget-after.xml/.png.\n' \
+        >> "$ARTIFACTS/own-widget-setup.txt"
+}
+
 # Capture the clean HOME under system dark/light before any third-party widget is
 # added, so the composition can be reviewed without test pollution. The previous
 # night mode is restored even when a capture fails.
@@ -1751,6 +1892,7 @@ home_resumed=$(grep -E 'mResumedActivity|topResumedActivity' "$ARTIFACTS/activit
 capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
 
+complete_own_widget_setup
 verify_nothing_home
 capture_clean_home_theme
 capture_grid_settings

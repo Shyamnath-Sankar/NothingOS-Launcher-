@@ -825,6 +825,52 @@ assert_eq 'a host outside a workspace that is present is rejected' \
     '' \
     "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
 
+# --- pending own-widget fixtures -------------------------------------------
+#
+# After a denied automatic bind, the fresh layout keeps each own slot as a
+# click-to-setup PendingAppWidgetHostView. These fixtures pin the bounds parser
+# used to complete at most those two widgets through the standard consent.
+
+pending_home_xml="$TMP_DIR/pending-home.xml"
+cat > "$pending_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[540,400][1000,800]" /><node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[40,400][500,800]" /><node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,900][500,1200]" /></node></node></hierarchy>
+EOF
+assert_eq 'both pending own widgets are measured left-to-right and bound hosts are ignored' \
+    "$(printf '40 400 500 800\n540 400 1000 800')" \
+    "$(home_pending_widget_bounds "$pending_home_xml")"
+
+pending_preview_xml="$TMP_DIR/pending-preview.xml"
+cat > "$pending_preview_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" bounds="[40,400][500,800]"><node index="0" text="" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[40,400][500,800]" /></node></node></node></hierarchy>
+EOF
+assert_eq 'a pending host inside a widget preview is not a HOME pending widget' \
+    '' \
+    "$(home_pending_widget_bounds "$pending_preview_xml")"
+
+pending_outside_ws_xml="$TMP_DIR/pending-outside-workspace.xml"
+cat > "$pending_outside_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]" /><node index="1" text="" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[40,900][500,1200]" /></node></hierarchy>
+EOF
+assert_eq 'a pending host outside a present workspace is rejected' \
+    '' \
+    "$(home_pending_widget_bounds "$pending_outside_ws_xml")"
+
+pending_no_ws_xml="$TMP_DIR/pending-no-workspace.xml"
+cat > "$pending_no_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="1" text="" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[40,900][500,1200]" /></node></hierarchy>
+EOF
+assert_eq 'a pending host without an exposed workspace still yields its bounds' \
+    '40 900 500 1200' \
+    "$(home_pending_widget_bounds "$pending_no_ws_xml")"
+
+pending_bound_only_xml="$TMP_DIR/pending-bound-only.xml"
+cat > "$pending_bound_only_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]"><node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,400][500,800]" /></node></node></hierarchy>
+EOF
+assert_eq 'a HOME with no pending widget yields no setup target' \
+    '' \
+    "$(home_pending_widget_bounds "$pending_bound_only_xml")"
+
 home_widgets_xml="$TMP_DIR/home-widgets.xml"
 cat > "$home_widgets_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -1243,6 +1289,40 @@ assert_false 'bind consent with a disabled Create control is rejected' \
 assert_eq 'a disabled Create control exposes no tap target' \
     '' \
     "$(widget_bind_create_button_bounds "$widget_bind_disabled_xml" 'DotWel Launcher' Calendar)"
+
+# The two own providers inherit the application label, so their per-widget
+# consent names "DotWel Launcher" as both the application and the widget. The
+# pending setup accepts only this exact dialog with an unchecked Always allow.
+own_widget_consent_xml="$TMP_DIR/own-widget-consent.xml"
+sed 's/Widget: Calendar/Widget: DotWel Launcher/' "$widget_bind_consent_xml" \
+    > "$own_widget_consent_xml"
+assert_true 'the own-provider consent names the launcher as both app and widget' \
+    widget_bind_consent_is_ready "$own_widget_consent_xml" 'DotWel Launcher' 'DotWel Launcher'
+assert_eq 'the own-provider consent Create control is measured' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$own_widget_consent_xml" 'DotWel Launcher' 'DotWel Launcher')"
+assert_false 'the own-provider consent starts with Always allow unchecked' \
+    widget_bind_always_allow_is_checked "$own_widget_consent_xml"
+
+own_widget_other_xml="$TMP_DIR/own-widget-other-widget.xml"
+sed 's/Widget: DotWel Launcher/Widget: Weather/' "$own_widget_consent_xml" \
+    > "$own_widget_other_xml"
+assert_false 'an own-provider setup that opens another widget consent is rejected' \
+    widget_bind_consent_is_ready "$own_widget_other_xml" 'DotWel Launcher' 'DotWel Launcher'
+
+own_widget_cancel_xml="$TMP_DIR/own-widget-cancel.xml"
+sed '/android:id\/button1/d' "$own_widget_consent_xml" > "$own_widget_cancel_xml"
+assert_false 'a cancel-only own-widget dialog is not accepted as setup' \
+    widget_bind_consent_is_ready "$own_widget_cancel_xml" 'DotWel Launcher' 'DotWel Launcher'
+assert_eq 'a cancel-only own-widget dialog exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$own_widget_cancel_xml" 'DotWel Launcher' 'DotWel Launcher')"
+
+own_widget_checked_xml="$TMP_DIR/own-widget-checked.xml"
+sed 's/checked="false"/checked="true"/' "$own_widget_consent_xml" \
+    > "$own_widget_checked_xml"
+assert_true 'a checked Always allow own-widget consent is detected so setup fails closed' \
+    widget_bind_always_allow_is_checked "$own_widget_checked_xml"
 
 
 # --- HOME long-press geometry fixtures -------------------------------------

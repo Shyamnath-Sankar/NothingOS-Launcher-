@@ -1480,6 +1480,105 @@ home_widget_bounds() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of every visible pending AppWidgetHostView
+# in the workspace, ordered left-to-right. A pending widget is the launcher's
+# click-to-setup placeholder after the platform denied an automatic bind; it is
+# never counted as a completed widget. Hosts inside the widget picker, a preview
+# cell or a bottom sheet are rejected. When the hierarchy exposes a workspace,
+# only pending hosts inside it are returned; the no-workspace fallback mirrors
+# home_widget_bounds so a minimal hierarchy can still be exercised.
+home_pending_widget_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function read_bounds(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return 0
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n != 4) return 0
+                bx1 = p[1]
+                by1 = p[2]
+                bx2 = p[3]
+                by2 = p[4]
+                return 1
+            }
+            function is_workspace(rid, cls) {
+                return rid ~ /(^|\/)workspace(_right|_grid)?$/ ||
+                    cls ~ /(^|\.)Workspace$/
+            }
+            function is_preview(rid, cls) {
+                return rid ~ /(^|\/)(widget_preview_container|widgets_list_header|widgets_catalog|widgets_search_bar|primary_widgets_list_view)$/ ||
+                    cls ~ /(WidgetCell|WidgetCellPreview|WidgetsListHeader|WidgetsBottomSheet|BaseWidgetSheet|AddItemWidgetsBottomSheet)/
+            }
+            function sort_emit(n, keys, vals,    i, j, tk, tv) {
+                for (i = 2; i <= n; i++) {
+                    tk = keys[i] + 0
+                    tv = vals[i]
+                    j = i - 1
+                    while (j >= 1 && (keys[j] + 0) > tk) {
+                        keys[j + 1] = keys[j]
+                        vals[j + 1] = vals[j]
+                        j--
+                    }
+                    keys[j + 1] = tk
+                    vals[j + 1] = tv
+                }
+                for (i = 1; i <= n; i++) print vals[i]
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                bounds = attr($0, "bounds")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                parent_ws = (sp > 0 ? stack_ws[sp] : 0)
+                parent_preview = (sp > 0 ? stack_preview[sp] : 0)
+                ws = parent_ws || is_workspace(rid, cls)
+                preview = parent_preview || is_preview(rid, cls)
+                if (cls ~ /PendingAppWidgetHostView/ && read_bounds(bounds) && !preview) {
+                    if (ws) {
+                        saw_ws = 1
+                        n_ws++
+                        ws_key[n_ws] = bx1
+                        ws_val[n_ws] = bx1 " " by1 " " bx2 " " by2
+                    } else {
+                        n_non++
+                        non_key[n_non] = bx1
+                        non_val[n_non] = bx1 " " by1 " " bx2 " " by2
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_ws[sp] = ws
+                    stack_preview[sp] = preview
+                }
+            }
+            END {
+                if (saw_ws) sort_emit(n_ws, ws_key, ws_val)
+                else sort_emit(n_non, non_key, non_val)
+            }
+        '
+)
+
+
 # Print providers of widget instances that are newly bound between two
 # `dumpsys appwidget` captures. Each provider must sit inside a widget-id block
 # (`AppWidgetId=N` on older dumps or `[N] id=N` on current Android), so an
