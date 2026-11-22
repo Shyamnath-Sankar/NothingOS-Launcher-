@@ -5,9 +5,9 @@ when no task input is given, and continues from "next".
 
 - current_phase: **P5 home-widget-composition-v1 — PR19 provider identity, page discovery and device Settings proof**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `6262c21` (`test(smoke): guard page swipes by exact launcher foreground`); this STATE
-  commit follows. Previous commits this run: `81afb5e`, `56bb219`, `a46a487`, `709795a`; start
-  `010d928`.
+- head: `1f3dc34` (`style(widgets): join isKnown expression body to one line`); this STATE
+  commit follows. Previous commits: `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`,
+  `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI147** (coordinator-reported, not reproduced locally) — compile/assemble, Kotlin/Java
   style and **62 unit tests passed**; the own-widget runtime phase succeeded; the third-party
@@ -20,7 +20,18 @@ when no task input is given, and continues from "next".
   third-party detector still needs diagnosis from the fresh CI147-era evidence; do not guess and do
   not merge.
 
-## done (this run — PR19 provider identity, page discovery and device Settings proof)
+## done (this run — CI155 style-only correction)
+
+- **Formatter-only:** `NothingUiDeviceStorage.isKnown`'s short expression body now has `=` and
+  `total > 0L && available >= 0L && available <= total` on one line, as CI155 `check-style`
+  requested. One file, 1 insertion / 2 deletions; every token and all behavior preserved.
+- **Untouched:** widgets, tests, models, workflows, dependencies, permissions, identity, signing and
+  every other file. No Gradle, Android build, merge or CI dispatch was run here.
+- **Verification actually run:** `git diff --check` clean; the source diff is the single line above.
+- **Blocked/unknown:** CI155's independent Android/emulator lanes and their pixels remain unreviewed;
+  a fresh CI run must confirm `spotlessKotlinCheck`/`spotlessJavaCheck`.
+
+## done (previous run — PR19 provider identity, page discovery and device Settings proof)
 
 - **Device storage fallback:** `NothingUiDeviceStorage` now exposes `UNKNOWN_MARKER = "--"` and a
   negative/unknown size renders `--`; the device layout's default storage value and the localized
