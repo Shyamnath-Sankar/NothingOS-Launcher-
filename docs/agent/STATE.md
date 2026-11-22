@@ -3,24 +3,60 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — pre-CI repair of the offline AMOLED wallpaper
-  gallery slice (combined CI/pixels still pending)**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 Torus packaging/format repair done; combined
+  CI and runtime evidence still pending**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `25ce386` (`fix(smoke): capture HOME pixels after each explicit wallpaper apply`). This
-  STATE commit follows. Parser/fixtures commit `fb35da9`, UI/guard commit `ea278df`. Candidate base
-  was the reviewed `88c05dd1`; asset commit
-  `7e5822f`, gallery commit `6322e84`, prior smoke commit `9bd0a8d`.
+- head: `ca39dcc` (`style(wallpaper): satisfy ktlint 1.8 import and signature rules`). The packaging
+  repair is `4c0dd58`; this STATE commit follows. CI192 is the withheld candidate (`5687f05`
+  assembled, 87 JUnit passed, gallery crashed on the AAPT sentinel). CI181 (`6824907`) remains the
+  last verified runtime fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: last verified runtime checkpoint is **CI181** (`6824907`). No CI result is claimed for this
-  head. The next combined CI must prove spacing plus this gallery.
-- next: run the Play build/style, JUnit (including the licence-URL catalogue test), Verify Play
-  manifest/identity and the API 37 smoke. Confirm the current AOSP `dumpsys wallpaper` sections
-  parse for the real emulator user, the gallery opens from both dashboard and Home Screen settings,
-  preview/Cancel/Back leave both wallpaper IDs and widget IDs unchanged, the measured scroll exposes
-  Apply and Cancel, Pitch Black and Torus each change only the Home ID and preserve widgets/layout,
-  and the lock-preservation rule holds on the actual dump. Release/hosting stay paused.
+- ci: **no CI result is claimed for this head.** CI192 proved assembly plus 87 JUnit tests but the
+  gallery crashed when Compose parsed AAPT's `STRING_TOO_LARGE` sentinel in the packaged Torus XML.
+- next: a fresh CI must assemble the Play debug APK, run the 87 JUnit tests and
+  `spotlessKotlinCheck`, then run the API 37 emulator smoke. It must confirm the gallery opens from
+  both dashboard and Home Screen settings, the Torus preview renders without the sentinel, and the
+  measured scroll exposes Apply/Cancel. Then prove Pitch Black and Torus each change only the Home
+  wallpaper ID, preserve widget IDs/layout, and keep the lock-preservation rule on the real dump.
+  Release/hosting/merge stay paused; CI192 stays the withheld candidate, CI181 the fallback.
 
-## done (this run — pre-CI wallpaper gallery repairs)
+## done (this run — PR19 Torus packaging and formatter repair)
+
+- **Root cause from source and the installed APK, not guessed:** one Torus source path is 41,359
+  bytes. AAPT replaced it with `STRING_TOO_LARGE` inside the packaged
+  `res/drawable-nodpi-v4/dotwel_wallpaper_wireframe_torus.xml`; Compose parsed that sentinel and
+  failed on `R` in the `WallpaperTile` `painterResource` call.
+- **Minimal packaging split:** only that path was split at existing independent absolute-`M`
+  subpath boundaries into three consecutive `<path>` elements (15,732 / 15,534 / 10,093 bytes).
+  Each repeats the exact source `fillColor`, `strokeColor` and `strokeWidth`; document order,
+  every coordinate, subpath and appearance are unchanged. No geometry was simplified, rounded,
+  redrawn or rasterized, and no other vector path or PNG changed.
+- **Byte-identity proof:** concatenating the split `pathData` values reproduces the original 46,572
+  bytes with SHA-256 `19ee5302492cf69ffae43392267f1fc1b9a386c4ab09634dc266848f528f7bcd`
+  and all 69 subpaths. Source/recolored SVG hashes, licence texts, attribution and the PNG hash
+  are unchanged. A short provenance note documents the packaging split.
+- **Source guard:** `nothingui-wallpaper-guard.sh` now rejects any `pathData` of 16,000 bytes or
+  more and re-checks the concatenated byte count, SHA-256 and subpath count.
+- **Compiled sentinel guard:** when the real Play debug APK exists under
+  `build/outputs/apk/lawnWithQuickstepPlayDebug`, the same guard inspects every packaged Torus XML
+  for `STRING_TOO_LARGE` in ASCII, UTF-16LE or UTF-16BE and fails closed. With no APK it prints a
+  skip and keeps source-only/minimal fixtures working. No workflow, dependency or infrastructure
+  changed. A synthetic bad APK failed as expected; a clean synthetic APK passed.
+- **Formatter-only Kotlin repair:** ran the matching ktlint 1.8.0 with compose rules 0.6.8 and
+  applied only its output to the three diagnosed files: one Preferences import order swap,
+  `java.io` before `kotlinx` in the applier, blank lines between the multiline `when` branches,
+  and the two short expression bodies joined to their signatures. A rerun reports zero violations.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-wallpaper-guard.sh` OK (source checks; APK sentinel skipped because no local APK);
+  `nothingui-polish-guard.sh` OK; `emulator-smoke-test.sh` all pass;
+  `emulator-smoke-drawer-test.sh` all pass; `sh -n` clean; `git diff --check` clean; ktlint clean.
+  The expensive nested `verify-play-build-test.sh` suite was deliberately not rerun.
+- **Blocked/unknown:** no local APK, JUnit, merged manifest or emulator result exists. Compiled
+  sentinel absence is **not** claimed until the real CI APK is inspected. The gallery opening,
+  Torus preview, measured Apply/Cancel and pixel/ID proofs remain CI gates. No merge, release or
+  final design acceptance.
+
+## done (previous run — pre-CI wallpaper gallery repairs)
 
 - **Wallpaper ID parser (current AOSP):** `wallpaper_ids_from_dump` now reads the real
   `WallpaperManagerService.dump`/`dumpWallpaper` format: `System wallpaper state:`,
