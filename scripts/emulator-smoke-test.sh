@@ -2512,7 +2512,7 @@ assert_true 'the widgets capture records the survival page' \
 assert_true 'the widgets capture re-proves the exact placed bounds after page navigation' \
     grep -Fq '_cwp_recheck_bounds' "$widgets_body"
 assert_true 'the widgets capture restores the primary HOME through the normal HOME key' \
-    grep -Fq 'restore_primary_home widgets-picker' "$widgets_body"
+    grep -Fq 'restore_primary_home widgets-primary' "$widgets_body"
 assert_true 'the primary HOME restore keys HOME rather than resetting or moving workspace items' \
     grep -Fq 'KEYCODE_HOME' "$primary_restore_body"
 assert_true 'the primary HOME restore polls the real primary-page readiness' \
@@ -2521,7 +2521,7 @@ assert_false 'the primary HOME restore never clears, moves or deletes workspace 
     grep -Eq 'pm clear|deleteItem|moveItem|addItemToDatabase|LauncherSettings|content://|sqlite' \
     "$primary_restore_body"
 recheck_line=$(grep -n '_cwp_recheck_bounds' "$widgets_body" | sed -n '1s/:.*//p')
-restore_line=$(grep -n 'restore_primary_home widgets-picker' "$widgets_body" |
+restore_line=$(grep -n 'restore_primary_home widgets-primary' "$widgets_body" |
     sed -n '1s/:.*//p')
 primary_assert_line=$(grep -n 'verify_nothing_home' "$widgets_body" |
     sed -n '1s/:.*//p')

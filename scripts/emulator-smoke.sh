@@ -2018,7 +2018,7 @@ capture_widgets_picker() {
                 # existing primary/default HOME with the normal HOME key before
                 # the primary-page date-pill/own-widget assertion. No workspace
                 # item is reset, moved or deleted.
-                restore_primary_home widgets-picker
+                restore_primary_home widgets-primary
                 verify_nothing_home
                 return 0
             fi
