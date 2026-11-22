@@ -232,6 +232,12 @@ grep -Fq 'if (!BuildConfig.DEBUG) return' "$THEME_MANAGER" ||
     fail "the native theme-state evidence is not debug-only"
 grep -Fq 'theme-refresh night=$night resolvedDark=$resolvedDark' "$THEME_MANAGER" ||
     fail "WallpaperThemeManager does not record the real night/resolved dark state"
+grep -Fq 'source=$source activity=${activity.javaClass.name}' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not record the callback source and activity"
+grep -Fq 'suppliedNight=$suppliedNight appNight=$appNight' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not record supplied and application night state"
+grep -Fq 'logDeferredConfigurationIfStale' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not record the post-configuration state"
 
 # Inspect basenames only. The repository parent directory may legitimately contain
 # a brand token (for example .../NothingOS-Launcher-...), which must not be read as

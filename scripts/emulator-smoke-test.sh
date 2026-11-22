@@ -2766,6 +2766,52 @@ assert_false 'the settings theme capture never passes the sample extra' \
 assert_false 'the settings theme capture never writes a preference' \
     grep -Eq 'settings put|putString|putBoolean|editSp' "$settings_theme_body"
 
+# --- theme refresh readiness fixtures ---------------------------------------
+
+theme_refresh_log="$TMP_DIR/theme-refresh.log"
+cat > "$theme_refresh_log" <<'EOF'
+01-01 00:00:00.000 D/DotWelTheme: theme-refresh night=false resolvedDark=false expected=AppTheme.DarkMainColor source=init activity=app.lawnchair.LawnchairLauncher suppliedNight=n/a appNight=false
+01-01 00:00:01.000 D/DotWelTheme: theme-refresh night=false resolvedDark=false expected=AppTheme.DarkMainColor source=config activity=app.lawnchair.LawnchairLauncher suppliedNight=true appNight=true
+01-01 00:00:02.000 D/DotWelTheme: theme-refresh night=true resolvedDark=false expected=AppTheme.DarkMainColor source=config-post activity=app.lawnchair.LawnchairLauncher suppliedNight=true appNight=true
+01-01 00:00:03.000 D/DotWelTheme: theme-refresh night=true resolvedDark=true expected=AppTheme.Dark source=config activity=app.lawnchair.LawnchairLauncher suppliedNight=true appNight=true
+01-01 00:00:04.000 D/DotWelTheme: theme-refresh night=true resolvedDark=true expected=AppTheme.Dark source=config activity=com.android.settings/.Settings suppliedNight=true appNight=true
+01-01 00:00:05.000 D/DotWelTheme: theme-refresh night=false resolvedDark=false expected=AppTheme source=config activity=app.lawnchair.LawnchairLauncher suppliedNight=false appNight=false
+EOF
+
+theme_dark_line=$(theme_refresh_line \
+    "$theme_refresh_log" true true app.lawnchair.LawnchairLauncher) || theme_dark_line=
+theme_dark_stamp=$(printf '%s\n' "$theme_dark_line" |
+    sed -n 's/^\([^ ]* [^ ]*\).*/\1/p')
+assert_eq 'theme readiness selects the launcher dark line' \
+    '01-01 00:00:03.000' "$theme_dark_stamp"
+
+theme_light_line=$(theme_refresh_line \
+    "$theme_refresh_log" false false app.lawnchair.LawnchairLauncher) || theme_light_line=
+theme_light_stamp=$(printf '%s\n' "$theme_light_line" |
+    sed -n 's/^\([^ ]* [^ ]*\).*/\1/p')
+assert_eq 'theme readiness selects the launcher light line' \
+    '01-01 00:00:05.000' "$theme_light_stamp"
+
+theme_stale_dark_line=$(theme_refresh_line \
+    "$theme_refresh_log" true false app.lawnchair.LawnchairLauncher) || theme_stale_dark_line=
+theme_stale_dark_stamp=$(printf '%s\n' "$theme_stale_dark_line" |
+    sed -n 's/^\([^ ]* [^ ]*\).*/\1/p')
+assert_eq 'theme readiness does not accept night without resolved dark' \
+    '01-01 00:00:02.000' "$theme_stale_dark_stamp"
+
+assert_false 'theme readiness rejects another activity with the same state' \
+    theme_refresh_line "$theme_refresh_log" true true com.example.Other
+assert_false 'theme readiness rejects a missing trace file' \
+    theme_refresh_line "$TMP_DIR/missing-theme-refresh.log" true true \
+    app.lawnchair.LawnchairLauncher
+
+theme_no_activity_log="$TMP_DIR/theme-refresh-no-activity.log"
+cat > "$theme_no_activity_log" <<'EOF'
+01-01 00:00:00.000 D/DotWelTheme: theme-refresh night=true resolvedDark=true expected=AppTheme.Dark source=config suppliedNight=true appNight=true
+EOF
+assert_false 'theme readiness rejects a trace without the activity field' \
+    theme_refresh_line "$theme_no_activity_log" true true app.lawnchair.LawnchairLauncher
+
 # --- static regression on the real Play native popup/drawer captures ---------
 
 native_theme_body="$TMP_DIR/capture_native_surfaces_theme.sh"
@@ -2776,6 +2822,9 @@ sed -n '/^wait_for_native_theme_state() {/,/^}/p' "$SMOKE" > "$native_theme_stat
 
 native_popup_body="$TMP_DIR/capture_native_home_popup.sh"
 sed -n '/^capture_native_home_popup() {/,/^}/p' "$SMOKE" > "$native_popup_body"
+
+native_theme_helper_body="$TMP_DIR/theme_refresh_line.sh"
+sed -n '/^theme_refresh_line() (/,/^)/p' "$LIB" > "$native_theme_helper_body"
 
 assert_true 'the native surfaces capture uses the system night yes/no modes' \
     grep -Fq 'for _cnst_mode in yes no; do' "$native_theme_body"
@@ -2788,9 +2837,25 @@ assert_true 'the native surfaces capture waits for resolved native theme readine
 assert_true 'the native theme readiness reads the debug-only theme trace' \
     grep -Fq 'DotWelTheme:D' "$native_theme_state_body"
 assert_true 'the native theme readiness requires expected night and resolved dark state' \
-    grep -Fq 'night=$_wnst_night resolvedDark=$_wnst_dark' "$native_theme_state_body"
+    grep -Fq 'night=$night resolvedDark=$dark' "$native_theme_helper_body"
+assert_true 'the native theme readiness filters to the launcher activity' \
+    grep -Fq 'activity=$activity ' "$native_theme_helper_body"
+assert_true 'the native theme readiness uses the shared filtered helper' \
+    grep -Fq 'theme_refresh_line' "$native_theme_state_body"
+assert_true 'the native theme readiness checks the actual launcher activity' \
+    grep -Fq '"$LAUNCHER_ACTIVITY"' "$native_theme_state_body"
 assert_true 'the native theme readiness excludes earlier capture lines' \
     grep -Fq '_wnst_baseline' "$native_theme_state_body"
+assert_true 'the native theme readiness retains a failure screenshot' \
+    grep -Fq 'native-theme-$_wnst_label-failure.png' "$native_theme_state_body"
+assert_true 'the native theme readiness retains the current activities' \
+    grep -Fq 'native-theme-$_wnst_label-activities.txt' "$native_theme_state_body"
+assert_true 'the native theme readiness retains the current night mode' \
+    grep -Fq 'native-theme-$_wnst_label-system-night-now.txt' "$native_theme_state_body"
+assert_true 'the native theme readiness reports the expected state on failure' \
+    grep -Fq 'expected night=%s resolvedDark=%s activity=%s' "$native_theme_state_body"
+assert_true 'the native theme readiness still fails after the bounded poll' \
+    grep -Fq 'return 1' "$native_theme_state_body"
 assert_true 'the native surfaces capture stores the resolved theme state' \
     grep -Fq 'native-theme-$_cnst_name-system-night.txt' "$native_theme_body"
 assert_true 'the native surfaces capture requires the SYSTEM theme choice' \

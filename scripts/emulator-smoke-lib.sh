@@ -2084,6 +2084,27 @@ appwidget_launcher_instances() (
     appwidget_new_providers '' "$dump" "$host" id
 )
 
+# Print the last debug theme-refresh line for the given launcher activity that
+# matches the expected night and resolved-dark values. A Settings or other
+# activity line, a stale mode, or a line without the activity field is ignored.
+# Exits 1 and prints nothing when no matching line exists.
+theme_refresh_line() (
+    log=$1
+    night=$2
+    dark=$3
+    activity=$4
+    [ -n "$activity" ] || return 1
+    [ -s "$log" ] || return 1
+    line=$(
+        grep -F 'theme-refresh' "$log" 2>/dev/null |
+            grep -F "activity=$activity " |
+            grep -F "night=$night resolvedDark=$dark" |
+            tail -n 1
+    ) || return 1
+    [ -n "$line" ] || return 1
+    printf '%s\n' "$line"
+)
+
 # Succeed only when the native widget picker search/list is visible and differs
 # from the pre-long-press HOME. The refactored Compose picker exposes the
 # widgets_catalog test tag; the inherited picker exposes its search bar and

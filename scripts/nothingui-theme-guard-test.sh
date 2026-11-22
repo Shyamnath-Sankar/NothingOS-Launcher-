@@ -193,7 +193,7 @@ class WallpaperThemeManager(private val activity: Activity) :
             themeRes = expectedTheme
             activity.setTheme(expectedTheme)
         }
-        logThemeState(expectedTheme)
+        logThemeState(expectedTheme, "init")
         if (Utilities.ATLEAST_Q) {
             activity.registerActivityLifecycleCallbacks(this)
         } else {
@@ -207,7 +207,7 @@ class WallpaperThemeManager(private val activity: Activity) :
 
     override fun onActivityResumed(resumedActivity: Activity) {
         if (resumedActivity === activity) {
-            updateTheme()
+            updateTheme("resume")
         }
     }
 
@@ -221,13 +221,18 @@ class WallpaperThemeManager(private val activity: Activity) :
         }
     }
 
-    override fun onConfigurationChanged(config: Configuration) = updateTheme()
+    override fun onConfigurationChanged(config: Configuration) {
+        updateTheme("config", config)
+        logDeferredConfigurationIfStale(config)
+    }
 
     override fun onLowMemory() {}
 
-    fun updateTheme() {
+    fun updateTheme() = updateTheme("manual")
+
+    private fun updateTheme(source: String, suppliedConfig: Configuration? = null) {
         val expectedTheme = Themes.getActivityThemeRes(activity)
-        logThemeState(expectedTheme)
+        logThemeState(expectedTheme, source, suppliedConfig)
         if (themeRes == expectedTheme) return
         themeRes = expectedTheme
         activity.setTheme(expectedTheme)
@@ -235,16 +240,41 @@ class WallpaperThemeManager(private val activity: Activity) :
         activity.recreate()
     }
 
-    private fun logThemeState(expectedTheme: Int) {
+    private fun logDeferredConfigurationIfStale(suppliedConfig: Configuration) {
         if (!BuildConfig.DEBUG) return
-        val configuration = activity.resources.configuration
-        val night = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
-            Configuration.UI_MODE_NIGHT_YES
+        val suppliedNight = isNight(suppliedConfig)
+        val activityNight = isNight(activity.resources.configuration)
+        if (suppliedNight == activityNight) return
+        activity.window?.decorView?.post {
+            if (!activity.isDestroyed) {
+                logThemeState(Themes.getActivityThemeRes(activity), "config-post", suppliedConfig)
+            }
+        }
+    }
+
+    private fun logThemeState(
+        expectedTheme: Int,
+        source: String,
+        suppliedConfig: Configuration? = null,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        val night = isNight(activity.resources.configuration)
+        val appNight = "n/a"
+        val suppliedNight = suppliedConfig?.let(::isNight)?.toString() ?: "n/a"
         val resolvedDark = UiColorMode(
             Themes.getAttrInteger(activity, R.attr.uiColorMode),
         ).isDarkTheme
-        Log.d(TAG, "theme-refresh night=$night resolvedDark=$resolvedDark expected=$expectedTheme")
+        Log.d(
+            TAG,
+            "theme-refresh night=$night resolvedDark=$resolvedDark expected=$expectedTheme" +
+                " source=$source activity=${activity.javaClass.name}" +
+                " suppliedNight=$suppliedNight appNight=$appNight",
+        )
     }
+
+    private fun isNight(configuration: Configuration): Boolean =
+        configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
 
     companion object {
         private const val TAG = "DotWelTheme"
@@ -547,6 +577,14 @@ sed -i.bak '/if (themeRes == expectedTheme) return/d' \
 rm -f "$missing_theme_loop_guard/src/com/android/launcher3/util/WallpaperThemeManager.kt.bak"
 expect_fail_contains 'a native theme without the no-change guard fails' \
     "$missing_theme_loop_guard" 'lost the no-change theme guard'
+
+missing_theme_source="$TMP_DIR/NothingOS-Launcher/missing-theme-source"
+cp -R "$clean" "$missing_theme_source"
+sed -i.bak '/source=\$source activity=/d' \
+    "$missing_theme_source/src/com/android/launcher3/util/WallpaperThemeManager.kt"
+rm -f "$missing_theme_source/src/com/android/launcher3/util/WallpaperThemeManager.kt.bak"
+expect_fail_contains 'a native theme without the callback-source trace fails' \
+    "$missing_theme_source" 'callback source and activity'
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

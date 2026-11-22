@@ -60,11 +60,20 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   capture fails.
 - before each native HOME popup/app-drawer capture it reads back `cmd uimode night`, then polls the
   debug-only `DotWelTheme` `theme-refresh` trace from a per-mode logcat baseline until the launcher
-  reports the expected `night=true|false` and `resolvedDark=true|false`. It stores
-  `native-theme-<mode>-system-night.txt` and `native-theme-<mode>-state.txt`, and only then captures
-  `native-popup-<mode>` and `native-drawer-<mode>`. The mode is never satisfied by a stale pre-switch
-  line, and the smoke still never writes a theme preference. Dark drawer/header surfaces use pure
-  black while popups and cards stay charcoal, so the captures also reveal an AMOLED regression.
+  reports the expected `night=true|false` and `resolvedDark=true|false`. The trace now records
+  `source=init|resume|config|config-post|color-hints|wallpaper-colors|manual`,
+  `activity=<fully.qualified.Activity>`, `suppliedNight`, `appNight` and the actual
+  `activity.resources` `night`, so the next run can identify which callback ran and whether the
+  supplied configuration, activity resources and application resources disagree. Readiness only
+  accepts a line for the real `app.lawnchair.LawnchairLauncher` and the current mode; a Settings or
+  other-activity line, a stale pre-switch line and a mode-mismatched line cannot satisfy it. It
+  stores `native-theme-<mode>-system-night.txt` and `native-theme-<mode>-state.txt`, and only then
+  captures `native-popup-<mode>` and `native-drawer-<mode>`. If readiness times out it additionally
+  stores `native-theme-<mode>-current.log`, `native-theme-<mode>-system-night-now.txt`,
+  `native-theme-<mode>-activities.txt` and `native-theme-<mode>-failure.png`, and still restores the
+  previous night mode instead of accepting a light/ambiguous frame. The smoke still never writes a
+  theme preference. Dark drawer/header surfaces use pure black while popups and cards stay charcoal,
+  so the captures also reveal an AMOLED regression.
 - then opens the debug-only Play theme sample through the existing exported `PreferenceActivity` and
   the explicit `app.lawnchair.ui.preferences.THEME_SAMPLE` extra. It captures
   `theme-sample-dark.xml`/`.png` and `theme-sample-light.xml`/`.png`, requires `DOTWEL` in both UI

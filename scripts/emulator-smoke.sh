@@ -510,22 +510,36 @@ wait_for_native_theme_state() {
     while [ "$_wnst_attempt" -le 20 ]; do
         ADB_TIMEOUT=30 adb_cmd logcat -d -s DotWelTheme:D -v brief \
             > "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null || true
-        _wnst_last=$(tail -n +"$((_wnst_baseline + 1))" \
-            "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null |
-            grep -F 'theme-refresh' | tail -n 1)
-        case "$_wnst_last" in
-            *"night=$_wnst_night resolvedDark=$_wnst_dark"*)
-                printf '%s\n' "$_wnst_last" \
-                    > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
-                return 0
-                ;;
-        esac
+        tail -n +"$((_wnst_baseline + 1))" \
+            "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null \
+            > "$ARTIFACTS/native-theme-$_wnst_label-current.log" || true
+        if _wnst_last=$(theme_refresh_line \
+            "$ARTIFACTS/native-theme-$_wnst_label-current.log" \
+            "$_wnst_night" "$_wnst_dark" "$LAUNCHER_ACTIVITY"); then
+            printf '%s\n' "$_wnst_last" \
+                > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
+            return 0
+        fi
         _wnst_attempt=$((_wnst_attempt + 1))
         sleep 1
     done
-    printf 'expected night=%s resolvedDark=%s\nlast theme-refresh: %s\n' \
-        "$_wnst_night" "$_wnst_dark" "${_wnst_last:-<none>}" \
-        > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
+    _wnst_seen=$(
+        grep -F 'theme-refresh' "$ARTIFACTS/native-theme-$_wnst_label.log" 2>/dev/null |
+            grep -F "activity=$LAUNCHER_ACTIVITY " |
+            tail -n 1
+    ) || true
+    _wnst_now_night=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r') || true
+    printf '%s\n' "$_wnst_now_night" \
+        > "$ARTIFACTS/native-theme-$_wnst_label-system-night-now.txt"
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/native-theme-$_wnst_label-activities.txt" 2>/dev/null || true
+    capture_screenshot_to "native-theme-$_wnst_label-failure.png" || true
+    {
+        printf 'expected night=%s resolvedDark=%s activity=%s\n' \
+            "$_wnst_night" "$_wnst_dark" "$LAUNCHER_ACTIVITY"
+        printf 'current uimode night: %s\n' "${_wnst_now_night:-<unknown>}"
+        printf 'last launcher theme-refresh: %s\n' "${_wnst_seen:-<none>}"
+    } > "$ARTIFACTS/native-theme-$_wnst_label-state.txt"
     return 1
 }
 
