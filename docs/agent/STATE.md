@@ -3,27 +3,71 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 CI161 selected-preview caption and primary-HOME restore recovery**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 CI165 no-header later-page swipe geometry recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `a3250b0` (`fix(smoke): keep restore HOME evidence distinct`); this STATE
-  commit follows. Previous commits: `ab2a06e`, `1557650`, `e289362`, `80550c1`, `ccf424c`,
-  `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`,
-  `709795a`; start `010d928`.
+- head: `dcb378b` (`fix(smoke): bound page swipes to actual workspace and hotseat`); this STATE
+  commit follows. Previous commits: `5c51124`, `a3250b0`, `ab2a06e`, `1557650`, `e289362`,
+  `80550c1`, `ccf424c`, `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`,
+  `56bb219`, `a46a487`, `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI161** (coordinator-reported, not reproduced locally) — compiled, style passed and **69
-  JUnit tests passed**. The runtime smoke then selected the Clock provider and its `Analog clock`
-  widget. The real `com.android.settings` `AllowBindAppWidgetActivity` showed
-  `Application: DotWel Launcher`, `Widget: Analog clock`, Create enabled and Always allow
-  unchecked. The harness had passed the provider header `Clock` to the consent helpers, so it
-  correctly refused the mismatched consent and timed out. The app build itself was green; this is a
-  harness identity bug. A fresh CI is required at this head after coordinator review.
+- ci: **CI165** (coordinator-reported, not reproduced locally) — build, style and **69 JUnit tests
+  passed**. The runtime smoke placed a genuine third-party Calendar host at `38 107 524 738` on a
+  later HOME page, passed the actual-page geometry, added launcher-owned ID9 with the Calendar
+  provider, and retained that exact host on page1 after launching Settings and returning HOME. It
+  then failed exactly at `could not compute the bounded HOME page return swipe`. The app build was
+  green; this is a harness geometry bug. A fresh CI is required at this head after coordinator
+  review.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. The new harness keeps the provider
-  header for HOME host/page identity and the measured preview `WidgetCell` caption for both consent
-  calls; it restores the default HOME after third-party proof before `verify_nothing_home`. Do not
-  merge until the API 37 smoke is green.
+  tests, Verify Play manifest and identity, and the API 37 smoke. The swipe helper now derives every
+  horizontal workspace page swipe from the current page's actual workspace and hotseat, protects a
+  real header, and accepts a genuine no-header later page. Do not merge until the API 37 smoke is
+  green. Release and hosting stay paused.
 
-## done (this run — CI161 selected-preview caption and primary-HOME restore)
+## done (this run — CI165 no-header later-page swipe geometry recovery)
+
+- **Root cause from CI165, not guessed:** `workspace_page_swipe` still required the labelled-row
+  `ui_dock_top` and a nonempty `ui_header_bottom`. The genuine later page has workspace
+  `0 0 1080 1920`, hotseat `0 1481 1080 1920`, the Calendar host at `38 107 524 738`, a
+  Gallery/Settings icon row at y=1196 and no `search_container_workspace` header. The labelled row
+  reported 1196 and the header was absent, so the helper printed nothing and the return swipe
+  failed. The app, design, workflow, SDK, permissions, signing, release and AMOLED files were
+  untouched.
+- **Page-local swipe:** `workspace_page_swipe` now reads the actual `workspace` (or
+  `workspace_right`/`workspace_grid`) and `hotseat` bounds, validates both are numeric and
+  nondegenerate, and requires the hotseat top to be below the workspace top. It starts the safe
+  band at the real `ui_header_bottom` when one exists, otherwise at the measured workspace top, and
+  never inherits a first-page header or invents a fraction. y is the midpoint above the actual
+  hotseat; x endpoints are absolute and strictly inside the actual workspace, including nonzero
+  origins. Missing/malformed/degenerate workspace or hotseat, an impossible band, or an unknown
+  direction fails closed. Generic drawer helpers and `ui_dock_top`/`ui_header_bottom` themselves are
+  unchanged.
+- **Handoff audit:** the only no-header assumption in the third-party handoff was this swipe helper.
+  `search_home_pages_for_widget`, `restore_primary_home`/`primary_home_is_ready`,
+  `verify_nothing_home`/`verify_home_widgets`, and the subsequent drawer/Settings/native checks do
+  not require a later-page header. The smoke still completes third-party proof first, then restores
+  the primary HOME with the normal HOME key and runs the existing `verify_nothing_home`.
+- **Fixtures:** CI159 first page (header bottom 312, hotseat 1481) yields next `864 896 216 896` and
+  prev `216 896 864 896`; the no-header later page (icon row 1196, hotseat 1481) yields
+  `864 740 216 740` and `216 740 864 740`, proving the helper ignores icon row 1196. A nonzero-origin
+  workspace `[40,120][1040,1800]` yields absolute `840 810 240 810`. Missing/malformed/degenerate
+  workspace and hotseat, a hotseat above the workspace, a header reaching past the hotseat, and an
+  unknown direction all fail closed. Existing selected `WidgetCell` caption separation, exact
+  provider/bounds/new-ID proof, foreground/no-permanent-binding guards and primary-page assertions
+  are unchanged.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **511/511**; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite 19/19;
+  `play-brand-guard-test.sh` 22/22; `play-identity-guard-test.sh` 8/8;
+  `nothingui-home-role-guard-test.sh` 7/7; `manifest-guard-test.sh` 31/31;
+  `nothingui-theme-guard-test.sh` 12/12; `nothingui-icon-render-guard-test.sh` 15/15;
+  `nothingui-native-surfaces-guard-test.sh` 14/14; `nothingui-drawer-trace-guard-test.sh` 8/8;
+  `verify-play-build-test.sh` 11/11; the widget/home/role/theme/icon/native/drawer-trace/brand/
+  identity source guards all OK; `sh -n` clean on the edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** CI has not yet rerun the API 37 runtime smoke at this head. No runtime, APK
+  or pixel success is claimed from fixtures; the later-page return/recheck swipe must be observed
+  to pass in the next CI. PR19 is not merged. Release and hosting remain paused.
+
+## done (previous run — CI161 selected-preview caption and primary-HOME restore)
 
 - **Root cause from CI161, not guessed:** the picker's Clock provider exposed both `Analog clock`
   and `Digital clock` `WidgetCell`s at the same vertical position. The smoke passed the provider
