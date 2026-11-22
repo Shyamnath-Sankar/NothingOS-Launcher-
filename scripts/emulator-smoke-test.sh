@@ -1110,6 +1110,14 @@ cat > "$home_widgets_xml" <<'EOF'
       <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[540,400][1000,800]">
         <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_battery_art" class="android.widget.ImageView" content-desc="87%" bounds="[540,400][1000,800]" />
       </node>
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,820][1040,1100]">
+        <node index="0" text="83.0 GB free" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_value" class="android.widget.TextView" bounds="[60,860][420,920]" />
+        <node index="1" text="17% used of 100.0 GB" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_detail" class="android.widget.TextView" bounds="[60,940][420,980]" />
+        <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_progress" class="android.widget.ProgressBar" bounds="[60,990][420,1000]" />
+        <node index="3" text="Wi-Fi settings" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_wifi" class="android.widget.TextView" clickable="true" bounds="[700,860][1000,920]" />
+        <node index="4" text="Sound settings" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_sound" class="android.widget.TextView" clickable="true" bounds="[700,930][1000,990]" />
+        <node index="5" text="Display settings" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_display" class="android.widget.TextView" clickable="true" bounds="[700,1000][1000,1060]" />
+      </node>
     </node>
   </node>
 </hierarchy>
@@ -1118,6 +1126,20 @@ assert_eq 'the HOME widget proof reads the real clock child text' \
     '3:07' "$(home_widget_clock_text "$home_widgets_xml")"
 assert_eq 'the HOME widget proof reads the real battery description' \
     '87%' "$(home_widget_battery_description "$home_widgets_xml")"
+assert_eq 'the HOME widget proof reads the real device storage value' \
+    '83.0 GB free' "$(home_widget_device_storage_value "$home_widgets_xml")"
+assert_eq 'the HOME widget proof reads the device storage detail' \
+    '17% used of 100.0 GB' "$(home_widget_device_storage_detail "$home_widgets_xml")"
+assert_true 'a real formatted device storage pair is accepted' \
+    home_widget_device_storage_is_real '83.0 GB free' '17% used of 100.0 GB'
+assert_eq 'the device Wi-Fi pill bounds are measured from its real child id' \
+    '700 860 1000 920' "$(home_widget_device_action_bounds "$home_widgets_xml" wifi)"
+assert_eq 'the device Sound pill bounds are measured from its real child id' \
+    '700 930 1000 990' "$(home_widget_device_action_bounds "$home_widgets_xml" sound)"
+assert_eq 'the device Display pill bounds are measured from its real child id' \
+    '700 1000 1000 1060' "$(home_widget_device_action_bounds "$home_widgets_xml" display)"
+assert_eq 'an unknown device action id has no bounds' \
+    '' "$(home_widget_device_action_bounds "$home_widgets_xml" bluetooth)"
 assert_true 'a live HH:mm clock text is accepted' \
     home_widget_clock_text_is_live '3:07'
 assert_true 'a two-digit live clock text is accepted' \
@@ -1140,6 +1162,14 @@ assert_false 'a bare battery number is rejected' \
     home_widget_battery_description_is_real '87'
 assert_false 'an empty battery description is rejected' \
     home_widget_battery_description_is_real ''
+assert_true 'the short -- unknown storage marker with its localized detail is accepted' \
+    home_widget_device_storage_is_real '--' 'Storage unavailable'
+assert_false 'the short -- marker without the localized detail is rejected' \
+    home_widget_device_storage_is_real '--' ''
+assert_false 'the old wide unknown label in the value slot is rejected' \
+    home_widget_device_storage_is_real 'Storage unavailable' 'Storage unavailable'
+assert_false 'a fabricated storage percentage is rejected' \
+    home_widget_device_storage_is_real '42%' ''
 
 home_widgets_missing_child_xml="$TMP_DIR/home-widgets-missing-child.xml"
 cat > "$home_widgets_missing_child_xml" <<'EOF'
@@ -1738,8 +1768,8 @@ assert_true 'the own-widget setup finishes a round only after a one-pending decr
     "$own_widget_setup_body"
 assert_true 'the own-widget setup fails when the one-pending decrease is not observed' \
     grep -Fq '_cows_round_finished' "$own_widget_setup_body"
-assert_true 'the own-widget setup keeps at most two rounds' \
-    grep -Fq '_cows_max_rounds=2' "$own_widget_setup_body"
+assert_true 'the own-widget setup keeps at most three rounds' \
+    grep -Fq '_cows_max_rounds=3' "$own_widget_setup_body"
 assert_true 'the own-widget setup keeps bounded polling' \
     grep -Fq '_cows_max_polls=12' "$own_widget_setup_body"
 assert_true 'the own-widget setup refuses a checked Always allow' \
@@ -1783,18 +1813,29 @@ assert_true 'the widget binding check requires the clock provider' \
     grep -Fq 'DotWelClockWidgetProvider' "$home_widgets_body"
 assert_true 'the widget binding check requires the battery provider' \
     grep -Fq 'DotWelBatteryWidgetProvider' "$home_widgets_body"
+assert_true 'the widget binding check requires the device provider' \
+    grep -Fq 'DotWelDeviceWidgetProvider' "$home_widgets_body"
 assert_true 'the widget binding check requires a launcher-owned instance id' \
     grep -Fq 'appwidget_launcher_instances' "$home_widgets_body"
 assert_true 'the widget binding check requires distinct clock and battery ids' \
     grep -Fq '_vhw_clock_id" != "$_vhw_battery_id' "$home_widgets_body"
+assert_true 'the widget binding check requires the device id to differ from both own ids' \
+    grep -Fq '_vhw_device_id" != "$_vhw_clock_id' "$home_widgets_body"
 assert_true 'the widget binding check requires the real clock child id' \
     grep -Fq 'nothingui_clock_time' "$home_widgets_body"
 assert_true 'the widget binding check requires the real battery child id' \
     grep -Fq 'nothingui_battery_art' "$home_widgets_body"
+assert_true 'the widget binding check requires the real device storage child ids' \
+    grep -Fq 'nothingui_device_storage_value' "$home_widgets_body"
+assert_true 'the widget binding check requires the real device progress child id' \
+    grep -Fq 'nothingui_device_storage_progress' "$home_widgets_body"
 assert_true 'the widget binding check requires live clock text' \
     grep -Fq 'home_widget_clock_text_is_live' "$home_widgets_body"
 assert_true 'the widget binding check requires a real battery description' \
     grep -Fq 'home_widget_battery_description_is_real' "$home_widgets_body"
+assert_true 'the widget binding check requires the real device storage pair' \
+    grep -Fq 'home_widget_device_storage_is_real "$_vhw_device_value" "$_vhw_device_detail"' \
+    "$home_widgets_body"
 assert_true 'the clean home capture requires the SYSTEM theme choice' \
     grep -Fq 'assert_settings_theme_choice_system' "$clean_home_body"
 assert_true 'the clean home capture proves widgets for each dark/light XML' \

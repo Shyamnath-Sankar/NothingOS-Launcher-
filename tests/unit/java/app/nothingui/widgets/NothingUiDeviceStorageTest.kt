@@ -50,7 +50,7 @@ class NothingUiDeviceStorageTest {
 
     @Test
     fun negativeBytesRenderTheUnknownDashInsteadOfAFakeSize() {
-        assertEquals("—", NothingUiDeviceStorage.formatSize(-1L, Locale.US))
+        assertEquals("--", NothingUiDeviceStorage.formatSize(-1L, Locale.US))
     }
 
     @Test
@@ -59,7 +59,7 @@ class NothingUiDeviceStorageTest {
         assertEquals(100, NothingUiDeviceStorage.usedPercent(100 * gb, 0L))
         assertEquals(52, NothingUiDeviceStorage.usedPercent(100 * gb, 48 * gb))
         assertEquals(50, NothingUiDeviceStorage.usedPercent(2L, 1L))
-        assertEquals(100, NothingUiDeviceStorage.usedPercent(3L, 1L))
+        assertEquals(67, NothingUiDeviceStorage.usedPercent(3L, 1L))
     }
 
     @Test

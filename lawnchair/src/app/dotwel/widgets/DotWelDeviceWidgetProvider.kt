@@ -130,9 +130,12 @@ class DotWelDeviceWidgetProvider : AppWidgetProvider() {
             } else {
                 views.setTextViewText(
                     R.id.nothingui_device_storage_value,
+                    context.getString(R.string.nothingui_device_storage_unknown_value),
+                )
+                views.setTextViewText(
+                    R.id.nothingui_device_storage_detail,
                     context.getString(R.string.nothingui_device_storage_unknown),
                 )
-                views.setTextViewText(R.id.nothingui_device_storage_detail, "")
             }
             views.setProgressBar(
                 R.id.nothingui_device_storage_progress,

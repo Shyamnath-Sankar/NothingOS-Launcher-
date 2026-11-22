@@ -31,6 +31,7 @@ import kotlin.math.roundToInt
 object NothingUiDeviceStorage {
 
     const val UNKNOWN_PERCENT = -1
+    const val UNKNOWN_MARKER = "--"
 
     private val UNITS = arrayOf("B", "KB", "MB", "GB", "TB", "PB")
     private const val STEP = 1024.0
@@ -39,7 +40,7 @@ object NothingUiDeviceStorage {
         total > 0L && available >= 0L && available <= total
 
     fun formatSize(bytes: Long, locale: Locale = Locale.getDefault()): String {
-        if (bytes < 0L) return "—"
+        if (bytes < 0L) return UNKNOWN_MARKER
         var value = bytes.toDouble()
         var unit = 0
         while (value >= STEP && unit < UNITS.lastIndex) {

@@ -742,11 +742,13 @@ verify_home_widgets() {
     home_widget_battery_description_is_real "$_vhw_battery_description" ||
         fail "the HOME battery child has no real percentage or -- description (got '$_vhw_battery_description')"
     _vhw_device_value=$(home_widget_device_storage_value "$_vhw_xml")
-    home_widget_device_storage_is_real "$_vhw_device_value" ||
-        fail "the HOME device child has no real storage value (got '$_vhw_device_value')"
-    printf 'Home widgets: clock AppWidgetId %s, battery AppWidgetId %s and device AppWidgetId %s are launcher-owned; the HOME XML exposes nothingui_clock_time=%s, nothingui_battery_art=%s and nothingui_device_storage_value=%s.\n' \
+    _vhw_device_detail=$(home_widget_device_storage_detail "$_vhw_xml")
+    home_widget_device_storage_is_real "$_vhw_device_value" "$_vhw_device_detail" ||
+        fail "the HOME device child has no real storage value (got '$_vhw_device_value' / '$_vhw_device_detail')"
+    printf 'Home widgets: clock AppWidgetId %s, battery AppWidgetId %s and device AppWidgetId %s are launcher-owned; the HOME XML exposes nothingui_clock_time=%s, nothingui_battery_art=%s and nothingui_device_storage_value=%s (%s).\n' \
         "$_vhw_clock_id" "$_vhw_battery_id" "$_vhw_device_id" \
-        "$_vhw_clock_text" "$_vhw_battery_description" "$_vhw_device_value" \
+        "$_vhw_clock_text" "$_vhw_battery_description" \
+        "$_vhw_device_value" "$_vhw_device_detail" \
         > "$ARTIFACTS/home-widgets-verified.txt"
 }
 

@@ -183,13 +183,34 @@ home_widget_device_storage_value() (
     ui_node_attribute "$1" nothingui_device_storage_value text
 )
 
+home_widget_device_storage_detail() (
+    ui_node_attribute "$1" nothingui_device_storage_detail text
+)
+
+# Print the measured bounds of one real device-card Settings pill. The child id
+# is the RemoteViews click target, so the smoke taps the actual rendered bounds
+# rather than a fixed coordinate.
+home_widget_device_action_bounds() (
+    xml=$1
+    action=$2
+    case "$action" in
+        wifi | sound | display) ;;
+        *) return 0 ;;
+    esac
+    ui_node_attribute "$xml" "nothingui_device_$action" bounds |
+        sed -n 's/^\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]\[\([0-9][0-9]*\),\([0-9][0-9]*\)\]$/\1 \2 \3 \4/p'
+)
+
 # The device card must show either a real formatted free-space reading (for
-# example "83.0 GB free") or the explicit "Storage unavailable" fallback. A
-# fabricated percentage, a blank label or a catalog string is rejected.
+# example "83.0 GB free") or the honest unknown pair: the short "--" marker as
+# the large value and the localized "Storage unavailable" message as detail. A
+# fabricated percentage, the old wide unknown label in the value slot, a blank
+# label or a catalog string is rejected.
 home_widget_device_storage_is_real() (
     value=$1
+    detail=${2:-}
     case "$value" in
-        'Storage unavailable' | '—') return 0 ;;
+        --) [ "$detail" = 'Storage unavailable' ] && return 0 ;;
     esac
     printf '%s\n' "$value" | grep -Eq '^[0-9]+([.][0-9]+)? [KMGTP]?B free$'
 )
