@@ -109,11 +109,29 @@ class ActivityAllAppsContainerView {
 }
 EOF
 
+    write_file "$root/AndroidManifest.xml" <<'EOF'
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name="app.lawnchair.LawnchairLauncher"
+            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+EOF
+
     write_file "$root/play/AndroidManifest.xml" <<'EOF'
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
     <application>
-        <activity android:name="app.lawnchair.LawnchairLauncher">
+        <activity
+            android:name="app.lawnchair.LawnchairLauncher"
+            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
@@ -249,6 +267,30 @@ sed '/android.intent.category.LAUNCHER/a\                <category android:name=
 mv "$home_settings/play.tmp" "$home_settings/play/AndroidManifest.xml"
 expect_fail_contains 'a settings HOME claim fails' \
     "$home_settings" 'must not claim HOME'
+
+play_ui_mode="$TMP_DIR/play-ui-mode"
+cp -R "$clean" "$play_ui_mode"
+sed 's/smallestScreenSize"/smallestScreenSize|uiMode"/' \
+    "$play_ui_mode/play/AndroidManifest.xml" > "$play_ui_mode/play.tmp"
+mv "$play_ui_mode/play.tmp" "$play_ui_mode/play/AndroidManifest.xml"
+expect_fail_contains 'Play uiMode config handling fails' \
+    "$play_ui_mode" 'still handles uiMode manually'
+
+play_missing_flag="$TMP_DIR/play-missing-flag"
+cp -R "$clean" "$play_missing_flag"
+sed 's/|orientation//' \
+    "$play_missing_flag/play/AndroidManifest.xml" > "$play_missing_flag/play.tmp"
+mv "$play_missing_flag/play.tmp" "$play_missing_flag/play/AndroidManifest.xml"
+expect_fail_contains 'a missing inherited geometry flag fails' \
+    "$play_missing_flag" 'missing inherited flag orientation'
+
+base_ui_mode="$TMP_DIR/base-ui-mode"
+cp -R "$clean" "$base_ui_mode"
+sed 's/smallestScreenSize"/smallestScreenSize|uiMode"/' \
+    "$base_ui_mode/AndroidManifest.xml" > "$base_ui_mode/base.tmp"
+mv "$base_ui_mode/base.tmp" "$base_ui_mode/AndroidManifest.xml"
+expect_fail_contains 'non-Play uiMode config handling fails' \
+    "$base_ui_mode" 'non-Play HOME activity still handles uiMode manually'
 
 no_launcher="$TMP_DIR/no-launcher"
 cp -R "$clean" "$no_launcher"

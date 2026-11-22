@@ -129,6 +129,44 @@ fi
 merged=$candidates
 [ -f "$merged" ] || fail "merged manifest is not a file: $merged"
 
+# The Play HOME activity must recreate for uiMode (fresh resources) while still
+# handling the inherited geometry changes manually. HOME and the DotWel
+# Settings launcher entry must keep their existing routing.
+merged_launcher_block=$(awk '
+    BEGIN { RS = "</activity>" }
+    /<activity/ && /app\.lawnchair\.LawnchairLauncher/ { print $0 "</activity>"; exit }
+' "$merged")
+[ -n "$merged_launcher_block" ] ||
+    fail "merged manifest has no app.lawnchair.LawnchairLauncher activity"
+merged_config=$(printf '%s\n' "$merged_launcher_block" |
+    sed -n 's/.*android:configChanges="\([^"]*\)".*/\1/p')
+[ -n "$merged_config" ] || fail "merged LawnchairLauncher has no configChanges"
+case "|$merged_config|" in
+    *'|uiMode|'*) fail "merged LawnchairLauncher still handles uiMode manually" ;;
+esac
+for flag in keyboard keyboardHidden mcc mnc navigation orientation screenSize \
+    screenLayout smallestScreenSize; do
+    case "|$merged_config|" in
+        *"|$flag|"*) ;;
+        *) fail "merged LawnchairLauncher configChanges is missing $flag" ;;
+    esac
+done
+printf '%s\n' "$merged_launcher_block" | grep -Fq 'android.intent.category.HOME' ||
+    fail "merged LawnchairLauncher no longer resolves HOME"
+
+merged_settings_block=$(awk '
+    BEGIN { RS = "</activity>" }
+    /<activity/ && /app\.lawnchair\.ui\.preferences\.PreferenceActivity/ {
+        print $0 "</activity>"; exit
+    }
+' "$merged")
+[ -n "$merged_settings_block" ] || fail "merged manifest has no DotWel Settings activity"
+printf '%s\n' "$merged_settings_block" | grep -Fq 'android.intent.category.LAUNCHER' ||
+    fail "merged DotWel Settings activity is missing the LAUNCHER category"
+if printf '%s\n' "$merged_settings_block" | grep -Fq 'android.intent.category.HOME'; then
+    fail "merged DotWel Settings activity must not claim HOME"
+fi
+
 # 3. Play manifest guard.
 sh "$SCRIPT_DIR/manifest-guard.sh" "$merged"
 

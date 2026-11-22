@@ -41,12 +41,13 @@ SCRIM_VIEW="$ROOT/lawnchair/src/app/lawnchair/views/LawnchairScrimView.kt"
 ALLAPPS_VIEW="$ROOT/src/com/android/launcher3/allapps/ActivityAllAppsContainerView.java"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 BASE_MANIFEST="$ROOT/lawnchair/AndroidManifest.xml"
+ROOT_MANIFEST="$ROOT/AndroidManifest.xml"
 PLAY_STRINGS="$ROOT/play/res/values/strings.xml"
 DASHBOARD="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/PreferencesDashboard.kt"
 
 for file in "$DEFAULTS" "$PREFERENCE_MANAGER" "$BASE_PREFERENCES" \
     "$DRAWER_PREFERENCES" "$LAWNCHAIR_UTILS" "$SCRIM_VIEW" "$ALLAPPS_VIEW" \
-    "$PLAY_MANIFEST" "$BASE_MANIFEST" "$PLAY_STRINGS" "$DASHBOARD"; do
+    "$PLAY_MANIFEST" "$BASE_MANIFEST" "$ROOT_MANIFEST" "$PLAY_STRINGS" "$DASHBOARD"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -123,6 +124,35 @@ launcher_block=$(awk '
 ' "$PLAY_MANIFEST")
 printf '%s\n' "$launcher_block" | grep -Fq 'android.intent.category.HOME' ||
     fail "the launcher activity no longer resolves HOME"
+
+# The Play HOME activity must let the platform recreate it for uiMode so the
+# fresh configuration is applied before resources are resolved. It must keep
+# every inherited geometry flag that still needs manual handling.
+check_config_changes() {
+    block=$1
+    label=$2
+    config=$(printf '%s\n' "$block" | sed -n 's/.*android:configChanges="\([^"]*\)".*/\1/p')
+    [ -n "$config" ] || fail "the $label launcher activity has no configChanges"
+    case "|$config|" in
+        *'|uiMode|'*) fail "the $label HOME activity still handles uiMode manually" ;;
+    esac
+    for flag in keyboard keyboardHidden mcc mnc navigation orientation screenSize \
+        screenLayout smallestScreenSize; do
+        case "|$config|" in
+            *"|$flag|"*) ;;
+            *) fail "the $label launcher configChanges is missing inherited flag $flag" ;;
+        esac
+    done
+}
+
+check_config_changes "$launcher_block" 'Play'
+
+root_launcher_block=$(awk '
+    BEGIN { RS = "</activity>" }
+    /<activity/ && /LawnchairLauncher/ { print $0 "</activity>"; exit }
+' "$ROOT_MANIFEST")
+[ -n "$root_launcher_block" ] || fail "the base manifest does not declare LawnchairLauncher"
+check_config_changes "$root_launcher_block" 'non-Play'
 
 # --- Default-home dashboard status ---------------------------------------
 

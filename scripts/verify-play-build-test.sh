@@ -63,6 +63,18 @@ write_merged() {
         fi
         printf '%s\n' '    <application>'
         printf '%s\n' "        <provider android:name=\"example.Provider\" android:authorities=\"$authority\" />"
+        printf '%s\n' '        <activity'
+        printf '%s\n' '            android:name="app.lawnchair.LawnchairLauncher"'
+        printf '%s\n' '            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize">'
+        printf '%s\n' '            <intent-filter>'
+        printf '%s\n' '                <category android:name="android.intent.category.HOME" />'
+        printf '%s\n' '            </intent-filter>'
+        printf '%s\n' '        </activity>'
+        printf '%s\n' '        <activity android:name="app.lawnchair.ui.preferences.PreferenceActivity">'
+        printf '%s\n' '            <intent-filter>'
+        printf '%s\n' '                <category android:name="android.intent.category.LAUNCHER" />'
+        printf '%s\n' '            </intent-filter>'
+        printf '%s\n' '        </activity>'
         printf '%s\n' '    </application>'
         printf '%s\n' '</manifest>'
     } > "$file"
@@ -108,6 +120,34 @@ write_merged \
     'com.launchernos.dotwellabs.debug' \
     'com.launchernos.dotwellabs.debug.settings'
 run_expect_pass 'valid merged manifest passes' "$valid_root"
+
+merged_ui_mode_root="$TMP_DIR/merged-ui-mode"
+new_root "$merged_ui_mode_root"
+merged_ui_mode_file="$merged_ui_mode_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml"
+write_merged \
+    "$merged_ui_mode_file" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings'
+sed 's/smallestScreenSize"/smallestScreenSize|uiMode"/' "$merged_ui_mode_file" > "$merged_ui_mode_file.tmp"
+mv "$merged_ui_mode_file.tmp" "$merged_ui_mode_file"
+run_expect_fail_contains \
+    'merged uiMode config handling fails' \
+    "$merged_ui_mode_root" \
+    'still handles uiMode manually'
+
+merged_missing_flag_root="$TMP_DIR/merged-missing-flag"
+new_root "$merged_missing_flag_root"
+merged_missing_flag_file="$merged_missing_flag_root/build/intermediates/merged_manifest/lawnWithQuickstepPlayDebug/AndroidManifest.xml"
+write_merged \
+    "$merged_missing_flag_file" \
+    'com.launchernos.dotwellabs.debug' \
+    'com.launchernos.dotwellabs.debug.settings'
+sed 's/|orientation//' "$merged_missing_flag_file" > "$merged_missing_flag_file.tmp"
+mv "$merged_missing_flag_file.tmp" "$merged_missing_flag_file"
+run_expect_fail_contains \
+    'merged missing geometry flag fails' \
+    "$merged_missing_flag_root" \
+    'configChanges is missing orientation'
 
 exact_authority_root="$TMP_DIR/exact-authority"
 new_root "$exact_authority_root"
