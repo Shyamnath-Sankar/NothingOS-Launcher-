@@ -138,15 +138,17 @@ class NothingUiNativeSurfacesTest {
 
     @Test
     fun drawerLayersKeepTheirOriginalAlphaBudget() {
-        assertEquals(0.40f, NothingUiNativeSurfaces.allAppsScrim(dark = true).alpha, 0.001f)
-        assertEquals(0.40f, NothingUiNativeSurfaces.allAppsScrim(dark = false).alpha, 0.001f)
-        assertEquals(0.50f, NothingUiNativeSurfaces.allAppsExpressive(dark = true).alpha, 0.001f)
-        assertEquals(0.50f, NothingUiNativeSurfaces.allAppsExpressive(dark = false).alpha, 0.001f)
-        assertEquals(0.32f, NothingUiNativeSurfaces.allAppsBlurBackground(dark = true).alpha, 0.001f)
-        assertEquals(0.32f, NothingUiNativeSurfaces.allAppsBlurBackground(dark = false).alpha, 0.001f)
-        assertEquals(0.32f, NothingUiNativeSurfaces.allAppsBlurForeground(dark = true).alpha, 0.001f)
-        assertEquals(0.32f, NothingUiNativeSurfaces.allAppsBlurForeground(dark = false).alpha, 0.001f)
+        assertEquals(quantizedAlpha(0.40f), NothingUiNativeSurfaces.allAppsScrim(dark = true).alpha, 0f)
+        assertEquals(quantizedAlpha(0.40f), NothingUiNativeSurfaces.allAppsScrim(dark = false).alpha, 0f)
+        assertEquals(quantizedAlpha(0.50f), NothingUiNativeSurfaces.allAppsExpressive(dark = true).alpha, 0f)
+        assertEquals(quantizedAlpha(0.50f), NothingUiNativeSurfaces.allAppsExpressive(dark = false).alpha, 0f)
+        assertEquals(quantizedAlpha(0.32f), NothingUiNativeSurfaces.allAppsBlurBackground(dark = true).alpha, 0f)
+        assertEquals(quantizedAlpha(0.32f), NothingUiNativeSurfaces.allAppsBlurBackground(dark = false).alpha, 0f)
+        assertEquals(quantizedAlpha(0.32f), NothingUiNativeSurfaces.allAppsBlurForeground(dark = true).alpha, 0f)
+        assertEquals(quantizedAlpha(0.32f), NothingUiNativeSurfaces.allAppsBlurForeground(dark = false).alpha, 0f)
     }
+
+    private fun quantizedAlpha(alpha: Float): Float = Color.White.copy(alpha = alpha).alpha
 
     private fun contrast(first: Color, second: Color): Double {
         val firstLuminance = first.relativeLuminance()
