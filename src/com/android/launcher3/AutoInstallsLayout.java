@@ -515,21 +515,27 @@ public class AutoInstallsLayout {
         /**
          * Allows a default-layout {@code <appwidget>} to name this app's own package through an
          * existing string resource instead of a literal. Play's applicationId differs between the
-         * debug suffix and release, while {@code launcher_component} is generated per variant, so
-         * resolving its package part keeps the fresh-install seed valid in every channel build.
-         * Literal package names keep the inherited behavior.
+         * debug suffix and release. The {@code launcher_component} resource is generated from the
+         * flavor applicationId, while the running context package includes the build-type suffix,
+         * so the context package is the authoritative value for our own component. Other
+         * {@code @string/...} values resolve their package part normally. Literal package names
+         * keep the inherited behavior.
          */
         private String resolveComponentPackage(@Nullable String packageName) {
             if (packageName == null || !packageName.startsWith("@string/")) {
                 return packageName;
             }
             final String resourceName = packageName.substring("@string/".length());
-            final int resourceId = mSourceRes.getIdentifier(
+            if ("launcher_component".equals(resourceName)) {
+                return mContext.getPackageName();
+            }
+            final Resources resources = mContext.getResources();
+            final int resourceId = resources.getIdentifier(
                     resourceName, "string", mContext.getPackageName());
             if (resourceId == 0) {
                 return packageName;
             }
-            final String value = mSourceRes.getString(resourceId);
+            final String value = resources.getString(resourceId);
             final int separator = value.indexOf('/');
             return separator > 0 ? value.substring(0, separator) : value;
         }

@@ -179,6 +179,8 @@ require_grep "$PARSER" 'resolveComponentPackage' \
     "the default-layout parser cannot resolve a resource package name"
 require_grep "$PARSER" '@string/' \
     "the default-layout parser does not recognize resource package names"
+require_grep "$PARSER" 'mContext.getPackageName()' \
+    "the default-layout parser does not use the running variant package"
 
 # Play-only sizing: smaller home icons and a real 48dp QSB, drawer unchanged.
 require_grep "$PLAY_CONFIG" 'config_default_home_icon_size_factor' \

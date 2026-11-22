@@ -83,7 +83,7 @@ object NothingUiBatteryArt {
 
         val label = if (percent >= 0) percent.toString() else UNKNOWN
         val inner = radius * 2f * 0.62f
-        val density = context.resources.displayMetrics.density
+        val density = context.resources.configuration.densityDpi / 160f
         val innerDp = inner / density
         val pitchDp = DotText.pitchFor(label, innerDp, innerDp)
         val art = DotText.art(

@@ -187,7 +187,7 @@ EOF
     write_file "$root/src/com/android/launcher3/AutoInstallsLayout.java" <<'EOF'
 class AutoInstallsLayout {
     private String resolveComponentPackage(String packageName) {
-        if (packageName.startsWith("@string/")) return packageName;
+        if (packageName.startsWith("@string/")) return mContext.getPackageName();
         return packageName;
     }
 }
