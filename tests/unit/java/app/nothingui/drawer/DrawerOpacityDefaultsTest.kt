@@ -17,7 +17,7 @@
 package app.nothingui.drawer
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DrawerOpacityDefaultsTest {
@@ -36,6 +36,6 @@ class DrawerOpacityDefaultsTest {
     fun playDefaultIsNotTheInheritedDefault() {
         assertEquals(DrawerOpacityDefaults.PLAY_DEFAULT, DrawerOpacityDefaults.forPlayFlavor(true))
         assertEquals(DrawerOpacityDefaults.INHERITED_DEFAULT, DrawerOpacityDefaults.forPlayFlavor(false))
-        assertNotEquals(DrawerOpacityDefaults.PLAY_DEFAULT, DrawerOpacityDefaults.INHERITED_DEFAULT)
+        assertTrue(DrawerOpacityDefaults.PLAY_DEFAULT != DrawerOpacityDefaults.INHERITED_DEFAULT)
     }
 }
