@@ -150,9 +150,10 @@
             tools:node="remove" />
 
         <!--
-          Original NothingUI home widgets. Only these two providers are declared, and only in the
-          Play overlay. They add no permission: the clock is a native TextClock, and the battery
-          reads the sticky BATTERY_CHANGED broadcast through the launcher's lifecycle receiver.
+          Original DotWel home widgets. Only these three providers are declared, and only in the
+          Play overlay. They add no permission: the clock is a native TextClock, the battery reads
+          the sticky BATTERY_CHANGED broadcast through the launcher's lifecycle receiver, and the
+          device card reads only the app data volume with StatFs.
         -->
         <receiver
             android:name="app.dotwel.widgets.DotWelClockWidgetProvider"
@@ -177,6 +178,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/nothingui_battery_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.dotwel.widgets.DotWelDeviceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_device_widget_info" />
         </receiver>
     </application>
 </manifest>

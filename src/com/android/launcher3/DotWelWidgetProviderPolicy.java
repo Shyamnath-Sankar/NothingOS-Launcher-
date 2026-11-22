@@ -21,15 +21,16 @@ import androidx.annotation.Nullable;
 /**
  * Identifies the launcher's own DotWel home-widget providers in the fresh-install default layout.
  *
- * <p>Only these two exact components may fall back to the pending-widget path when the platform
+ * <p>Only these three exact components may fall back to the pending-widget path when the platform
  * denies an automatic widget bind. The package must be the running variant's own package and the
- * class must be one of the two declared DotWel providers; a third-party package, a lookalike class
- * or a different class in our own package keeps the inherited delete-and-skip behavior.
+ * class must be one of the three declared DotWel providers; a third-party package, a lookalike
+ * class or a different class in our own package keeps the inherited delete-and-skip behavior.
  */
 final class DotWelWidgetProviderPolicy {
 
     static final String CLOCK_PROVIDER_CLASS = "app.dotwel.widgets.DotWelClockWidgetProvider";
     static final String BATTERY_PROVIDER_CLASS = "app.dotwel.widgets.DotWelBatteryWidgetProvider";
+    static final String DEVICE_PROVIDER_CLASS = "app.dotwel.widgets.DotWelDeviceWidgetProvider";
 
     private DotWelWidgetProviderPolicy() {}
 
@@ -44,6 +45,7 @@ final class DotWelWidgetProviderPolicy {
             return false;
         }
         return CLOCK_PROVIDER_CLASS.equals(componentClass)
-                || BATTERY_PROVIDER_CLASS.equals(componentClass);
+                || BATTERY_PROVIDER_CLASS.equals(componentClass)
+                || DEVICE_PROVIDER_CLASS.equals(componentClass);
     }
 }

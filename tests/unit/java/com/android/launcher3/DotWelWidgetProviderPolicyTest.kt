@@ -47,6 +47,17 @@ class DotWelWidgetProviderPolicyTest {
     }
 
     @Test
+    fun ownDeviceProviderIsRecognised() {
+        assertTrue(
+            DotWelWidgetProviderPolicy.isOwnDotWelProvider(
+                ownPackage,
+                ownPackage,
+                DotWelWidgetProviderPolicy.DEVICE_PROVIDER_CLASS,
+            ),
+        )
+    }
+
+    @Test
     fun releasePackageIsRecognisedWhenItIsTheRunningPackage() {
         assertTrue(
             DotWelWidgetProviderPolicy.isOwnDotWelProvider(
@@ -75,6 +86,17 @@ class DotWelWidgetProviderPolicyTest {
                 ownPackage,
                 "com.example.app",
                 DotWelWidgetProviderPolicy.BATTERY_PROVIDER_CLASS,
+            ),
+        )
+    }
+
+    @Test
+    fun deviceClassInAnotherPackageIsRejected() {
+        assertFalse(
+            DotWelWidgetProviderPolicy.isOwnDotWelProvider(
+                ownPackage,
+                "com.example.app",
+                DotWelWidgetProviderPolicy.DEVICE_PROVIDER_CLASS,
             ),
         )
     }

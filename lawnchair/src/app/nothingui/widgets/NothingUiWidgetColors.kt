@@ -58,13 +58,27 @@ object NothingUiWidgetColors {
         NothingUiPalette.White.toArgb()
     }
 
+    fun mutedContentColor(lightSurface: Boolean): Int = if (lightSurface) {
+        NothingUiPalette.Gray500.toArgb()
+    } else {
+        NothingUiPalette.Gray300.toArgb()
+    }
+
     fun surfaceColor(context: Context): Int = surfaceColor(isLightSurface(context))
 
     fun contentColor(context: Context): Int = contentColor(isLightSurface(context))
+
+    fun mutedContentColor(context: Context): Int = mutedContentColor(isLightSurface(context))
 
     fun tileDrawable(lightSurface: Boolean): Int = if (lightSurface) {
         R.drawable.nothingui_widget_tile_light
     } else {
         R.drawable.nothingui_widget_tile_dark
+    }
+
+    fun pillDrawable(lightSurface: Boolean): Int = if (lightSurface) {
+        R.drawable.nothingui_device_pill_light
+    } else {
+        R.drawable.nothingui_device_pill_dark
     }
 }

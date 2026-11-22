@@ -147,11 +147,11 @@
     </resolve>
 
     <!--
-      Fresh Play install only: the two original DotWel widgets sit side by side in rows 1-2,
-      below the pinned date strip in row 0. packageName is resolved from the per-variant
-      launcher_component resource so debug and release both seed their own providers. Existing
-      workspaces are never rewritten or migrated; this layout is only read when the database is
-      first created.
+      Fresh Play install only: the two original DotWel widgets sit side by side in rows 1-2, the
+      wide device card anchors rows 3-4, and the existing row-5 app/folder placements and hotseat
+      are untouched. packageName is resolved from the per-variant launcher_component resource so
+      debug and release both seed their own providers. Existing workspaces are never rewritten or
+      migrated; this layout is only read when the database is first created.
     -->
     <appwidget
         launcher:className="app.dotwel.widgets.DotWelClockWidgetProvider"
@@ -170,5 +170,14 @@
         launcher:spanY="2"
         launcher:x="2"
         launcher:y="1"/>
+
+    <appwidget
+        launcher:className="app.dotwel.widgets.DotWelDeviceWidgetProvider"
+        launcher:packageName="@string/launcher_component"
+        launcher:screen="0"
+        launcher:spanX="4"
+        launcher:spanY="2"
+        launcher:x="0"
+        launcher:y="3"/>
 
 </favorites>

@@ -41,18 +41,24 @@ WIDGET_DIR=lawnchair/src/app/nothingui/widgets
 PROVIDER_DIR=lawnchair/src/app/dotwel/widgets
 CLOCK_PROVIDER=$PROVIDER_DIR/DotWelClockWidgetProvider.kt
 BATTERY_PROVIDER=$PROVIDER_DIR/DotWelBatteryWidgetProvider.kt
+DEVICE_PROVIDER=$PROVIDER_DIR/DotWelDeviceWidgetProvider.kt
 WIDGET_MONITOR=$WIDGET_DIR/NothingUiWidgetMonitor.kt
 WIDGET_COLORS=$WIDGET_DIR/NothingUiWidgetColors.kt
+DEVICE_STORAGE=$WIDGET_DIR/NothingUiDeviceStorage.kt
 BATTERY_ART=$WIDGET_DIR/NothingUiBatteryArt.kt
 BUDGET=$WIDGET_DIR/NothingUiWidgetBudget.kt
 DOT_TEXT=$WIDGET_DIR/DotText.kt
 CLOCK_LAYOUT=lawnchair/res/layout/nothingui_widget_clock.xml
 BATTERY_LAYOUT=lawnchair/res/layout/nothingui_widget_battery.xml
+DEVICE_LAYOUT=lawnchair/res/layout/nothingui_widget_device.xml
 CLOCK_TILE_DARK=lawnchair/res/drawable/nothingui_widget_tile_dark.xml
 CLOCK_TILE_LIGHT=lawnchair/res/drawable/nothingui_widget_tile_light.xml
+DEVICE_PILL_DARK=lawnchair/res/drawable/nothingui_device_pill_dark.xml
+DEVICE_PILL_LIGHT=lawnchair/res/drawable/nothingui_device_pill_light.xml
 COLORS=lawnchair/res/values/colors.xml
 CLOCK_INFO=lawnchair/res/xml/nothingui_clock_widget_info.xml
 BATTERY_INFO=lawnchair/res/xml/nothingui_battery_widget_info.xml
+DEVICE_INFO=lawnchair/res/xml/nothingui_device_widget_info.xml
 PLAY_MANIFEST=play/AndroidManifest.xml
 DEFAULT_LAYOUT=play/res/xml/default_workspace_4x5.xml
 PLAY_CONFIG=play/res/values/config.xml
@@ -67,22 +73,26 @@ NOTICE=NOTICE.md
 MIT=licenses/third-party/dotline-widgets-MIT.txt
 
 for file in \
-    "$CLOCK_PROVIDER" "$BATTERY_PROVIDER" "$WIDGET_MONITOR" "$WIDGET_COLORS" \
-    "$BATTERY_ART" "$BUDGET" "$DOT_TEXT" "$CLOCK_LAYOUT" "$BATTERY_LAYOUT" \
-    "$CLOCK_TILE_DARK" "$CLOCK_TILE_LIGHT" "$COLORS" "$CLOCK_INFO" \
-    "$BATTERY_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT" "$PLAY_CONFIG" \
-    "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$PARSER_APPWIDGET" "$PARSER_RESOLVER" \
-    "$PROVIDER_POLICY" "$SMOKE" "$NOTICE" "$MIT"; do
+    "$CLOCK_PROVIDER" "$BATTERY_PROVIDER" "$DEVICE_PROVIDER" "$WIDGET_MONITOR" \
+    "$WIDGET_COLORS" "$DEVICE_STORAGE" "$BATTERY_ART" "$BUDGET" "$DOT_TEXT" \
+    "$CLOCK_LAYOUT" "$BATTERY_LAYOUT" "$DEVICE_LAYOUT" "$CLOCK_TILE_DARK" \
+    "$CLOCK_TILE_LIGHT" "$DEVICE_PILL_DARK" "$DEVICE_PILL_LIGHT" "$COLORS" \
+    "$CLOCK_INFO" "$BATTERY_INFO" "$DEVICE_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT" \
+    "$PLAY_CONFIG" "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$PARSER_APPWIDGET" \
+    "$PARSER_RESOLVER" "$PROVIDER_POLICY" "$SMOKE" "$NOTICE" "$MIT"; do
     require_file "$file"
 done
 
-# Play-only registration. Both receivers must be present and not exported; a manifest receiver
-# also must not claim the sticky battery action, which cannot be delivered to a manifest receiver.
+# Play-only registration. All three receivers must be present and not exported; a manifest
+# receiver also must not claim the sticky battery action, which cannot be delivered to a manifest
+# receiver.
 require_grep "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
     "the Play manifest does not register the clock widget"
 require_grep "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
     "the Play manifest does not register the battery widget"
-for receiver in DotWelClockWidgetProvider DotWelBatteryWidgetProvider; do
+require_grep "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelDeviceWidgetProvider' \
+    "the Play manifest does not register the device widget"
+for receiver in DotWelClockWidgetProvider DotWelBatteryWidgetProvider DotWelDeviceWidgetProvider; do
     if ! grep -A6 "app.dotwel.widgets.$receiver" "$ROOT/$PLAY_MANIFEST" |
         grep -Fq 'android:exported="false"'; then
         fail "$receiver is exported or has no exported=false declaration"
@@ -92,6 +102,8 @@ require_grep "$CLOCK_PROVIDER" 'package app.dotwel.widgets' \
     "the clock provider is not in the DotWel widget package"
 require_grep "$BATTERY_PROVIDER" 'package app.dotwel.widgets' \
     "the battery provider is not in the DotWel widget package"
+require_grep "$DEVICE_PROVIDER" 'package app.dotwel.widgets' \
+    "the device provider is not in the DotWel widget package"
 forbid_grep "$PLAY_MANIFEST" 'android.intent.action.BATTERY_CHANGED' \
     "the Play manifest tries to receive sticky BATTERY_CHANGED"
 forbid_grep "$PLAY_MANIFEST" 'BATTERY_STATS' \
@@ -130,7 +142,7 @@ require_grep "$CLOCK_PROVIDER" 'fun refreshAll' \
     "the clock widget cannot be refreshed by the lifecycle monitor"
 require_grep "$CLOCK_LAYOUT" 'nothingui_clock_surface' \
     "the clock layout has no tile surface view"
-for layout in "$CLOCK_LAYOUT" "$BATTERY_LAYOUT"; do
+for layout in "$CLOCK_LAYOUT" "$BATTERY_LAYOUT" "$DEVICE_LAYOUT"; do
     if grep -Eq '<View([[:space:]]|>|$)' "$ROOT/$layout"; then
         fail "$layout uses an unsupported bare View in a RemoteViews layout"
     fi
@@ -202,6 +214,72 @@ if ! grep -A3 'Intent.ACTION_POWER_CONNECTED' "$ROOT/$BATTERY_PROVIDER" |
     fail "the battery provider does not re-read the sticky battery on power events"
 fi
 
+# Device card: real StatFs data-volume reading, bounded math, genuine progress, Settings-only taps.
+require_grep "$DEVICE_PROVIDER" 'StatFs' \
+    "the device widget does not read the real data volume with StatFs"
+require_grep "$DEVICE_PROVIDER" 'totalBytes' \
+    "the device widget does not read the real total size"
+require_grep "$DEVICE_PROVIDER" 'availableBytes' \
+    "the device widget does not read the real available size"
+require_grep "$DEVICE_PROVIDER" 'NothingUiDeviceStorage' \
+    "the device widget does not use the bounded storage formatter"
+require_grep "$DEVICE_STORAGE" 'UNKNOWN_PERCENT' \
+    "the storage formatter has no unknown fallback"
+require_grep "$DEVICE_STORAGE" 'coerceIn(0, 100)' \
+    "the storage percentage is not bounded to 0..100"
+require_grep "$DEVICE_STORAGE" 'isKnown' \
+    "the storage formatter does not reject inconsistent readings"
+require_grep "$DEVICE_PROVIDER" 'setProgressBar' \
+    "the device widget has no genuine bounded progress indicator"
+require_grep "$DEVICE_PROVIDER" 'Settings.ACTION_WIFI_SETTINGS' \
+    "the device widget has no Wi-Fi settings shortcut"
+require_grep "$DEVICE_PROVIDER" 'Settings.ACTION_SOUND_SETTINGS' \
+    "the device widget has no Sound settings shortcut"
+require_grep "$DEVICE_PROVIDER" 'Settings.ACTION_DISPLAY_SETTINGS' \
+    "the device widget has no Display settings shortcut"
+require_grep "$DEVICE_PROVIDER" 'Settings.ACTION_SETTINGS' \
+    "the device widget has no safe Settings fallback"
+require_grep "$DEVICE_PROVIDER" 'resolveActivity' \
+    "the device widget does not resolve its Settings intents"
+require_grep "$DEVICE_PROVIDER" 'onAppWidgetOptionsChanged' \
+    "the device widget does not refresh on resize"
+require_grep "$DEVICE_PROVIDER" 'updateAppWidget(' \
+    "the device widget does not use full RemoteViews updates"
+forbid_grep "$DEVICE_PROVIDER" 'partiallyUpdateAppWidget' \
+    "the device widget uses partial RemoteViews updates"
+forbid_grep "$DEVICE_PROVIDER" 'Random' \
+    "the device widget contains fake/random data"
+forbid_grep "$DEVICE_PROVIDER" 'AlarmManager' \
+    "the device widget uses an alarm"
+forbid_grep "$DEVICE_PROVIDER" 'Service' \
+    "the device widget uses a service"
+forbid_grep "$DEVICE_PROVIDER" 'WakeLock' \
+    "the device widget holds a wake lock"
+forbid_grep "$DEVICE_PROVIDER" 'NothingUiHomeChrome' \
+    "the device widget reads the launcher theme attributes"
+require_grep "$DEVICE_PROVIDER" 'NothingUiWidgetColors' \
+    "the device widget does not use the widget colour pair"
+require_grep "$DEVICE_LAYOUT" 'nothingui_device_surface' \
+    "the device layout has no tile surface view"
+require_grep "$DEVICE_LAYOUT" 'ProgressBar' \
+    "the device layout has no progress bar"
+require_grep "$DEVICE_LAYOUT" 'nothingui_device_wifi' \
+    "the device layout has no Wi-Fi settings pill"
+require_grep "$DEVICE_LAYOUT" 'nothingui_device_sound' \
+    "the device layout has no Sound settings pill"
+require_grep "$DEVICE_LAYOUT" 'nothingui_device_display' \
+    "the device layout has no Display settings pill"
+require_grep "$DEVICE_LAYOUT" 'nothingui_device_storage_value' \
+    "the device layout has no storage value"
+require_grep "$DEVICE_PILL_DARK" 'corners' \
+    "the dark settings pill is not rounded"
+require_grep "$DEVICE_PILL_LIGHT" 'corners' \
+    "the light settings pill is not rounded"
+require_grep "$COLORS" 'nothingui_widget_accent' \
+    "the restrained red widget accent colour is missing"
+require_grep "$DEVICE_INFO" 'android:updatePeriodMillis="0"' \
+    "the device widget should refresh through the lifecycle monitor, not a periodic update"
+
 # Lifecycle-bounded monitor: BATTERY_CHANGED is sticky and cannot be a manifest receiver.
 require_grep "$WIDGET_MONITOR" 'ContextCompat.registerReceiver' \
     "the widget monitor does not register a receiver"
@@ -215,6 +293,8 @@ require_grep "$WIDGET_MONITOR" 'DotWelClockWidgetProvider.refreshAll' \
     "the widget monitor does not refresh the clock widget"
 require_grep "$WIDGET_MONITOR" 'DotWelBatteryWidgetProvider.refreshAll' \
     "the widget monitor does not refresh the battery widget"
+require_grep "$WIDGET_MONITOR" 'DotWelDeviceWidgetProvider.refreshAll' \
+    "the widget monitor does not refresh the device widget"
 if grep -A3 'Intent.ACTION_POWER_CONNECTED' "$ROOT/$WIDGET_MONITOR" |
     grep -Fq 'DotWelBatteryWidgetProvider.refreshAll(appContext, intent)'; then
     fail "the widget monitor passes the power intent into BatteryState.from"
@@ -264,11 +344,14 @@ require_grep "$MIT" 'b53a12aaf09f3572582dbd2c4278ea65f6a83306' \
 require_grep "$NOTICE" 'dotline-widgets' \
     "NOTICE.md does not mention the adapted dotline-widgets renderer"
 
-# Fresh-install Play default: both 2x2 widgets, variant-safe package, no Google clock.
+# Fresh-install Play default: two 2x2 widgets plus the wide device card, variant-safe package,
+# no Google clock, existing row-5 apps and hotseat untouched.
 require_grep "$DEFAULT_LAYOUT" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
     "the fresh Play layout does not seed the clock widget"
 require_grep "$DEFAULT_LAYOUT" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
     "the fresh Play layout does not seed the battery widget"
+require_grep "$DEFAULT_LAYOUT" 'app.dotwel.widgets.DotWelDeviceWidgetProvider' \
+    "the fresh Play layout does not seed the device widget"
 require_grep "$DEFAULT_LAYOUT" 'launcher:packageName="@string/launcher_component"' \
     "the fresh Play layout does not resolve the variant applicationId"
 require_grep "$DEFAULT_LAYOUT" 'launcher:x="0"' \
@@ -277,6 +360,10 @@ require_grep "$DEFAULT_LAYOUT" 'launcher:x="2"' \
     "the fresh Play layout does not place the battery at x=2"
 require_grep "$DEFAULT_LAYOUT" 'launcher:y="1"' \
     "the fresh Play layout does not place the widgets below the date strip"
+require_grep "$DEFAULT_LAYOUT" 'launcher:y="3"' \
+    "the fresh Play layout does not place the device card below the two widgets"
+require_grep "$DEFAULT_LAYOUT" 'launcher:spanX="4"' \
+    "the fresh Play layout does not make the device card full width"
 forbid_grep "$DEFAULT_LAYOUT" 'com.google.android.deskclock' \
     "the fresh Play layout still seeds the Google desk clock"
 require_grep "$PARSER" 'resolveComponentPackage' \
@@ -298,10 +385,10 @@ forbid_grep "$PARSER" 'com.launchernos.dotwellabs' \
 forbid_grep "$PARSER_RESOLVER" 'com.launchernos.dotwellabs' \
     "the package resolver hardcodes the applicationId"
 
-# Denied bind fallback: only our exact two own-package providers may keep the fresh-layout slot as
-# a pending widget. The policy must compare the running package exactly and name both classes, and
-# the parser must delete the failed id before delegating to the pending insertion. No bind
-# permission, runtime grant or adb/database bypass is allowed.
+# Denied bind fallback: only our exact three own-package providers may keep the fresh-layout slot
+# as a pending widget. The policy must compare the running package exactly and name all three
+# classes, and the parser must delete the failed id before delegating to the pending insertion. No
+# bind permission, runtime grant or adb/database bypass is allowed.
 require_grep "$PARSER_APPWIDGET" 'DotWelWidgetProviderPolicy.isOwnDotWelProvider' \
     "the appwidget parser does not gate the denied-bind fallback by the own-provider policy"
 require_grep "$PARSER_APPWIDGET" 'super.verifyAndInsert(cn, extras)' \
@@ -312,6 +399,8 @@ require_grep "$PROVIDER_POLICY" 'app.dotwel.widgets.DotWelClockWidgetProvider' \
     "the own-provider policy does not pin the exact clock provider class"
 require_grep "$PROVIDER_POLICY" 'app.dotwel.widgets.DotWelBatteryWidgetProvider' \
     "the own-provider policy does not pin the exact battery provider class"
+require_grep "$PROVIDER_POLICY" 'app.dotwel.widgets.DotWelDeviceWidgetProvider' \
+    "the own-provider policy does not pin the exact device provider class"
 forbid_grep "$PLAY_MANIFEST" 'BIND_APPWIDGET' \
     "the Play manifest requests the widget-bind permission"
 forbid_grep "$PARSER_APPWIDGET" 'grantRuntimePermission' \

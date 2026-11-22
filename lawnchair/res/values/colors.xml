@@ -108,4 +108,7 @@
 
     <color name="nothingui_widget_surface_dark">#FF1A1A1A</color>
     <color name="nothingui_widget_surface_light">#FFF2F2F2</color>
+    <color name="nothingui_widget_accent">#FFD7261E</color>
+    <color name="nothingui_widget_progress">#FF6E6E6E</color>
+    <color name="nothingui_widget_progress_track">#FF3A3A3A</color>
 </resources>

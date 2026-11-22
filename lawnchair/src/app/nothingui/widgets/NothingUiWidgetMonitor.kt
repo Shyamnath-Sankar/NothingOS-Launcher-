@@ -23,6 +23,7 @@ import android.content.IntentFilter
 import androidx.core.content.ContextCompat
 import app.dotwel.widgets.DotWelBatteryWidgetProvider
 import app.dotwel.widgets.DotWelClockWidgetProvider
+import app.dotwel.widgets.DotWelDeviceWidgetProvider
 
 /**
  * Lifecycle-bounded foreground monitor for the Play home widgets.
@@ -83,5 +84,6 @@ object NothingUiWidgetMonitor {
     private fun refreshAll(context: Context) {
         DotWelClockWidgetProvider.refreshAll(context)
         DotWelBatteryWidgetProvider.refreshAll(context)
+        DotWelDeviceWidgetProvider.refreshAll(context)
     }
 }

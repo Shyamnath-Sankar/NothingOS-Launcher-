@@ -50,6 +50,17 @@ build_fixture() {
                 android:name="android.appwidget.provider"
                 android:resource="@xml/nothingui_battery_widget_info" />
         </receiver>
+        <receiver
+            android:name="app.dotwel.widgets.DotWelDeviceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_device_widget_info" />
+        </receiver>
     </application>
 </manifest>
 EOF
@@ -127,6 +138,7 @@ package app.nothingui.widgets
 
 import app.dotwel.widgets.DotWelBatteryWidgetProvider
 import app.dotwel.widgets.DotWelClockWidgetProvider
+import app.dotwel.widgets.DotWelDeviceWidgetProvider
 
 object NothingUiWidgetMonitor {
     fun start(context: Context) {
@@ -155,6 +167,60 @@ object NothingUiWidgetMonitor {
     private fun refreshAll(context: Context) {
         DotWelClockWidgetProvider.refreshAll(context)
         DotWelBatteryWidgetProvider.refreshAll(context)
+        DotWelDeviceWidgetProvider.refreshAll(context)
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/dotwel/widgets/DotWelDeviceWidgetProvider.kt" <<'EOF'
+package app.dotwel.widgets
+
+import android.provider.Settings
+import android.os.StatFs
+import app.nothingui.widgets.NothingUiDeviceStorage
+import app.nothingui.widgets.NothingUiWidgetColors
+
+class DotWelDeviceWidgetProvider : AppWidgetProvider() {
+    override fun onAppWidgetOptionsChanged() {
+        val storage = StatFs(context.dataDir.path)
+        val total = storage.totalBytes
+        val available = storage.availableBytes
+        val known = NothingUiDeviceStorage.isKnown(total, available)
+        val wifi = Intent(Settings.ACTION_WIFI_SETTINGS)
+        val sound = Intent(Settings.ACTION_SOUND_SETTINGS)
+        val display = Intent(Settings.ACTION_DISPLAY_SETTINGS)
+        val fallback = Intent(Settings.ACTION_SETTINGS)
+        val resolved = context.packageManager.resolveActivity(wifi, 0)
+        val content = NothingUiWidgetColors.contentColor(context)
+        views.setProgressBar(id, 100, NothingUiDeviceStorage.progress(total, available), false)
+        appWidgetManager.updateAppWidget(id, views)
+    }
+
+    companion object {
+        fun refreshAll(context: Context) {
+            val content = NothingUiWidgetColors.contentColor(context)
+        }
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiDeviceStorage.kt" <<'EOF'
+package app.nothingui.widgets
+
+object NothingUiDeviceStorage {
+    const val UNKNOWN_PERCENT = -1
+
+    fun isKnown(total: Long, available: Long): Boolean =
+        total > 0L && available >= 0L && available <= total
+
+    fun usedPercent(total: Long, available: Long): Int {
+        if (!isKnown(total, available)) return UNKNOWN_PERCENT
+        return ((total - available) * 100 / total).toInt().coerceIn(0, 100)
+    }
+
+    fun progress(total: Long, available: Long): Int {
+        val percent = usedPercent(total, available)
+        return if (percent == UNKNOWN_PERCENT) 0 else percent
     }
 }
 EOF
@@ -224,6 +290,7 @@ EOF
 <resources>
     <color name="nothingui_widget_surface_dark">#FF1A1A1A</color>
     <color name="nothingui_widget_surface_light">#FFF2F2F2</color>
+    <color name="nothingui_widget_accent">#FFD7261E</color>
 </resources>
 EOF
 
@@ -231,6 +298,31 @@ EOF
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android">
     <ImageView android:id="@+id/nothingui_battery_art" />
 </FrameLayout>
+EOF
+
+    write_file "$root/lawnchair/res/layout/nothingui_widget_device.xml" <<'EOF'
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android">
+    <ImageView android:id="@+id/nothingui_device_surface" />
+    <ProgressBar android:id="@+id/nothingui_device_storage_progress" />
+    <TextView android:id="@+id/nothingui_device_storage_value" />
+    <TextView android:id="@+id/nothingui_device_wifi" />
+    <TextView android:id="@+id/nothingui_device_sound" />
+    <TextView android:id="@+id/nothingui_device_display" />
+</FrameLayout>
+EOF
+
+    write_file "$root/lawnchair/res/drawable/nothingui_device_pill_dark.xml" <<'EOF'
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="14dp" />
+</shape>
+EOF
+
+    write_file "$root/lawnchair/res/drawable/nothingui_device_pill_light.xml" <<'EOF'
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="14dp" />
+</shape>
 EOF
 
     write_file "$root/lawnchair/res/xml/nothingui_clock_widget_info.xml" <<'EOF'
@@ -246,6 +338,13 @@ EOF
     android:targetCellHeight="2" />
 EOF
 
+    write_file "$root/lawnchair/res/xml/nothingui_device_widget_info.xml" <<'EOF'
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:updatePeriodMillis="0"
+    android:targetCellWidth="4"
+    android:targetCellHeight="2" />
+EOF
+
     write_file "$root/play/res/xml/default_workspace_4x5.xml" <<'EOF'
 <favorites>
     <appwidget
@@ -258,6 +357,12 @@ EOF
         launcher:packageName="@string/launcher_component"
         launcher:x="2"
         launcher:y="1" />
+    <appwidget
+        launcher:className="app.dotwel.widgets.DotWelDeviceWidgetProvider"
+        launcher:packageName="@string/launcher_component"
+        launcher:spanX="4"
+        launcher:x="0"
+        launcher:y="3" />
 </favorites>
 EOF
 
@@ -350,6 +455,8 @@ final class DotWelWidgetProviderPolicy {
             "app.dotwel.widgets.DotWelClockWidgetProvider";
     static final String BATTERY_PROVIDER_CLASS =
             "app.dotwel.widgets.DotWelBatteryWidgetProvider";
+    static final String DEVICE_PROVIDER_CLASS =
+            "app.dotwel.widgets.DotWelDeviceWidgetProvider";
 
     static boolean isOwnDotWelProvider(
             String ownPackage, String componentPackage, String componentClass) {
@@ -360,7 +467,8 @@ final class DotWelWidgetProviderPolicy {
             return false;
         }
         return CLOCK_PROVIDER_CLASS.equals(componentClass)
-                || BATTERY_PROVIDER_CLASS.equals(componentClass);
+                || BATTERY_PROVIDER_CLASS.equals(componentClass)
+                || DEVICE_PROVIDER_CLASS.equals(componentClass);
     }
 }
 EOF

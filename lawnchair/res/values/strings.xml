@@ -1103,4 +1103,12 @@
     <string name="nothingui_clock_widget_description">Dot-matrix clock</string>
     <string name="nothingui_battery_widget_description">Circular battery</string>
     <string name="nothingui_battery_widget_content_description">Battery level</string>
+    <string name="nothingui_device_widget_description">Device storage and settings shortcuts</string>
+    <string name="nothingui_device_storage_label">DEVICE STORAGE</string>
+    <string name="nothingui_device_storage_free">%1$s free</string>
+    <string name="nothingui_device_storage_detail">%1$d%% used of %2$s</string>
+    <string name="nothingui_device_storage_unknown">Storage unavailable</string>
+    <string name="nothingui_device_wifi">Wi-Fi settings</string>
+    <string name="nothingui_device_sound">Sound settings</string>
+    <string name="nothingui_device_display">Display settings</string>
 </resources>
