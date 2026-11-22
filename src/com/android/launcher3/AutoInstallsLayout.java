@@ -502,8 +502,7 @@ public class AutoInstallsLayout {
 
         @Nullable
         public ComponentName getComponentName(XmlPullParser parser) {
-            final String packageName = resolveComponentPackage(
-                    getAttributeValue(parser, ATTR_PACKAGE_NAME));
+            final String packageName = resolveComponentPackage(parser);
             final String className = getAttributeValue(parser, ATTR_CLASS_NAME);
             addProfileId(parser);
             if (TextUtils.isEmpty(packageName) || TextUtils.isEmpty(className)) {
@@ -513,31 +512,51 @@ public class AutoInstallsLayout {
         }
 
         /**
-         * Allows a default-layout {@code <appwidget>} to name this app's own package through an
-         * existing string resource instead of a literal. Play's applicationId differs between the
-         * debug suffix and release. The {@code launcher_component} resource is generated from the
-         * flavor applicationId, while the running context package includes the build-type suffix,
-         * so the context package is the authoritative value for our own component. Other
-         * {@code @string/...} values resolve their package part normally. Literal package names
-         * keep the inherited behavior.
+         * Resolves a default-layout {@code <appwidget>} package name. Compiled XML returns a numeric
+         * resource id for {@code @string/launcher_component}, so the id path is authoritative; the
+         * literal {@code @string/} path remains for text fixtures. The running context package is
+         * used for our own component because it includes the build-type suffix.
          */
-        private String resolveComponentPackage(@Nullable String packageName) {
-            if (packageName == null || !packageName.startsWith("@string/")) {
-                return packageName;
-            }
-            final String resourceName = packageName.substring("@string/".length());
-            if ("launcher_component".equals(resourceName)) {
-                return mContext.getPackageName();
-            }
+        @Nullable
+        private String resolveComponentPackage(XmlPullParser parser) {
+            final String attributeValue = getAttributeValue(parser, ATTR_PACKAGE_NAME);
+            final int resourceId = getAttributeResourceValue(parser, ATTR_PACKAGE_NAME, 0);
             final Resources resources = mContext.getResources();
-            final int resourceId = resources.getIdentifier(
-                    resourceName, "string", mContext.getPackageName());
-            if (resourceId == 0) {
-                return packageName;
+            final int launcherComponentId = resources.getIdentifier(
+                    "launcher_component", "string", mContext.getPackageName());
+            String resourceValue = null;
+            if (resourceId != 0 && resourceId != launcherComponentId) {
+                resourceValue = resolveStringResource(resourceId);
+            } else if (resourceId == 0 && attributeValue != null
+                    && attributeValue.startsWith("@string/")) {
+                final String resourceName = attributeValue.substring("@string/".length());
+                if (!"launcher_component".equals(resourceName)) {
+                    final int literalResourceId = resources.getIdentifier(
+                            resourceName, "string", mContext.getPackageName());
+                    if (literalResourceId != 0) {
+                        resourceValue = resources.getString(literalResourceId);
+                    }
+                }
             }
-            final String value = resources.getString(resourceId);
-            final int separator = value.indexOf('/');
-            return separator > 0 ? value.substring(0, separator) : value;
+            return WidgetPackageResolver.resolve(
+                    attributeValue,
+                    resourceId,
+                    launcherComponentId,
+                    mContext.getPackageName(),
+                    resourceValue);
+        }
+
+        @Nullable
+        private String resolveStringResource(int resourceId) {
+            try {
+                return mSourceRes.getString(resourceId);
+            } catch (NotFoundException e) {
+                try {
+                    return mContext.getResources().getString(resourceId);
+                } catch (NotFoundException ignored) {
+                    return null;
+                }
+            }
         }
 
         @Override

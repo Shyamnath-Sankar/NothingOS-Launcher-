@@ -23,9 +23,10 @@
     <!--
       The provider replaces this default tile with the stored light/dark surface at runtime, so the
       clock does not depend on system night resource qualifiers. The tile is inset by the root
-      padding and has modest rounded corners to pair with the circular battery face.
+      padding and has modest rounded corners to pair with the circular battery face. ImageView is
+      on the RemoteViews class whitelist; a bare View is not.
     -->
-    <View
+    <ImageView
         android:id="@+id/nothingui_clock_surface"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
