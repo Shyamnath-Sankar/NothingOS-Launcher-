@@ -3,21 +3,59 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10a — real grid settings and widget-picker smoke (popup readiness correction)**.
-  The popup readiness no longer guesses `OptionsPopupView`/`DeepShortcutView` classes; it requires the
-  actual `popup_container` and multiple clickable `system_shortcut` rows whose `bubble_text` labels
-  include `Widgets` plus a home-level option. The Widgets tap uses the clickable parent bounds
-  (`472 322 1039 459` on the captured hierarchy), and a failed popup readiness captures its last PNG
-  before BACK. Read-only: no feature, styling, preference write, app source, SDK, workflow, Gradle,
-  manifest, permission or signing change.
-- branch: `agent/p10-grid-widget-smoke`
-- head: `61adb30` (`fix(smoke): detect the actual HOME popup hierarchy`) on base `main` `55a25a2`;
-  prior harness commits `f51fcb3`, `7b9f966`, docs commits `4b98e45`, `d9a8b71`, `b98cbb5`,
-  `369c626`.
-- pr: **PR14** for `agent/p10-grid-widget-smoke`; main owns CI approval. PR13 is merged at `55a25a2`
-  and the APK104/APK102 fallbacks remain `main` `55a25a2`.
+- current_phase: **P10b — real widget placement and HOME survival verification**.
+  The smoke now selects a real Clock/Calendar provider header with a positive widget count, expands
+  it if needed, measures the preview below that header, taps the preview and the real
+  `widget_add_button`, and verifies a new workspace `AppWidgetHostView` plus a new
+  `dumpsys appwidget` provider. It captures each transition, keeps the widget between the measured
+  header/dock bands, presses HOME and requires the same bounds to remain. Shortcut-only headers are
+  rejected. Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle,
+  manifest, permission, applicationId, paid, signing or YouTube change.
+- branch: `agent/p10b-widget-placement`
+- head: `1016579` (`feat(smoke): add a real widget and prove it survives HOME`) on base `main`
+  `6cf242c`.
+- pr: **none yet**; main must open/approve the PR. APK110 is frozen and independent of this branch.
+  P10a PR14 is merged at `main` `6cf242c`.
 
-## done (this run — P10a popup readiness correction)
+## done (this run — P10b widget placement and HOME survival)
+
+- **Evidence read, not guessed:** CI110's picker hierarchy (as reported in the task) has a clickable
+  `widgets_list_header` with `app_title` Calendar and subtitle `1 widget`, Clock next, a
+  long-clickable `widget_preview_container` inside a WidgetCell, and a DotWel row with only
+  `1 shortcut`. The flow therefore selects only a header whose subtitle reports a positive widget
+  count; a shortcut-only header is never eligible.
+- **Provider selection:** `widget_picker_provider_bounds` parses the real nested
+  `widgets_list_header`/`app_title`/`app_subtitle` nodes and returns the measured header bounds for
+  Clock then Calendar. It does not use a class-name guess or a fixed coordinate.
+- **Expansion and preview:** `widget_picker_preview_bounds` requires a clickable/long-clickable
+  `widget_preview_container` below the selected header and above the next header. If the provider is
+  already expanded the preview is used directly; otherwise the measured header is tapped and polled
+  for up to five captures per attempt, bounded to two taps.
+- **Add route:** `widget_picker_add_button_bounds` selects the exposed Add button by its real
+  `widget_add_button` resource id (icon-only safe). The flow taps the measured preview, captures
+  `widgets-add-attempt-N.xml`, then taps the measured Add. If Add is not exposed it uses a genuine
+  measured drag to `widget_drop_target` (right-hand workspace, between the measured header and dock).
+- **Placement proof:** the flow polls the real workspace for a new `AppWidgetHostView`-suffixed node
+  against the pre-widget HOME and for a new `provider=ComponentInfo{...}` entry in
+  `dumpsys appwidget`. A configuration activity or an unbound provider fails with
+  `widgets-add-last.xml`/`.png` and the last resumed component recorded, rather than a fake pass.
+- **HOME survival:** it captures `widgets-home-placed.xml`/`.png`, requires the widget bounds to stay
+  between the measured header bottom and dock top (away from the later drawer swipe start), presses
+  HOME through the existing `return_home widgets-picker`, captures
+  `widgets-home-after-home.xml`/`.png`, and requires the same widget bounds to remain.
+- **Preserved:** the real HOME long-press, measured Widgets tap, native-picker readiness, role
+  consent Cancel, grid read-only checks, 1500 ms/four-attempt drawer, Settings search/tap and exact
+  foreground checks are unchanged. No direct picker/config `am start`, preference/DB write, or widget
+  binding was added.
+- **Docs:** `docs/agent/emulator-verification.md` records the new provider/add/placement/survival
+  phases and artifact names.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` all pass
+  (including the new provider/preview/Add/placed-widget/appwidget provider fixtures and negatives);
+  `emulator-smoke-drawer-test.sh` all pass; `verify-play-build-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. This is source/fixture verification only; the CI
+  API 37 run and pixels are still the runtime gate.
+
+## done (previous run — P10a popup readiness correction)
 
 - **Evidence read, not guessed:** CI108 (`10844960564539`) proved the grid settings pass: three
   sliders, grey non-clickable Apply, and the actual preview pixels. The real HOME long-press 540/834
@@ -566,45 +604,46 @@ when no task input is given, and continues from "next".
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10-grid-widget-smoke` (PR14) at head `61adb30`.
-  PR13 is merged into `main` (`55a25a2`) and the APK104/APK102 fallbacks remain `main` `55a25a2`.
+- Main owns PR creation/CI approval for `agent/p10b-widget-placement` at head `1016579`. APK110 is
+  frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
-- Inspect the runtime artifacts after the run:
-  - `grid-settings-attempt-N.xml` / `.png`: the preview `/workspace` bounds above the controls and
-    inside the root, with `hotseat`/`search_container_workspace`, and Apply as a non-clickable label
-    inside a non-clickable Button. If the actual hierarchy differs, update the bounds check from the
-    captured XML; do not return to a class-name check.
-  - `grid-settings.xml` / `.png`: the real Home screen grid screen with the preview,
-    `Columns`/`Rows`/`Dock icons`, three `SeekBar` controls and a grey non-clickable `Apply`.
-  - `grid-settings.txt` and `grid-settings-launch.txt`: the deep link launched `Status: ok` and no
-    grid change was applied.
-  - `home-before-widgets-attempt-N.xml` / `.png`: the actual HOME before the long press.
-  - `home-popup.xml` / `.png`: the real `popup_container` with clickable `system_shortcut` rows,
-    `Widgets` and a home-level option. If the ids differ, update from the captured XML; do not return
-    to a class-name guess.
-  - `home-popup-attempt-N-last.png`: the last failed popup attempt captured before BACK.
-  - `widgets-picker.xml` / `.png`: the native picker search/list and not the pre-long-press HOME.
-  - `widgets-longpress-log.txt`: the measured long-press point, duration 1000 and any bounded retry.
-- The real grid preview currently shows the inherited welcome surface instead of the Doto header.
-  That is a later app-source slice; do not fix it in this harness branch.
+- Inspect the new runtime artifacts after the run:
+  - `widgets-provider.xml` / `.png`: the selected Clock/Calendar header expanded, with the
+    `widget_preview_container` below it. If the provider order or ids differ, update from the
+    captured XML; never invent a class name.
+  - `widgets-add.xml` / `.png`: the exposed `widget_add_button`. If Add is absent, the flow uses a
+    measured drag and writes `widgets-drag.txt`.
+  - `widgets-home-placed.xml` / `.png`: a new `AppWidgetHostView`-suffixed workspace node, its
+    bounds between the measured header bottom and dock top.
+  - `widgets-appwidget-before.txt` / `widgets-appwidget-after.txt` /
+    `widgets-appwidget-providers.txt`: a new bound `provider=ComponentInfo{...}` entry.
+  - `widgets-home-after-home.xml` / `.png`: the same widget bounds after KEYCODE_HOME.
+  - `widgets-add-last.xml` / `.png` and `activities-widget-placed-N.txt`: failure evidence when a
+    widget configuration activity or an unbound provider blocks placement.
+  - Existing grid/popup/drawer artifacts remain unchanged and must still pass.
+- If the actual picker exposes a different provider header or Add route, update the helpers from the
+  captured XML; do not weaken the assertions or fall back to fixed coordinates.
 - P8 remains open beyond these slices: appearance controls, backup/restore wiring and any broader
   onboarding. Pending gates: private-space runtime UI and a non-Play runtime control build.
 
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `f51fcb3`.
-- No PR exists yet for `agent/p10-grid-widget-smoke`; a maintainer must create/approve it.
+  API 37 emulator run are unverified until CI runs on `1016579`.
+- No PR exists yet for `agent/p10b-widget-placement`; a maintainer must create/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
-- The grid readiness now assumes the preview exposes a `/workspace` resource-id inside the
-  `AndroidViewHolder` and a `hotseat`/`search_container_workspace` node. The captured
-  `grid-settings-attempt-N.xml` drives any future adjustment; the smoke fails closed rather than
-  accepting a class-name or English-only approximation.
 - The picker readiness assumes one of the two known native picker markers. If the API 37 image
   exposes a different marker, the captured `widgets-picker-attempt-N-P.xml` must drive the update;
   do not accept a closed HOME with incidental English text.
+- Widget placement assumes the picker exposes a Clock or Calendar header with a positive widget
+  count and the real `widget_add_button`. If the provider is absent, the flow fails with
+  `widgets-add-last.xml`/`.png` rather than selecting a shortcut. If Add auto-places the widget
+  outside the measured header/dock band, the captured `widgets-home-placed.xml` drives a later
+  placement change; do not relax the band assertion.
+- The local branch `agent/p10b-widget-placement-verifica` was a stale pre-existing branch with no
+  commits; the work is on the correctly named `agent/p10b-widget-placement`.
 
 ## decisions locked
 
