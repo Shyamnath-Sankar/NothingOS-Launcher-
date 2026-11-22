@@ -13,8 +13,11 @@
 #   - captures a screenshot, logcat, dumpsys and aapt evidence under an
 #     artifact directory, and fails on install/launch/crash problems
 #   - dumps the actual HOME UIAutomator hierarchy and requires the rendered
-#     NothingUI clock and date text, with no inherited "Lawnchair" text; captures
-#     home.png as the actual-home visual evidence
+#     NothingUI date strip and live clock widget text, with no inherited
+#     "Lawnchair" text; proves both original widget providers are bound and
+#     captures home.png as the actual-home visual evidence
+#   - captures the clean HOME in system dark/light (UI XML + screenshot) before
+#     any third-party widget is added, then restores the previous night mode
 #   - opens the real Home screen grid preferences through the existing
 #     lawnchair://settings/home-screen-grid deep link, captures grid-settings.xml
 #     + .png, and requires the preview, Columns/Rows/Dock icons controls and a
@@ -660,9 +663,10 @@ verify_default_home_consent() {
         >> "$ARTIFACTS/role-consent.txt"
 }
 
-# The Play home replaces the inherited welcome smartspace with the original
-# NothingUI clock/date header. Assert the rendered clock and date text, not a
-# static source guard, and keep the inherited brand check on the actual HOME.
+# The Play home replaces the inherited welcome smartspace with a quiet borderless
+# date strip plus the two original widgets. Assert the rendered date strip and
+# the live clock widget text, not a static source guard, and keep the inherited
+# brand check on the actual HOME.
 verify_nothing_home() {
     _vnh_attempt=1
     _vnh_captured=0
@@ -676,9 +680,10 @@ verify_nothing_home() {
                 fi
                 capture_screenshot_to home.png
                 [ -s "$ARTIFACTS/home.png" ] || fail "actual HOME screenshot capture failed"
-                printf 'Actual HOME: live clock and date text are visible; no Lawnchair text.\n' \
+                printf 'Actual HOME: date strip and live clock widget text are visible; no Lawnchair text.\n' \
                     > "$ARTIFACTS/home-nothing.txt"
                 printf 'Screenshot: home.png.\n' >> "$ARTIFACTS/home-nothing.txt"
+                verify_home_widgets
                 return 0
             fi
         fi
@@ -686,7 +691,90 @@ verify_nothing_home() {
         sleep 1
     done
     [ "$_vnh_captured" -eq 1 ] || fail "could not dump the actual HOME UIAutomator hierarchy"
-    fail "actual HOME does not expose the NothingUI clock/date text"
+    fail "actual HOME does not expose the NothingUI date strip and live clock widget"
+}
+
+# Fresh Play installs seed both original 2x2 widgets through the default
+# workspace. Prove the host actually bound them instead of trusting the layout.
+verify_home_widgets() {
+    adb_cmd shell dumpsys appwidget > "$ARTIFACTS/home-widgets.txt" 2>&1 ||
+        fail "could not dump the appwidget host state"
+    grep -Fq 'NothingUiClockWidgetProvider' "$ARTIFACTS/home-widgets.txt" ||
+        fail "the clock widget is not bound on the fresh Play HOME"
+    grep -Fq 'NothingUiBatteryWidgetProvider' "$ARTIFACTS/home-widgets.txt" ||
+        fail "the battery widget is not bound on the fresh Play HOME"
+    printf 'Home widgets: clock and battery providers are bound on the fresh Play HOME.\n' \
+        > "$ARTIFACTS/home-widgets-verified.txt"
+}
+
+# Capture the clean HOME under system dark/light before any third-party widget is
+# added, so the composition can be reviewed without test pollution. The previous
+# night mode is restored even when a capture fails.
+capture_clean_home_theme() {
+    _ccht_night_before=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r')
+    printf '%s\n' "$_ccht_night_before" \
+        > "$ARTIFACTS/clean-home-night-before.txt"
+    _ccht_night_value=$(printf '%s\n' "$_ccht_night_before" |
+        sed -n 's/^[Nn]ight mode:[[:space:]]*//p' | sed -n '1p')
+    case "$_ccht_night_value" in
+        yes | no | auto) ;;
+        *) _ccht_night_value=auto ;;
+    esac
+
+    _ccht_failure=
+    for _ccht_mode in yes no; do
+        case "$_ccht_mode" in
+            yes) _ccht_name=dark ;;
+            no) _ccht_name=light ;;
+        esac
+        if ! _ccht_out=$(adb_cmd shell cmd uimode night "$_ccht_mode" 2>&1); then
+            printf '%s\n' "$_ccht_out" \
+                > "$ARTIFACTS/clean-home-$_ccht_name-night.txt"
+            _ccht_failure="could not switch the emulator to night $_ccht_mode for the clean $_ccht_name HOME"
+            break
+        fi
+        printf '%s\n' "$_ccht_out" \
+            > "$ARTIFACTS/clean-home-$_ccht_name-night.txt"
+        sleep 2
+        return_home "clean-home-$_ccht_name"
+        sleep 1
+        if ! capture_ui_xml "clean-home-$_ccht_name.xml"; then
+            _ccht_failure="clean home $_ccht_name UI XML capture failed"
+            break
+        fi
+        if ! grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' \
+            "$ARTIFACTS/clean-home-$_ccht_name.xml"; then
+            _ccht_failure="clean home $_ccht_name does not expose the NothingUI date strip"
+            break
+        fi
+        if grep -Fq 'Lawnchair' "$ARTIFACTS/clean-home-$_ccht_name.xml"; then
+            _ccht_failure="clean home $_ccht_name still exposes inherited Lawnchair text"
+            break
+        fi
+        capture_screenshot_to "clean-home-$_ccht_name.png"
+        if [ ! -s "$ARTIFACTS/clean-home-$_ccht_name.png" ]; then
+            _ccht_failure="clean home $_ccht_name screenshot capture failed"
+            break
+        fi
+        printf 'Clean HOME (%s): borderless date strip and both original widgets captured under system night %s before the third-party widget test.\n' \
+            "$_ccht_name" "$_ccht_mode" \
+            > "$ARTIFACTS/clean-home-$_ccht_name.txt"
+        printf 'Screenshots: clean-home-%s.png.\n' "$_ccht_name" \
+            >> "$ARTIFACTS/clean-home-$_ccht_name.txt"
+    done
+
+    if ! _ccht_restore_out=$(adb_cmd shell cmd uimode night "$_ccht_night_value" 2>&1); then
+        printf '%s\n' "$_ccht_restore_out" \
+            > "$ARTIFACTS/clean-home-night-restore.txt"
+        fail "could not restore the emulator night mode to $_ccht_night_value"
+    fi
+    printf '%s\n' "$_ccht_restore_out" \
+        > "$ARTIFACTS/clean-home-night-restore.txt"
+    sleep 1
+
+    [ -z "$_ccht_failure" ] || fail "$_ccht_failure"
+    return_home clean-home
+    verify_nothing_home
 }
 
 wait_for_launcher_idle() (
@@ -1629,6 +1717,7 @@ capture_screenshot
 [ -s "$ARTIFACTS/screenshot.png" ] || fail "screenshot capture failed"
 
 verify_nothing_home
+capture_clean_home_theme
 capture_grid_settings
 capture_widgets_picker
 exercise_app_drawer

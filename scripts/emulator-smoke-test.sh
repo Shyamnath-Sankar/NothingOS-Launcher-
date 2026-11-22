@@ -1299,6 +1299,43 @@ sed -n '/^capture_grid_settings() {/,/^}/p' "$SMOKE" > "$grid_body"
 widgets_body="$TMP_DIR/capture_widgets_picker.sh"
 sed -n '/^capture_widgets_picker() {/,/^}/p' "$SMOKE" > "$widgets_body"
 
+clean_home_body="$TMP_DIR/capture_clean_home_theme.sh"
+sed -n '/^capture_clean_home_theme() {/,/^}/p' "$SMOKE" > "$clean_home_body"
+
+home_verify_body="$TMP_DIR/verify_nothing_home.sh"
+sed -n '/^verify_nothing_home() {/,/^}/p' "$SMOKE" > "$home_verify_body"
+
+home_widgets_body="$TMP_DIR/verify_home_widgets.sh"
+sed -n '/^verify_home_widgets() {/,/^}/p' "$SMOKE" > "$home_widgets_body"
+
+assert_true 'the clean home capture uses system dark and light modes' \
+    grep -Fq 'for _ccht_mode in yes no; do' "$clean_home_body"
+assert_true 'the clean home capture switches the emulator night mode' \
+    grep -Fq 'cmd uimode night "$_ccht_mode"' "$clean_home_body"
+assert_true 'the clean home capture requires the borderless date strip' \
+    grep -Fq 'does not expose the NothingUI date strip' "$clean_home_body"
+assert_true 'the clean home capture stores dark and light XML evidence' \
+    grep -Fq 'clean-home-$_ccht_name.xml' "$clean_home_body"
+assert_true 'the clean home capture stores dark and light PNG evidence' \
+    grep -Fq 'clean-home-$_ccht_name.png' "$clean_home_body"
+assert_true 'the clean home capture restores the previous night mode' \
+    grep -Fq 'cmd uimode night "$_ccht_night_value"' "$clean_home_body"
+assert_true 'the clean home capture returns HOME' \
+    grep -Fq 'return_home clean-home' "$clean_home_body"
+assert_false 'the clean home capture never adds a widget' \
+    grep -Eq 'widget_picker|bindAppWidget|addItemToDatabase' "$clean_home_body"
+
+assert_true 'the HOME verification asserts the date strip and live clock' \
+    grep -Fq 'date strip and live clock widget' "$home_verify_body"
+assert_true 'the HOME verification proves both original widgets are bound' \
+    grep -Fq 'verify_home_widgets' "$home_verify_body"
+assert_true 'the widget binding check dumps the real appwidget host' \
+    grep -Fq 'dumpsys appwidget' "$home_widgets_body"
+assert_true 'the widget binding check requires the clock provider' \
+    grep -Fq 'NothingUiClockWidgetProvider' "$home_widgets_body"
+assert_true 'the widget binding check requires the battery provider' \
+    grep -Fq 'NothingUiBatteryWidgetProvider' "$home_widgets_body"
+
 assert_true 'the grid capture uses the real Home screen grid deep link' \
     grep -Fq 'lawnchair://settings/home-screen-grid' "$grid_body"
 assert_true 'the grid capture uses the existing PreferenceActivity' \
@@ -1469,15 +1506,18 @@ else
     fail 'consent is handled before placement, and the placed widget is re-checked after Settings and HOME'
 fi
 
+clean_home_call_line=$(grep -n '^capture_clean_home_theme$' "$SMOKE" | sed -n '1s/:.*//p')
 grid_call_line=$(grep -n '^capture_grid_settings$' "$SMOKE" | sed -n '1s/:.*//p')
 widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')
 drawer_call_line=$(grep -n '^exercise_app_drawer$' "$SMOKE" | sed -n '1s/:.*//p')
-if [ -n "$grid_call_line" ] && [ -n "$widgets_call_line" ] && [ -n "$drawer_call_line" ] &&
+if [ -n "$clean_home_call_line" ] && [ -n "$grid_call_line" ] &&
+    [ -n "$widgets_call_line" ] && [ -n "$drawer_call_line" ] &&
+    [ "$clean_home_call_line" -lt "$grid_call_line" ] &&
     [ "$grid_call_line" -lt "$widgets_call_line" ] &&
     [ "$widgets_call_line" -lt "$drawer_call_line" ]; then
-    pass 'the grid and widget captures run before the existing drawer flow'
+    pass 'the clean-home, grid and widget captures run before the existing drawer flow'
 else
-    fail 'the grid and widget captures run before the existing drawer flow'
+    fail 'the clean-home, grid and widget captures run before the existing drawer flow'
 fi
 
 assert_true 'the role consent cancel flow is still present' \
