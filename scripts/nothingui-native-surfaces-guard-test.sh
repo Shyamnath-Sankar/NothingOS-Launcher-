@@ -40,7 +40,7 @@ import app.lawnchair.theme.color.tokens.ColorToken
 import app.lawnchair.theme.color.tokens.withContext
 
 object NothingUiNativeSurfaces {
-    fun popupSurface(dark: Boolean) = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
+    fun popupSurface(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
     fun popupShadeFirst(dark: Boolean) = popupSurface(dark)
     fun popupShadeSecond(dark: Boolean) = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Paper
     fun popupShadeThird(dark: Boolean) = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
@@ -48,9 +48,9 @@ object NothingUiNativeSurfaces {
     fun popupTertiary(dark: Boolean) = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
     fun textPrimary(dark: Boolean) = if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
     fun textPrimaryInverse(dark: Boolean) = if (dark) NothingUiPalette.Ink else NothingUiPalette.Paper
-    fun allAppsBackground(dark: Boolean) = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
-    fun allAppsHeader(dark: Boolean) = allAppsBackground(dark)
-    fun allAppsTabBackground(dark: Boolean) = allAppsBackground(dark)
+    fun allAppsBackground(dark: Boolean): Color = if (dark) NothingUiPalette.Black else NothingUiPalette.White
+    fun allAppsHeader(dark: Boolean): Color = allAppsBackground(dark)
+    fun allAppsTabBackground(dark: Boolean): Color = allAppsBackground(dark)
     fun allAppsTabSelected(dark: Boolean) = if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
     fun allAppsScrim(dark: Boolean) = allAppsBackground(dark)
     fun allAppsExpressive(dark: Boolean) = allAppsBackground(dark)
@@ -94,6 +94,52 @@ object NothingUiNativeSurfaces {
 
 fun ColorToken.playNativeSurface(play: ColorToken): ColorToken = withContext {
     if (NothingUiFeature.themeEnabled) play else this
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/nothingui/theme/NothingUiColors.kt" <<'EOF'
+package app.nothingui.theme
+
+object NothingUiPalette {
+    val Black = Color(0xFF000000)
+}
+
+val DarkNothingUiColors = NothingUiColors(
+    background = NothingUiPalette.Black,
+    surface = NothingUiPalette.Gray900,
+)
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/ui/preferences/components/layout/TopBar.kt" <<'EOF'
+package app.lawnchair.ui.preferences.components.layout
+
+@Composable
+fun TopBar() {
+    val onAmoled = MaterialTheme.colorScheme.background == Color.Black
+    val containerColor = if (onAmoled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface
+    val expandedScrolledColor = if (onAmoled) {
+        MaterialTheme.colorScheme.background
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    }
+    val compactScrolledColor = if (onAmoled) {
+        MaterialTheme.colorScheme.background
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHighest
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/ui/theme/Theme.kt" <<'EOF'
+package app.lawnchair.ui.theme
+
+@Composable
+fun ComponentActivity.EdgeToEdge() {
+    val scrimColor = if (MaterialTheme.colorScheme.background.toArgb() == Color.BLACK) {
+        Color.BLACK
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.95f).toArgb()
+    }
 }
 EOF
 
@@ -326,6 +372,29 @@ sed -i 's/NothingUiPalette.Gray100/NothingUiPalette.Gray300/g' \
     "$missing_palette/lawnchair/src/app/nothingui/theme/NothingUiNativeSurfaces.kt"
 expect_fail_contains 'native surfaces without the Gray100 swatch fail' "$missing_palette" \
     'NothingUiPalette.Gray100'
+
+drawer_not_black="$TMP_DIR/drawer-not-black"
+cp -R "$clean" "$drawer_not_black"
+sed -i 's/if (dark) NothingUiPalette.Black else NothingUiPalette.White/if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White/' \
+    "$drawer_not_black/lawnchair/src/app/nothingui/theme/NothingUiNativeSurfaces.kt"
+printf '\n// NothingUiPalette.Black\n' \
+    >> "$drawer_not_black/lawnchair/src/app/nothingui/theme/NothingUiNativeSurfaces.kt"
+expect_fail_contains 'a non-black dark drawer fails' "$drawer_not_black" \
+    'dark app drawer must use pure black'
+
+palette_not_black="$TMP_DIR/palette-not-black"
+cp -R "$clean" "$palette_not_black"
+sed -i 's/background = NothingUiPalette.Black/background = NothingUiPalette.Ink/' \
+    "$palette_not_black/lawnchair/src/app/nothingui/theme/NothingUiColors.kt"
+expect_fail_contains 'a non-black dark settings background fails' "$palette_not_black" \
+    'dark settings background must be pure black'
+
+scrim_not_black="$TMP_DIR/scrim-not-black"
+cp -R "$clean" "$scrim_not_black"
+sed -i 's/if (MaterialTheme.colorScheme.background.toArgb() == Color.BLACK)/if (false)/' \
+    "$scrim_not_black/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
+expect_fail_contains 'a non-black navigation-bar scrim fails' "$scrim_not_black" \
+    'navigation-bar scrim must use the pure-black background'
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

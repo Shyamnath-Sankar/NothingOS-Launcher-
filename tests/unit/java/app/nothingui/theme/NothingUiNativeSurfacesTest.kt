@@ -27,7 +27,7 @@ import org.junit.Test
 
 class NothingUiNativeSurfacesTest {
     @Test
-    fun darkNativeSurfacesUseCharcoalAndPaper() {
+    fun darkNativeSurfacesUsePureBlackDrawerCharcoalPopupAndPaper() {
         assertEquals(NothingUiPalette.Gray900, NothingUiNativeSurfaces.popupSurface(dark = true))
         assertEquals(NothingUiPalette.Gray900, NothingUiNativeSurfaces.popupShadeFirst(dark = true))
         assertEquals(NothingUiPalette.Gray700, NothingUiNativeSurfaces.popupShadeSecond(dark = true))
@@ -36,9 +36,9 @@ class NothingUiNativeSurfacesTest {
         assertEquals(NothingUiPalette.Gray700, NothingUiNativeSurfaces.popupTertiary(dark = true))
         assertEquals(NothingUiPalette.Paper, NothingUiNativeSurfaces.textPrimary(dark = true))
         assertEquals(NothingUiPalette.Ink, NothingUiNativeSurfaces.textPrimaryInverse(dark = true))
-        assertEquals(NothingUiPalette.Gray900, NothingUiNativeSurfaces.allAppsBackground(dark = true))
-        assertEquals(NothingUiPalette.Gray900, NothingUiNativeSurfaces.allAppsHeader(dark = true))
-        assertEquals(NothingUiPalette.Gray900, NothingUiNativeSurfaces.allAppsTabBackground(dark = true))
+        assertEquals(NothingUiPalette.Black, NothingUiNativeSurfaces.allAppsBackground(dark = true))
+        assertEquals(NothingUiPalette.Black, NothingUiNativeSurfaces.allAppsHeader(dark = true))
+        assertEquals(NothingUiPalette.Black, NothingUiNativeSurfaces.allAppsTabBackground(dark = true))
         assertEquals(NothingUiPalette.Paper, NothingUiNativeSurfaces.allAppsTabSelected(dark = true))
     }
 

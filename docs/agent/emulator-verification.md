@@ -58,6 +58,13 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   hierarchy must expose the real Preferences dashboard (`Settings`, `General`) and must not contain
   the `DOTWEL` sample. The previous system night mode is restored before returning HOME, even when a
   capture fails.
+- before each native HOME popup/app-drawer capture it reads back `cmd uimode night`, then polls the
+  debug-only `DotWelTheme` `theme-refresh` trace from a per-mode logcat baseline until the launcher
+  reports the expected `night=true|false` and `resolvedDark=true|false`. It stores
+  `native-theme-<mode>-system-night.txt` and `native-theme-<mode>-state.txt`, and only then captures
+  `native-popup-<mode>` and `native-drawer-<mode>`. The mode is never satisfied by a stale pre-switch
+  line, and the smoke still never writes a theme preference. Dark drawer/header surfaces use pure
+  black while popups and cards stay charcoal, so the captures also reveal an AMOLED regression.
 - then opens the debug-only Play theme sample through the existing exported `PreferenceActivity` and
   the explicit `app.lawnchair.ui.preferences.THEME_SAMPLE` extra. It captures
   `theme-sample-dark.xml`/`.png` and `theme-sample-light.xml`/`.png`, requires `DOTWEL` in both UI
