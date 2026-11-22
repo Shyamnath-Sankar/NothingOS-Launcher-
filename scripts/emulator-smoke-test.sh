@@ -1748,6 +1748,82 @@ printf '<hierarchy rotation="0"></hierarchy>\n' > "$empty_xml"
 assert_false 'an empty hierarchy cannot produce a HOME long-press target' \
     home_longpress_target "$empty_xml"
 
+# CI155 real HOME: root 1080x1920, a full-root workspace, a hotseat at y=1481
+# and three non-clickable widget hosts labelled "DotWel Launcher". The third
+# host is the Device card [38,770][1042,1180], so 540,896 is inside it even
+# though it is neither clickable nor labelled by text. The long-press must
+# reject that point and find the empty band between the Device card and dock.
+real155_home_xml="$TMP_DIR/real155-home.xml"
+cat > "$real155_home_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" content-desc="" clickable="false" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" clickable="false" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" clickable="false" bounds="[556,328][1042,738]" />
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" clickable="false" bounds="[38,770][1042,1180]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" content-desc="" clickable="false" bounds="[0,1481][1080,1920]">
+      <node index="0" text="Phone" class="android.widget.TextView" content-desc="" clickable="true" bounds="[22,1481][281,1674]" />
+      <node index="1" text="Messaging" class="android.widget.TextView" content-desc="" clickable="true" bounds="[281,1481][540,1674]" />
+      <node index="2" text="Contacts" class="android.widget.TextView" content-desc="" clickable="true" bounds="[540,1481][799,1674]" />
+      <node index="3" text="WebView Browser Tester" class="android.widget.TextView" content-desc="" clickable="true" bounds="[799,1481][1058,1674]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_false 'a non-clickable widget host at 540,896 is occupied' \
+    ui_point_is_free "$real155_home_xml" 540 896
+real155_target=$(home_longpress_target "$real155_home_xml")
+assert_eq 'the CI155 HOME long-press target lands below the Device card' \
+    '540 1300' "$real155_target"
+real155_y=$(printf '%s\n' "$real155_target" | awk '{ print $2 }')
+if [ "$real155_y" -gt 1180 ] && [ "$real155_y" -lt 1481 ]; then
+    pass 'the CI155 long-press target is below the Device card and above the dock'
+else
+    fail "the CI155 long-press target $real155_y is not in the 1180..1481 band"
+fi
+set -- $real155_target
+assert_true 'the CI155 long-press target is demonstrably free' \
+    ui_point_is_free "$real155_home_xml" "$1" "$2"
+
+pending_free_xml="$TMP_DIR/pending-free.xml"
+cat > "$pending_free_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="com.android.launcher3.widget.PendingAppWidgetHostView" clickable="false" bounds="[400,700][700,900]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'a non-clickable pending host at 540,834 is occupied' \
+    ui_point_is_free "$pending_free_xml" 540 834
+
+unlabelled_host_xml="$TMP_DIR/unlabelled-host.xml"
+cat > "$unlabelled_host_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" clickable="false" bounds="[400,700][700,900]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'an unlabelled non-clickable widget host at 540,834 is occupied' \
+    ui_point_is_free "$unlabelled_host_xml" 540 834
+
+all_widgets_xml="$TMP_DIR/all-widgets-home.xml"
+cat > "$all_widgets_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" clickable="false" bounds="[0,300][1080,1481]" />
+    <node index="1" text="Phone" class="android.widget.TextView" clickable="true" bounds="[22,1481][281,1674]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'a HOME whose whole long-press band is widget hosts has no unsafe fallback' \
+    home_longpress_target "$all_widgets_xml"
+
 # --- static regression on the smoke flow -----------------------------------
 
 drawer_body="$TMP_DIR/exercise_app_drawer.sh"

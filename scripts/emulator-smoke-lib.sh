@@ -628,18 +628,24 @@ ui_header_bottom() (
         '
 )
 
-# Succeed when the point ($2,$3) is not inside a labelled clickable node. This
-# keeps the HOME long-press on empty workspace instead of an app icon, folder or
-# widget that would open an item-specific menu.
+# Succeed when the point ($2,$3) is not inside an occupied HOME node. A node is
+# occupied when it is a labelled clickable item (app icon, folder, shortcut) or
+# any real widget host, including PendingAppWidgetHostView. Widget hosts are
+# occupied regardless of their clickable, text and content-desc flags because
+# UIAutomator exposes a hosted widget as a non-clickable, often unlabelled node.
+# The optional $4 clearance expands widget-host bounds so a long-press keeps a
+# safe distance from the widget edge.
 ui_point_is_free() (
     xml=$1
     px=$2
     py=$3
+    clearance=${4:-0}
     [ -s "$xml" ] || return 1
     case "$px" in '' | *[!0-9]*) return 1 ;; esac
     case "$py" in '' | *[!0-9]*) return 1 ;; esac
+    case "$clearance" in '' | *[!0-9]*) return 1 ;; esac
     occupied=$(tr '>' '\n' < "$xml" |
-        awk -v px="$px" -v py="$py" '
+        awk -v px="$px" -v py="$py" -v clearance="$clearance" '
             function attr(s, name,    pat, v) {
                 pat = "[[:space:]]" name "=\"[^\"]*\""
                 if (!match(s, pat)) return ""
@@ -659,16 +665,26 @@ ui_point_is_free() (
             }
             {
                 if ($0 !~ /<node[[:space:]]/) next
-                if (attr($0, "clickable") != "true") next
+                cls = attr($0, "class")
+                rid = attr($0, "resource-id")
+                is_host = (cls ~ /AppWidgetHostView$/) || (rid ~ /(^|\/)appwidget$/)
+                clickable = attr($0, "clickable")
                 text = attr($0, "text")
                 desc = attr($0, "content-desc")
-                if (text == "" && desc == "") next
+                is_labelled_clickable = (clickable == "true" && (text != "" || desc != ""))
+                if (!is_host && !is_labelled_clickable) next
                 bounds = attr($0, "bounds")
                 if (bounds == "") next
                 x1 = v_of(bounds, 1)
                 y1 = v_of(bounds, 2)
                 x2 = v_of(bounds, 3)
                 y2 = v_of(bounds, 4)
+                if (is_host && clearance > 0) {
+                    x1 -= clearance
+                    y1 -= clearance
+                    x2 += clearance
+                    y2 += clearance
+                }
                 if (px >= x1 && px <= x2 && py >= y1 && py <= y2) {
                     print "occupied"
                     exit
@@ -681,7 +697,9 @@ ui_point_is_free() (
 # Compute a real long-press point in the empty central HOME workspace. The band
 # is bounded by the measured header bottom and dock top, so it never lands on the
 # header, dock icons or the bottom QSB. Candidate points walk away from the exact
-# centre when a labelled clickable item occupies it. Prints "x y".
+# centre when a labelled clickable item or a widget host occupies it. The final
+# candidates reach the empty band below a low widget such as the Device card, and
+# widget-host edges keep one margin of clearance. Prints "x y".
 home_longpress_target() (
     xml=$1
     root=$(ui_root_bounds "$xml")
@@ -704,9 +722,9 @@ home_longpress_target() (
     [ "$band_bottom" -gt "$band_top" ] || return 1
     x=$((rx1 + width / 2))
     band=$((band_bottom - band_top))
-    for pct in 50 60 70 40 30 80 20; do
+    for pct in 50 60 70 40 30 80 20 90 95 100; do
         y=$((band_top + band * pct / 100))
-        if ui_point_is_free "$xml" "$x" "$y"; then
+        if ui_point_is_free "$xml" "$x" "$y" "$margin"; then
             printf '%s %s\n' "$x" "$y"
             return 0
         fi

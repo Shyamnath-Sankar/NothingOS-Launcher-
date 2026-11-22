@@ -90,8 +90,13 @@ a view.
 - **HOME long-press and Widgets.** It measures the empty central workspace from the actual HOME
   hierarchy: the header bottom comes from the workspace search container and the dock top from the
   lowest labelled row, so the long-press point stays below the header and above the dock icons and
-  bottom QSB. If every measured candidate is occupied it fails rather than long-pressing an occupied
-  centre. A real `input swipe x y x y 1000` long-press opens the real popup, which the actual
+  bottom QSB. A point is occupied when it is inside a labelled clickable item (app icon, folder or
+  shortcut) or any real widget host, including `PendingAppWidgetHostView`; hosts count regardless of
+  their `clickable`, `text` or `content-desc` flags because CI155 exposed the Device card as a
+  non-clickable `LauncherAppWidgetHostView`. Widget-host bounds keep one measured margin of
+  clearance, and the bounded candidate search reaches the empty band below a low widget such as the
+  Device card. If every measured candidate is occupied it fails rather than long-pressing an
+  occupied centre. A real `input swipe x y x y 1000` long-press opens the real popup, which the actual
   hierarchy exposes as `popup_container` with several clickable `system_shortcut` rows whose
   `bubble_text` labels include `Widgets` plus `Home settings`/`Wallpapers`. Readiness comes from
   those resource ids and the clickable rows, not from `OptionsPopupView`/`DeepShortcutView` class
