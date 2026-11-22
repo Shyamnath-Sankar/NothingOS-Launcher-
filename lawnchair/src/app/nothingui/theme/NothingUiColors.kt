@@ -46,6 +46,8 @@ data class NothingUiColors(
     val outline: Color,
     val accent: Color,
     val onAccent: Color,
+    val warningContainer: Color,
+    val onWarningContainer: Color,
 )
 
 val DarkNothingUiColors = NothingUiColors(
@@ -58,6 +60,8 @@ val DarkNothingUiColors = NothingUiColors(
     outline = NothingUiPalette.Gray500,
     accent = NothingUiPalette.AccentRed,
     onAccent = NothingUiPalette.White,
+    warningContainer = NothingUiPalette.Gray700,
+    onWarningContainer = NothingUiPalette.Paper,
 )
 
 val LightNothingUiColors = NothingUiColors(
@@ -70,6 +74,8 @@ val LightNothingUiColors = NothingUiColors(
     outline = NothingUiPalette.Gray500,
     accent = NothingUiPalette.AccentRed,
     onAccent = NothingUiPalette.White,
+    warningContainer = NothingUiPalette.Gray100,
+    onWarningContainer = NothingUiPalette.Ink,
 )
 
 val LocalNothingUiColors = staticCompositionLocalOf { DarkNothingUiColors }
@@ -106,6 +112,8 @@ internal fun NothingUiColors.toDarkColorScheme(): ColorScheme = darkColorScheme(
     outlineVariant = surfaceElevated,
     error = accent,
     onError = onAccent,
+    errorContainer = warningContainer,
+    onErrorContainer = onWarningContainer,
     inverseSurface = onBackground,
     inverseOnSurface = background,
     scrim = background,
@@ -143,6 +151,8 @@ internal fun NothingUiColors.toLightColorScheme(): ColorScheme = lightColorSchem
     outlineVariant = surfaceElevated,
     error = accent,
     onError = onAccent,
+    errorContainer = warningContainer,
+    onErrorContainer = onWarningContainer,
     inverseSurface = onBackground,
     inverseOnSurface = background,
     scrim = background,

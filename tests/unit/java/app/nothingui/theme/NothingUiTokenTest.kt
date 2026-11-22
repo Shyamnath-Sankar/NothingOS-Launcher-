@@ -16,6 +16,7 @@
 
 package app.nothingui.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import kotlin.math.max
@@ -34,6 +35,22 @@ class NothingUiTokenTest {
     @Test
     fun lightSchemeMeetsContrastTargets() {
         assertSchemeContrast(LightNothingUiColors)
+    }
+
+    @Test
+    fun darkWarningContentMeetsContrastTarget() {
+        assertWarningContrast(DarkNothingUiColors)
+    }
+
+    @Test
+    fun lightWarningContentMeetsContrastTarget() {
+        assertWarningContrast(LightNothingUiColors)
+    }
+
+    @Test
+    fun warningSchemeMapsErrorContainerToNeutralPalette() {
+        assertWarningSchemeMapping(DarkNothingUiColors, DarkNothingUiColors.toDarkColorScheme())
+        assertWarningSchemeMapping(LightNothingUiColors, LightNothingUiColors.toLightColorScheme())
     }
 
     @Test
@@ -102,6 +119,18 @@ class NothingUiTokenTest {
         assertTrue(contrast(colors.onSurfaceMuted, colors.surface) >= 4.5)
         assertTrue(contrast(colors.accent, colors.background) >= 3.0)
         assertTrue(contrast(colors.onAccent, colors.accent) >= 4.5)
+    }
+
+    private fun assertWarningContrast(colors: NothingUiColors) {
+        assertTrue(contrast(colors.onWarningContainer, colors.warningContainer) >= 4.5)
+        assertEquals(colors.warningContainer.red, colors.warningContainer.green, 0f)
+        assertEquals(colors.warningContainer.green, colors.warningContainer.blue, 0f)
+    }
+
+    private fun assertWarningSchemeMapping(colors: NothingUiColors, scheme: ColorScheme) {
+        assertEquals(colors.warningContainer, scheme.errorContainer)
+        assertEquals(colors.onWarningContainer, scheme.onErrorContainer)
+        assertEquals(colors.accent, scheme.error)
     }
 
     private fun contrast(first: Color, second: Color): Double {
