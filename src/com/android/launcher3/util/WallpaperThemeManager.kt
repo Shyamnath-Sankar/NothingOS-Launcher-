@@ -20,8 +20,11 @@ import android.app.Activity
 import android.content.ComponentCallbacks
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import app.lawnchair.theme.ThemeProvider
+import app.lawnchair.theme.UiColorMode
 import app.lawnchair.wallpaper.WallpaperManagerCompat
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherConstants.SavedInstanceKeys.RUNTIME_STATE_RECREATE_TO_UPDATE_THEME
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
@@ -44,6 +47,7 @@ class WallpaperThemeManager(private val activity: Activity) :
             themeRes = expectedTheme
             activity.setTheme(expectedTheme)
         }
+        logThemeState(expectedTheme)
 
         if (Utilities.ATLEAST_Q) {
             activity.registerActivityLifecycleCallbacks(this)
@@ -68,7 +72,9 @@ class WallpaperThemeManager(private val activity: Activity) :
     override fun onColorHintsChanged(colorHints: Int) = updateTheme()
 
     fun updateTheme() {
-        if (themeRes != Themes.getActivityThemeRes(activity)) {
+        val expectedTheme = Themes.getActivityThemeRes(activity)
+        logThemeState(expectedTheme)
+        if (themeRes != expectedTheme) {
             recreateToUpdateTheme()
         }
     }
@@ -78,11 +84,26 @@ class WallpaperThemeManager(private val activity: Activity) :
         activity.recreate()
     }
 
+    private fun logThemeState(expectedTheme: Int) {
+        if (!BuildConfig.DEBUG) return
+        val configuration = activity.resources.configuration
+        val night = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        val resolvedDark = UiColorMode(
+            Themes.getAttrInteger(activity, R.attr.uiColorMode),
+        ).isDarkTheme
+        val expectedName = runCatching {
+            activity.resources.getResourceEntryName(expectedTheme)
+        }.getOrDefault("unknown")
+        Log.d(TAG, "theme-refresh night=$night resolvedDark=$resolvedDark expected=$expectedName")
+    }
+
     override fun onColorsChanged() {
         updateTheme()
     }
 
     companion object {
+        private const val TAG = "DotWelTheme"
 
         /**
          * Sets a wallpaper dependent theme on this activity. The activity is automatically
