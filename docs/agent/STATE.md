@@ -3,27 +3,64 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — Play polish checkpoint: opaque unset drawer,
-  discoverable settings entry and default-home status**.
+- current_phase: **P5 home-widget-composition-v1 — Play HOME uiMode recreation candidate (pending
+  fresh CI/pixels)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `2120284` (`test(drawer): avoid ambiguous float assert overload`); this STATE commit
-  follows. This run's code commits: `79e8080`, `5e5f071`, `2120284`. Start `ca472427`.
+- head: `cf530a4` (`fix(play): let HOME recreate for uiMode changes`); this STATE commit follows.
+  Start `4d5409d`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI174** (coordinator-reported, not reproduced locally): assembly, style and **70 unit
-  tests** passed, but the API 37 **native dark readiness check failed**. Native theme switching is
-  therefore still NOT fixed. `ca472427` is the Run66 checkpoint that saved diagnostics only; its
-  earlier stale-theme refresh hypothesis is unproven. This run makes no runtime/APK/pixel claim and
-  needs a fresh CI at `2120284`.
+- ci: **CI179** (coordinator-reported): assembly, style and Play verification passed, and the
+  actual **73 JUnit tests** had zero failures/errors/skips. The API 37 **native dark readiness
+  check still failed** (artifact `14762050688` under run `45039964002`). The actual
+  `LawnchairLauncher` callback had `suppliedNight=true` and `appNight=true` while
+  `activity.resources` night=false, `resolvedDark=false`, expected `AppTheme.DarkMainColor`; the
+  posted config diagnostic stayed false. This run's only behavior change is the Play HOME
+  `configChanges`: **uiMode removed** so the platform recreates the activity with fresh resources.
+  This is a **candidate pending fresh CI/pixels**, not a proven native-theme fix.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, the
-  expanded unit tests (72+ with the new drawer-default JUnit), Verify Play manifest and identity
-  including the new polish guard, and the API 37 smoke. Confirm the merged manifest has exactly one
-  `PreferenceActivity` MAIN/LAUNCHER entry labelled **DotWel Settings**, no HOME on that activity,
-  HOME still on `LawnchairLauncher`, and that the dashboard shows the refreshed default/not-default
-  state after role consent or cancel. Confirm unset Play drawer opacity is 1.0 and github/nightly
-  0.5 while saved values are untouched. Native dark/light pixels still have to be observed; do not
-  merge until the API 37 smoke is green. Release and hosting stay paused.
+  JUnit suite, Verify Play manifest and identity (now also checking merged/source Play
+  `configChanges`), and the API 37 smoke. Confirm the merged `LawnchairLauncher` excludes `uiMode`
+  while retaining `keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|
+  smallestScreenSize`, HOME stays on `LawnchairLauncher`, exactly one DotWel Settings MAIN/LAUNCHER
+  entry exists with no HOME, unset Play drawer opacity stays 1.0 (github/nightly 0.5, saved values
+  untouched), and role consent/cancel still refreshes the default-home card. Native dark/light
+  pixels still must be observed; do not merge until the API 37 smoke is green. Release and hosting
+  stay paused.
 
-## done (this run — Play polish: opaque drawer default, settings entry, default-home status)
+## done (this run — Play HOME uiMode recreation candidate)
+
+- **Candidate, not a claimed fix:** the only production change is `play/AndroidManifest.xml`,
+  removing `uiMode` from the Play `LawnchairLauncher` `android:configChanges`. Every other flag and
+  manifest field is unchanged; the non-Play manifests are untouched (the base launcher already
+  omits `uiMode`). No `tools:replace` was needed because the Play overlay already supplies the
+  higher-priority `configChanges` value and the base never declared `uiMode`; no source blocker was
+  found.
+- **Platform behavior:** an activity that does not declare `uiMode` is recreated by Android for a
+  night-mode change and resolves fresh resources; declaring it transfers manual refresh to the app.
+  The existing scoped `WallpaperThemeManager` callbacks/cleanup and debug `DotWelTheme` trace are
+  preserved for independent proof. No global resource mutation, `updateConfiguration`, always-dark,
+  `disabledSYSTEM`, theme preference write, delayed loop, force-stop or weakened readiness was
+  added.
+- **Guard/fixtures:** `nothingui-polish-guard.sh` now checks the source Play and base
+  `LawnchairLauncher` `configChanges`: no `uiMode`, all inherited geometry flags retained, HOME
+  still on the launcher, and the existing DotWel Settings MAIN/LAUNCHER/no-HOME routing.
+  `verify-play-build.sh` applies the same `configChanges` and HOME/settings routing checks to the
+  Gradle-merged manifest. New negatives cover Play/base `uiMode`, a missing geometry flag, and
+  merged `uiMode`/missing flag.
+- **Preserved:** LIGHT/DARK/SYSTEM, explicit transparency, wallpaper/workspace DB/widget IDs and
+  placements, native back/OS navigation, non-Play, drawer opacity, settings entry and default-home
+  status. No gallery/control-center/new-widget integration, release or hosting work. Bottom
+  drawer/gesture crowding remains OPEN; this does not claim opacity or padding fixes it.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-polish-guard.sh` OK; `nothingui-polish-guard-test.sh` **12/12**;
+  `verify-play-build-test.sh` **13/13**; `play-brand-guard.sh` and `play-identity-guard.sh` OK;
+  `play-brand-guard-test.sh` passed; `nothingui-theme-guard.sh` OK and its suite passed;
+  `sh -n` clean on all four edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** no local JUnit, APK, merged-manifest or pixel result. CI179's native dark
+  readiness failure is not proven fixed; the next API 37 CI/pixels must confirm the recreation
+  candidate. PR19 is not merged.
+
+## done (previous run — Play polish: opaque drawer default, settings entry, default-home status)
 
 - **Drawer opacity (unset only):** `PreferenceManager` keeps the same `pref_drawerOpacity` key and
   now passes `DrawerOpacityDefaults.forPlayFlavor(isPlayStoreFlavor())`. The pure helper returns
