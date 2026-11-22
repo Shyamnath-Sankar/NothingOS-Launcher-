@@ -76,6 +76,107 @@ grep -Fq '#FF222222' "$VECTOR" || fail "the mid grey recolour is missing"
 if grep -Eq 'gradient|bitmap|aapt:attr|xlink|href=' "$VECTOR"; then
     fail "the vector gained an external or gradient reference"
 fi
+# --- vector pathData packaging bounds -------------------------------------
+#
+# AAPT replaces a compiled string longer than its string-pool limit with the
+# ASCII sentinel STRING_TOO_LARGE. Keep every source pathData well below that
+# limit and prove the split pieces still concatenate to the original geometry.
+PYTHON=${PYTHON:-python3}
+command -v "$PYTHON" >/dev/null 2>&1 || fail "python3 is required for the vector path checks"
+"$PYTHON" - "$VECTOR" <<'PY' || fail "the Torus vector pathData is not safely splittable"
+import hashlib
+import re
+import sys
+
+PATH_LIMIT = 16000
+EXPECTED_BYTES = 46572
+EXPECTED_SUBPATHS = 69
+EXPECTED_SHA256 = '19ee5302492cf69ffae43392267f1fc1b9a386c4ab09634dc266848f528f7bcd'
+
+with open(sys.argv[1], encoding='utf-8') as vector:
+    source = vector.read()
+path_data = re.findall(r'android:pathData="([^"]*)"', source)
+if not path_data:
+    sys.exit('the Torus vector has no pathData')
+for index, value in enumerate(path_data, 1):
+    size = len(value.encode('utf-8'))
+    if size >= PATH_LIMIT:
+        sys.exit(
+            f'pathData #{index} is {size} bytes; split at absolute-M '
+            f'subpath boundaries below {PATH_LIMIT} bytes'
+        )
+joined = ''.join(path_data).encode('utf-8')
+if len(joined) != EXPECTED_BYTES:
+    sys.exit(f'pathData byte count changed: {len(joined)} != {EXPECTED_BYTES}')
+if hashlib.sha256(joined).hexdigest() != EXPECTED_SHA256:
+    sys.exit('pathData geometry changed from the original source path')
+subpaths = sum(len(re.findall(r'M[^M]*', value)) for value in path_data)
+if subpaths != EXPECTED_SUBPATHS:
+    sys.exit(f'pathData subpath count changed: {subpaths} != {EXPECTED_SUBPATHS}')
+PY
+
+# --- compiled APK sentinel -------------------------------------------------
+#
+# verify-play-build.sh runs this guard after assembly and before the emulator.
+# When the real Play debug APK is present, inspect the packaged Torus resource
+# for AAPT's STRING_TOO_LARGE sentinel in ASCII or UTF-16. Source-only and
+# minimal-fixture checkouts without build output keep working.
+APK_DIR="$ROOT/build/outputs/apk/lawnWithQuickstepPlayDebug"
+if [ -d "$APK_DIR" ]; then
+    "$PYTHON" - "$APK_DIR" <<'PY' || fail "the compiled Torus XML contains STRING_TOO_LARGE"
+import os
+import sys
+import zipfile
+
+root = sys.argv[1]
+apks = []
+for base, _, files in os.walk(root):
+    for name in files:
+        if name.endswith('.apk'):
+            apks.append(os.path.join(base, name))
+if not apks:
+    print('nothingui-wallpaper-guard: no Play debug APK yet; skipping compiled sentinel check')
+    sys.exit(0)
+needles = [
+    b'STRING_TOO_LARGE',
+    'STRING_TOO_LARGE'.encode('utf-16-le'),
+    'STRING_TOO_LARGE'.encode('utf-16-be'),
+]
+found = False
+for apk in sorted(apks):
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            members = [
+                item for item in archive.namelist()
+                if os.path.basename(item) == 'dotwel_wallpaper_wireframe_torus.xml'
+            ]
+            for member in members:
+                found = True
+                data = archive.read(member)
+                for needle in needles:
+                    if needle in data:
+                        print(
+                            f'{os.path.basename(apk)}:{member} contains '
+                            'the STRING_TOO_LARGE sentinel',
+                            file=sys.stderr,
+                        )
+                        sys.exit(1)
+    except zipfile.BadZipFile:
+        print(f'{apk} is not a readable APK', file=sys.stderr)
+        sys.exit(1)
+if not found:
+    print(
+        f'{len(apks)} APK(s) found but none packages '
+        'dotwel_wallpaper_wireframe_torus.xml',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print(f'nothingui-wallpaper-guard: compiled Torus XML sentinel-free in {len(apks)} APK(s)')
+PY
+else
+    printf 'nothingui-wallpaper-guard: no %s; skipping compiled sentinel check\n' "$APK_DIR"
+fi
+
 grep -Fq 'CC BY 4.0' "$PROVENANCE" || fail "the Tecdrop licence is not documented"
 grep -Fq 'CC0 1.0' "$PROVENANCE" || fail "the Walldye licence is not documented"
 grep -Fq 'renamed' "$PROVENANCE" || fail "the rename-only change notice is not documented"

@@ -56,7 +56,15 @@ Recolored SVG SHA-256 (bytes otherwise preserved):
 `cd1c1671c5ad0b7923f70dbae020fb84697a7f2f469e2196576c69545f5612d1`
 
 The Android vector keeps the same 1080 x 2340 viewport, the rectangle
-geometry, every `pathData` string, the literal stroke widths (1.2, 1.6 and
-3), the source round caps (the 1.6 and 3 width paths) and no fill on
-stroked paths. This is a static output-format conversion, not generator
-reuse.
+geometry, every source coordinate and subpath, the literal stroke widths
+(1.2, 1.6 and 3), the source round caps (the 1.6 and 3 width paths) and no
+fill on stroked paths. This is a static output-format conversion, not
+generator reuse.
+
+Android packaging note: one source path is longer than the compiled string
+pool limit. It is split only at existing independent absolute-`M` subpath
+boundaries into consecutive `<path>` elements that repeat the exact source
+fill/stroke attributes. Concatenating those `pathData` values in document
+order reproduces the original source path byte-for-byte, so geometry,
+drawing order and appearance are unchanged. The source guard rejects any
+`pathData` attribute of 16,000 bytes or more.
