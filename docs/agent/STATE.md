@@ -3,49 +3,63 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — corrective checkpoint (theme, runtime surfaces,
-  sticky power fallback, both-widget refresh)**.
+- current_phase: **P5 home-widget-composition-v1 — bounded pre-CI checkpoint (RemoteViews
+  ImageView, compiled package ids, hosted-widget smoke proof)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `df49fec` (`test(widgets): cover explicit widget surface and content pair`); the app fix is
-  `78d0287`. This STATE commit follows.
-- pr: none opened this run (branch push only; no PR, build or visual claim).
-- next: rerun CI for this branch (Play debug build, `spotlessKotlinCheck`, unit tests, API 37
-  emulator smoke); then the separate small follow-up that proves the hosted widget instance in the
-  smoke. Do not alter smoke in this checkpoint.
+- head: `c8dbd25` (`test(widgets): prove hosted widget instances in smoke`); the app fix is
+  `690f5cd` (`fix(widgets): use RemoteViews ImageView and compiled package ids`); original
+  `b373ab5f`. This STATE commit follows.
+- pr: none opened this run (branch push only; no PR, build, emulator or visual claim).
+- next: rerun CI for this branch (Play debug build, `spotlessKotlinCheck`, unit tests including
+  `WidgetPackageResolverTest`, API 37 emulator smoke); inspect the smoke artifacts
+  `home-widgets*.txt`, `clean-home-*-widgets*.txt` and `clean-home-*.xml`/`.png`. No further app
+  change is planned in this checkpoint.
 
-## done (this run — home-widget-composition-v1 corrective checkpoint)
+## done (this run — home-widget-composition-v1 pre-CI checkpoint)
 
-- **Clock import:** `NothingUiClockWidgetProvider` now imports `android.provider.AlarmClock`, not
-  `android.app.AlarmClock`.
-- **Theme resolution:** new `NothingUiWidgetColors` resolves the stored light/dark/system choice with
-  `Utilities.isDarkTheme(context)` (never `Themes.getAttrBoolean`/`isMainColorDark`) and supplies an
-  explicit surface/content pair from the NothingUI tokens. Both widgets use it; non-Play and
-  `NothingUiHomeChrome` are unchanged.
-- **Runtime surfaces:** the clock layout has a `nothingui_clock_surface` view and the provider sets
-  the rounded tile drawable at runtime (`nothingui_widget_tile_dark/light`, 4dp inset, 20dp
-  corners). `NothingUiBatteryArt` draws a circular charcoal/paper face behind the ring with the same
-  content colour; the ring label shows the true value with a `%` unit. Native `TextClock` remains
-  live, autosized, 12/24h and timezone-aware; no date was added to the widget.
-- **Both-widget refresh:** `NothingUiBatteryMonitor` became `NothingUiWidgetMonitor`. Resume and
-  `ACTION_CONFIGURATION_CHANGED` refresh both clock and battery once; theme changes arrive through
-  recreation/resume. No service, permission, alarm or wake lock was added.
-- **Sticky power fallback:** both the battery provider's `onReceive` and the monitor re-read the
-  sticky `ACTION_BATTERY_CHANGED` for `ACTION_POWER_CONNECTED`/`DISCONNECTED` instead of passing the
-  extras-less power intent into `BatteryState.from`; `--` remains only for genuinely missing/invalid
-  sticky data.
-- **Preserved:** Play-only resource mapping in `build.gradle`, 0.76 home icon factor, 48dp QSB,
-  fresh-install seeds, one-row strip, `AutoInstallsLayout` package resolution, the MIT DotText
-  notice and the smoke script are untouched. No workflow, Gradle, SDK, manifest, permission,
-  applicationId, signing or paid-service change.
-- **Verification actually run (no Gradle/emulator):** `nothingui-widget-guard.sh` OK;
-  `nothingui-widget-guard-test.sh` 23/23; `nothingui-home-guard-test.sh` 18/18;
-  `nothingui-theme-guard-test.sh` 12/12; `manifest-guard-test.sh` 31/31;
-  `nothingui-home-guard.sh`/`nothingui-theme-guard.sh` OK on the repo; `sh -n` clean on both edited
-  scripts; `git diff --check` clean. The new JUnit colour test and the Android build/spotless/API 37
-  smoke are left to CI.
-- **Remaining:** (1) CI must rerun the Play debug build, `spotlessKotlinCheck`, unit tests and the
-  API 37 emulator smoke; (2) the separate small follow-up must prove the hosted widget instance in
-  the smoke; (3) no visual, PR or merge claim until those are green.
+- **RemoteViews composition:** the clock layout's bare `<View>` surface is now an
+  `<ImageView android:id="@+id/nothingui_clock_surface">`; the provider's runtime
+  `setBackgroundResource` tile remains. Native `TextClock`, colours, battery art, layouts,
+  preferences, wallpapers and light/dark/system handling are unchanged.
+- **Compiled resource IDs:** new pure `WidgetPackageResolver` resolves the compiled numeric
+  `launcher:packageName="@string/launcher_component"` ID to the running variant's `contextPackage`,
+  and other compiled string IDs to their package component. `PendingWidgetParser` reads
+  `getAttributeResourceValue(parser, ATTR_PACKAGE_NAME, 0)`, resolves its own `launcher_component`
+  ID via `getResources().getIdentifier(...)`, keeps the `@string/...` text-fixture fallback, and
+  never hardcodes `com.launchernos.dotwellabs`.
+- **Unit coverage:** `WidgetPackageResolverTest` covers compiled own/other/no-slash IDs, a literal
+  package, literal `@string/launcher_component`, another literal string, and a missing package. It
+  was not run locally (no Gradle by instruction); CI owns it.
+- **Guard:** `nothingui-widget-guard.sh` requires the resolver, the compiled-ID read, the
+  `launcher_component` special case, `contextPackage`, and the string fallback; rejects a hardcoded
+  applicationId and any bare `<View>` in clock/battery RemoteViews layouts; requires the clock
+  `<ImageView>` tile. Fixtures add parser-without-resolution, text-prefix-only, hardcoded
+  applicationId and bare-View negatives. The guard suite passes.
+- **Smoke proof:** `verify_home_widgets` now dumps `dumpsys appwidget`, requires distinct
+  launcher-owned AppWidgetIds for the NothingUI clock and battery through the record-aware parser,
+  and requires the measured HOME XML to expose `nothingui_clock_time` with live `H:mm`/`HH:mm` text
+  and `nothingui_battery_art` with a real `0..100%`/`--` description. It writes
+  `home-widgets.txt`, `home-widgets-instances.txt` and `home-widgets-verified.txt`.
+- **Clean HOME:** `capture_clean_home_theme` first requires the existing
+  `pref_launcherTheme=system` choice (read-only), then captures dark/light under system night
+  yes/no, runs the same widget-id/child-value proof per capture, stores per-mode widget evidence,
+  restores the night mode and returns HOME. It runs before any third-party widget placement.
+- **Fixtures:** the smoke tests cover API 37 current-format and legacy launcher-owned instances,
+  provider-catalog-only and other-host negatives, distinct IDs, real/live clock and battery values,
+  missing child IDs, plus static checks for the new HOME/clean-HOME proof. The docs list the new
+  artifacts.
+- **Preserved:** Play `applicationId`, `minSdk`/`targetSdk`, manifest/permissions, workflows,
+  Gradle/SDK/emulator, DB/schema, preferences, wallpapers, non-Play branding, the MIT notice and the
+  existing grid/picker/drawer flows. No hardcoded package, direct widget binding, DB injection or
+  broad harness rewrite.
+- **Verification actually run (no Gradle/emulator):** `nothingui-widget-guard.sh "$PWD"` OK; widget
+  guard suite 26/26; home guard and suite OK/18; manifest suite 31/31;
+  `verify-play-build-test.sh` 11/11; `emulator-smoke-test.sh` all pass (including the new
+  instances/child/value/static checks); `emulator-smoke-drawer-test.sh` 38/38; `sh -n` clean on all
+  edited scripts; `git diff --check` clean. The JUnit test, Play debug build, spotless and API 37
+  smoke remain CI gates.
+- **Blocked/unknown:** runtime success of the hosted-widget and clean-HOME proof is unverified until
+  CI runs the API 37 emulator. No PR, merge or visual claim.
 
 ## done (previous run — A2 corrective checkpoint)
 
