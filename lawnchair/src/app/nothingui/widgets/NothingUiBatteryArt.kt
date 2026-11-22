@@ -24,17 +24,18 @@ import android.graphics.RectF
 import android.util.Size
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
-import app.nothingui.home.NothingUiHomeChrome
 import app.nothingui.theme.NothingUiPalette
 import kotlin.math.min
 
 /**
  * Original circular battery art for the square 2×2 home widget.
  *
- * The ring, dot-matrix numerals and charging marker are drawn from the real sticky battery level;
- * there is no sample/placeholder percentage. A missing or invalid level renders a neutral `--`
- * fallback. The bitmap is created at the widget's own bounded size (see [NothingUiWidgetBudget]),
- * never at a fixed display-sized resolution.
+ * The circular face, ring, dot-matrix numerals and charging marker are drawn from the real sticky
+ * battery level; there is no sample/placeholder percentage. The surface and content colours are
+ * resolved by the provider from [NothingUiWidgetColors], so the face stays a deliberate charcoal/
+ * white or paper/ink pair even when the update arrives from a non-themed context. A missing or
+ * invalid level renders a neutral `--` fallback. The bitmap is created at the widget's own bounded
+ * size (see [NothingUiWidgetBudget]), never at a fixed display-sized resolution.
  */
 object NothingUiBatteryArt {
 
@@ -46,32 +47,35 @@ object NothingUiBatteryArt {
         percent: Int,
         charging: Boolean,
         size: Size,
+        surfaceColor: Int,
+        contentColor: Int,
     ): Bitmap {
         val width = size.width.coerceAtLeast(1)
         val height = size.height.coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val textColor = runCatching { NothingUiHomeChrome.textColor(context) }
-            .getOrElse { DEFAULT_TEXT_COLOR }
-        val offColor = ColorUtils.setAlphaComponent(textColor, OFF_ALPHA)
+        val offColor = ColorUtils.setAlphaComponent(contentColor, OFF_ALPHA)
         val accentColor = NothingUiPalette.AccentRed.toArgb()
 
-        val diameter = min(width, height).toFloat()
+        val diameter = min(width, height) * FACE_FRACTION
         val stroke = (diameter * 0.06f).coerceAtLeast(2f)
-        val radius = (diameter - stroke) / 2f - stroke
+        val radius = (diameter - stroke) / 2f
         val centerX = width / 2f
         val centerY = height / 2f
 
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = stroke
-            strokeCap = Paint.Cap.ROUND
-        }
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        paint.style = Paint.Style.FILL
+        paint.color = surfaceColor
+        canvas.drawCircle(centerX, centerY, diameter / 2f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = stroke
+        paint.strokeCap = Paint.Cap.ROUND
         paint.color = offColor
         canvas.drawCircle(centerX, centerY, radius, paint)
 
         if (percent >= 0) {
-            paint.color = if (percent <= LOW_PERCENT) accentColor else textColor
+            paint.color = if (percent <= LOW_PERCENT) accentColor else contentColor
             val oval = RectF(
                 centerX - radius,
                 centerY - radius,
@@ -81,7 +85,7 @@ object NothingUiBatteryArt {
             canvas.drawArc(oval, START_ANGLE, SWEEP * percent / 100f, false, paint)
         }
 
-        val label = if (percent >= 0) percent.toString() else UNKNOWN
+        val label = if (percent >= 0) "$percent%" else UNKNOWN
         val inner = radius * 2f * 0.62f
         val density = context.resources.configuration.densityDpi / 160f
         val innerDp = inner / density
@@ -90,7 +94,7 @@ object NothingUiBatteryArt {
             text = label,
             pitchDp = pitchDp,
             density = density,
-            lit = textColor,
+            lit = contentColor,
             matrixColor = offColor,
             matrix = percent >= 0,
         )
@@ -118,5 +122,5 @@ object NothingUiBatteryArt {
     private const val OFF_ALPHA = 44
     private const val START_ANGLE = -90f
     private const val SWEEP = 360f
-    private const val DEFAULT_TEXT_COLOR = 0xFFF2F2F2.toInt()
+    private const val FACE_FRACTION = 0.98f
 }

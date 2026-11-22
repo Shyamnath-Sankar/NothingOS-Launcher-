@@ -52,7 +52,7 @@ import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.unsafeLazy
 import app.lawnchair.views.LawnchairFloatingSurfaceView
 import app.nothingui.theme.NothingUiFeature
-import app.nothingui.widgets.NothingUiBatteryMonitor
+import app.nothingui.widgets.NothingUiWidgetMonitor
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.BubbleTextView
@@ -477,7 +477,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     override fun onPause() {
         if (NothingUiFeature.homeEnabled) {
-            NothingUiBatteryMonitor.stop(this)
+            NothingUiWidgetMonitor.stop(this)
         }
         super.onPause()
     }
@@ -485,7 +485,7 @@ class LawnchairLauncher : QuickstepLauncher() {
     override fun onResume() {
         super.onResume()
         if (NothingUiFeature.homeEnabled) {
-            NothingUiBatteryMonitor.start(this)
+            NothingUiWidgetMonitor.start(this)
         }
         restartIfPending()
         refreshPredictionContainersFromModel()
@@ -517,7 +517,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     override fun onDestroy() {
         if (NothingUiFeature.homeEnabled) {
-            NothingUiBatteryMonitor.stop(this)
+            NothingUiWidgetMonitor.stop(this)
         }
         super.onDestroy()
         // Only actually closes if required, safe to call if not enabled

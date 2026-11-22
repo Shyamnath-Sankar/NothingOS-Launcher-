@@ -57,7 +57,32 @@ EOF
     write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt" <<'EOF'
 package app.nothingui.widgets
 
-class NothingUiClockWidgetProvider : AppWidgetProvider()
+import android.provider.AlarmClock
+
+class NothingUiClockWidgetProvider : AppWidgetProvider() {
+    companion object {
+        fun refreshAll(context: Context) {
+            val action = AlarmClock.ACTION_SHOW_ALARMS
+            val content = NothingUiWidgetColors.contentColor(context)
+            views.setInt(id, "setBackgroundResource", NothingUiWidgetColors.tileDrawable(false))
+            appWidgetManager.updateAppWidget(id, views)
+        }
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiWidgetColors.kt" <<'EOF'
+package app.nothingui.widgets
+
+object NothingUiWidgetColors {
+    fun isLightSurface(context: Context): Boolean = !Utilities.isDarkTheme(context)
+
+    fun surfaceColor(lightSurface: Boolean): Int =
+        if (lightSurface) NothingUiPalette.Paper else NothingUiPalette.Gray900
+
+    fun contentColor(lightSurface: Boolean): Int =
+        if (lightSurface) NothingUiPalette.Ink else NothingUiPalette.White
+}
 EOF
 
     write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt" <<'EOF'
@@ -70,18 +95,57 @@ class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
         val action = Intent.ACTION_BATTERY_CHANGED
         val fallback = UNKNOWN_PERCENT
         val tap = Intent(Intent.ACTION_POWER_USAGE_SUMMARY)
+        val content = NothingUiWidgetColors.contentColor(context)
         appWidgetManager.updateAppWidget(id, views)
+    }
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_BATTERY_CHANGED -> refreshAll(context, intent)
+            Intent.ACTION_POWER_CONNECTED,
+            Intent.ACTION_POWER_DISCONNECTED,
+            -> refreshAll(context)
+        }
+    }
+
+    companion object {
+        fun refreshAll(context: Context, batteryIntent: Intent? = null) {
+            val content = NothingUiWidgetColors.contentColor(context)
+        }
     }
 }
 EOF
 
-    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiBatteryMonitor.kt" <<'EOF'
+    write_file "$root/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt" <<'EOF'
 package app.nothingui.widgets
 
-object NothingUiBatteryMonitor {
-    fun start() {
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
-        val action = Intent.ACTION_BATTERY_CHANGED
+object NothingUiWidgetMonitor {
+    fun start(context: Context) {
+        val appContext = context.applicationContext
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_BATTERY_CHANGED ->
+                        NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)
+                    Intent.ACTION_POWER_CONNECTED,
+                    Intent.ACTION_POWER_DISCONNECTED,
+                    -> NothingUiBatteryWidgetProvider.refreshAll(appContext)
+                    Intent.ACTION_CONFIGURATION_CHANGED -> refreshAll(appContext)
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            appContext,
+            receiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        refreshAll(appContext)
+    }
+
+    private fun refreshAll(context: Context) {
+        NothingUiClockWidgetProvider.refreshAll(context)
+        NothingUiBatteryWidgetProvider.refreshAll(context)
     }
 }
 EOF
@@ -90,7 +154,11 @@ EOF
 package app.nothingui.widgets
 
 object NothingUiBatteryArt {
-    val config = Bitmap.Config.ARGB_8888
+    fun render(percent: Int, surfaceColor: Int, contentColor: Int) {
+        val config = Bitmap.Config.ARGB_8888
+        val label = "$percent%"
+        canvas.drawCircle(0f, 0f, 1f, paint)
+    }
 }
 EOF
 
@@ -115,12 +183,38 @@ EOF
 
     write_file "$root/lawnchair/res/layout/nothingui_widget_clock.xml" <<'EOF'
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android">
+    <View
+        android:id="@+id/nothingui_clock_surface"
+        android:background="@drawable/nothingui_widget_tile_dark" />
     <TextClock
         android:fontFamily="@font/doto_bold"
         android:format12Hour="h:mm"
         android:format24Hour="HH:mm"
         android:autoSizeTextType="uniform" />
 </FrameLayout>
+EOF
+
+    write_file "$root/lawnchair/res/drawable/nothingui_widget_tile_dark.xml" <<'EOF'
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/nothingui_widget_surface_dark" />
+    <corners android:radius="20dp" />
+</shape>
+EOF
+
+    write_file "$root/lawnchair/res/drawable/nothingui_widget_tile_light.xml" <<'EOF'
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/nothingui_widget_surface_light" />
+    <corners android:radius="20dp" />
+</shape>
+EOF
+
+    write_file "$root/lawnchair/res/values/colors.xml" <<'EOF'
+<resources>
+    <color name="nothingui_widget_surface_dark">#FF1A1A1A</color>
+    <color name="nothingui_widget_surface_light">#FFF2F2F2</color>
+</resources>
 EOF
 
     write_file "$root/lawnchair/res/layout/nothingui_widget_battery.xml" <<'EOF'
@@ -175,11 +269,11 @@ package app.lawnchair
 class LawnchairLauncher {
     fun onResume() {
         if (NothingUiFeature.homeEnabled) {
-            NothingUiBatteryMonitor.start(this)
+            NothingUiWidgetMonitor.start(this)
         }
     }
     fun onPause() {
-        NothingUiBatteryMonitor.stop(this)
+        NothingUiWidgetMonitor.stop(this)
     }
 }
 EOF
@@ -313,7 +407,7 @@ write_file "$no_stop/lawnchair/src/app/lawnchair/LawnchairLauncher.kt" <<'EOF'
 class LawnchairLauncher {
     fun onResume() {
         if (NothingUiFeature.homeEnabled) {
-            NothingUiBatteryMonitor.start(this)
+            NothingUiWidgetMonitor.start(this)
         }
     }
 }
@@ -335,6 +429,69 @@ class AutoInstallsLayout {
 EOF
 expect_fail_contains 'parser without resource package resolution fails' \
     "$no_resolver" 'cannot resolve a resource package name'
+
+wrong_alarm="$TMP_DIR/wrong-alarm"
+cp -R "$clean" "$wrong_alarm"
+sed -i 's/import android.provider.AlarmClock/import android.app.AlarmClock/' \
+    "$wrong_alarm/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt"
+expect_fail_contains 'wrong AlarmClock namespace fails' \
+    "$wrong_alarm" 'wrong AlarmClock namespace'
+
+provider_theme_attr="$TMP_DIR/provider-theme-attr"
+cp -R "$clean" "$provider_theme_attr"
+printf '%s\n' 'val ink = NothingUiHomeChrome.textColor(context)' \
+    >> "$provider_theme_attr/lawnchair/src/app/nothingui/widgets/NothingUiClockWidgetProvider.kt"
+expect_fail_contains 'provider theme-attribute lookup fails' \
+    "$provider_theme_attr" 'still reads the launcher theme attributes'
+
+colors_theme_attr="$TMP_DIR/colors-theme-attr"
+cp -R "$clean" "$colors_theme_attr"
+printf '%s\n' 'val dark = Themes.getAttrBoolean(context, R.attr.isMainColorDark)' \
+    >> "$colors_theme_attr/lawnchair/src/app/nothingui/widgets/NothingUiWidgetColors.kt"
+expect_fail_contains 'widget colour theme-attribute lookup fails' \
+    "$colors_theme_attr" 'still read launcher theme attributes'
+
+no_clock_refresh="$TMP_DIR/no-clock-refresh"
+cp -R "$clean" "$no_clock_refresh"
+sed -i '/NothingUiClockWidgetProvider.refreshAll/d' \
+    "$no_clock_refresh/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
+expect_fail_contains 'monitor without clock refresh fails' \
+    "$no_clock_refresh" 'does not refresh the clock widget'
+
+power_intent="$TMP_DIR/power-intent"
+cp -R "$clean" "$power_intent"
+sed -i 's/-> refreshAll(context)$/-> refreshAll(context, intent)/' \
+    "$power_intent/lawnchair/src/app/nothingui/widgets/NothingUiBatteryWidgetProvider.kt"
+expect_fail_contains 'battery power event reusing the power intent fails' \
+    "$power_intent" 'passes the power intent into BatteryState.from'
+
+monitor_power_intent="$TMP_DIR/monitor-power-intent"
+cp -R "$clean" "$monitor_power_intent"
+sed -i 's/-> NothingUiBatteryWidgetProvider.refreshAll(appContext)$/-> NothingUiBatteryWidgetProvider.refreshAll(appContext, intent)/' \
+    "$monitor_power_intent/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
+expect_fail_contains 'monitor power event reusing the power intent fails' \
+    "$monitor_power_intent" 'passes the power intent into BatteryState.from'
+
+no_surface="$TMP_DIR/no-surface"
+cp -R "$clean" "$no_surface"
+sed -i '/nothingui_clock_surface/d' \
+    "$no_surface/lawnchair/res/layout/nothingui_widget_clock.xml"
+expect_fail_contains 'clock without a tile surface fails' \
+    "$no_surface" 'has no tile surface view'
+
+no_face="$TMP_DIR/no-face"
+cp -R "$clean" "$no_face"
+sed -i '/surfaceColor/d' \
+    "$no_face/lawnchair/src/app/nothingui/widgets/NothingUiBatteryArt.kt"
+expect_fail_contains 'battery without a circular face fails' \
+    "$no_face" 'does not draw the circular face from the surface token'
+
+no_config_refresh="$TMP_DIR/no-config-refresh"
+cp -R "$clean" "$no_config_refresh"
+sed -i '/ACTION_CONFIGURATION_CHANGED/d' \
+    "$no_config_refresh/lawnchair/src/app/nothingui/widgets/NothingUiWidgetMonitor.kt"
+expect_fail_contains 'monitor without configuration refresh fails' \
+    "$no_config_refresh" 'does not refresh on configuration changes'
 
 if [ "$failures" -ne 0 ]; then
     printf '\n%d test(s) failed\n' "$failures" >&2

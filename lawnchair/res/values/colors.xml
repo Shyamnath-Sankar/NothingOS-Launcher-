@@ -105,4 +105,7 @@
     <color name="surface_variant_light">@color/system_neutral2_100</color>
 
     <color name="accent_primary_device_default">@color/system_accent1_100</color>
+
+    <color name="nothingui_widget_surface_dark">#FF1A1A1A</color>
+    <color name="nothingui_widget_surface_light">#FFF2F2F2</color>
 </resources>

@@ -21,6 +21,18 @@
     android:padding="4dp">
 
     <!--
+      The provider replaces this default tile with the stored light/dark surface at runtime, so the
+      clock does not depend on system night resource qualifiers. The tile is inset by the root
+      padding and has modest rounded corners to pair with the circular battery face.
+    -->
+    <View
+        android:id="@+id/nothingui_clock_surface"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/nothingui_widget_tile_dark"
+        android:importantForAccessibility="no" />
+
+    <!--
       A native TextClock, not a hand-painted static time. TextClock follows the system 12/24-hour
       setting, the current timezone and minute ticks without an alarm, wake lock or foreground
       service. The bundled Doto OFL font provides the dot-matrix face.

@@ -34,10 +34,12 @@ import com.android.launcher3.R
  * Original circular battery widget.
  *
  * Values come from the real sticky [Intent.ACTION_BATTERY_CHANGED] broadcast, not a sample. Because
- * that broadcast cannot be received by a manifest-declared receiver, [NothingUiBatteryMonitor]
+ * that broadcast cannot be received by a manifest-declared receiver, [NothingUiWidgetMonitor]
  * registers a lifecycle-bounded foreground receiver from the launcher activity and forwards it
- * here. Power connect/disconnect and widget resize events also refresh the art. A missing or
- * invalid level renders the neutral `--` fallback instead of a guessed percentage.
+ * here. Power connect/disconnect and widget resize events also refresh the art. A power event does
+ * not carry the level/scale extras, so it re-reads the sticky battery broadcast instead of
+ * rendering `--`. A missing or invalid level renders the neutral `--` fallback instead of a guessed
+ * percentage.
  */
 class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
 
@@ -63,10 +65,11 @@ class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BATTERY_CHANGED,
+            Intent.ACTION_BATTERY_CHANGED -> refreshAll(context, intent)
+
             Intent.ACTION_POWER_CONNECTED,
             Intent.ACTION_POWER_DISCONNECTED,
-            -> refreshAll(context, intent)
+            -> refreshAll(context)
 
             else -> super.onReceive(context, intent)
         }
@@ -107,6 +110,8 @@ class NothingUiBatteryWidgetProvider : AppWidgetProvider() {
                 percent = battery.percent,
                 charging = battery.charging,
                 size = size,
+                surfaceColor = NothingUiWidgetColors.surfaceColor(context),
+                contentColor = NothingUiWidgetColors.contentColor(context),
             )
             val views = RemoteViews(context.packageName, R.layout.nothingui_widget_battery)
             views.setImageViewBitmap(R.id.nothingui_battery_art, bitmap)

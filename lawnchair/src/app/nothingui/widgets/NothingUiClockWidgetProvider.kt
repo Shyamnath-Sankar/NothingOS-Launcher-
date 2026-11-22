@@ -16,16 +16,16 @@
 
 package app.nothingui.widgets
 
-import android.app.AlarmClock
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.provider.AlarmClock
 import android.widget.RemoteViews
-import app.nothingui.home.NothingUiHomeChrome
 import com.android.launcher3.R
 
 /**
@@ -33,8 +33,9 @@ import com.android.launcher3.R
  *
  * The time itself is a native [android.widget.TextClock] inflated from
  * `nothingui_widget_clock.xml`. It follows the system 12/24-hour setting, the current timezone and
- * minute ticks without an alarm, wake lock or foreground service. This provider only applies the
- * theme colour, a safe clock tap and the actual widget size; it never paints a static clock.
+ * minute ticks without an alarm, wake lock or foreground service. This provider applies the
+ * theme-resolved rounded tile and content colour, a safe clock tap and the actual widget size; it
+ * never paints a static clock.
  */
 class NothingUiClockWidgetProvider : AppWidgetProvider() {
 
@@ -57,43 +58,58 @@ class NothingUiClockWidgetProvider : AppWidgetProvider() {
         updateWidget(context, appWidgetManager, appWidgetId)
     }
 
-    private fun updateWidget(
-        context: Context,
-        appWidgetManager: AppWidgetManager,
-        appWidgetId: Int,
-    ) {
-        val views = RemoteViews(context.packageName, R.layout.nothingui_widget_clock)
-        views.setTextColor(R.id.nothingui_clock_time, textColor(context))
-        clockPendingIntent(context)?.let { pendingIntent ->
-            views.setOnClickPendingIntent(R.id.nothingui_clock_time, pendingIntent)
+    companion object {
+
+        fun refreshAll(context: Context) {
+            val appWidgetManager = AppWidgetManager.getInstance(context)
+            val ids = appWidgetManager.getAppWidgetIds(
+                ComponentName(context, NothingUiClockWidgetProvider::class.java),
+            )
+            if (ids.isEmpty()) return
+            ids.forEach { appWidgetId ->
+                updateWidget(context, appWidgetManager, appWidgetId)
+            }
         }
-        appWidgetManager.updateAppWidget(appWidgetId, views)
-    }
 
-    private fun textColor(context: Context): Int {
-        return runCatching { NothingUiHomeChrome.textColor(context) }
-            .getOrElse { DEFAULT_TEXT_COLOR }
-    }
-
-    private fun clockPendingIntent(context: Context): PendingIntent? {
-        val intent = Intent(AlarmClock.ACTION_SHOW_ALARMS).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        private fun updateWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+        ) {
+            val lightSurface = NothingUiWidgetColors.isLightSurface(context)
+            val views = RemoteViews(context.packageName, R.layout.nothingui_widget_clock)
+            views.setInt(
+                R.id.nothingui_clock_surface,
+                "setBackgroundResource",
+                NothingUiWidgetColors.tileDrawable(lightSurface),
+            )
+            views.setTextColor(
+                R.id.nothingui_clock_time,
+                NothingUiWidgetColors.contentColor(lightSurface),
+            )
+            clockPendingIntent(context)?.let { pendingIntent ->
+                views.setOnClickPendingIntent(R.id.nothingui_clock_time, pendingIntent)
+            }
+            appWidgetManager.updateAppWidget(appWidgetId, views)
         }
-        val resolved = context.packageManager.resolveActivity(
-            intent,
-            PackageManager.MATCH_DEFAULT_ONLY,
-        )
-        if (resolved == null) return null
-        return PendingIntent.getActivity(
-            context,
-            REQUEST_CLOCK,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-    }
 
-    private companion object {
-        const val REQUEST_CLOCK = 0x0C10
-        const val DEFAULT_TEXT_COLOR = 0xFFF2F2F2.toInt()
+        private fun clockPendingIntent(context: Context): PendingIntent? {
+            val intent = Intent(AlarmClock.ACTION_SHOW_ALARMS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val resolved = context.packageManager.resolveActivity(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY,
+            )
+            if (resolved == null) return null
+            return PendingIntent.getActivity(
+                context,
+                REQUEST_CLOCK,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+
+        private const val REQUEST_CLOCK = 0x0C10
     }
 }
