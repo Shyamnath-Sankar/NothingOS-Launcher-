@@ -1,0 +1,47 @@
+dotline-widgets — DotText renderer
+==================================
+
+Source: https://github.com/oceansde012/dotline-widgets
+Commit: b53a12aaf09f3572582dbd2c4278ea65f6a83306
+File adapted: app/src/main/java/io/github/oceansde012/dotline/DotText.kt
+Upstream license: MIT
+Copyright (c) 2026 oceansde012
+
+Adapted file in this repository:
+  lawnchair/src/app/nothingui/widgets/DotText.kt
+
+Changes made for DotWel Launcher:
+- renamed the package to app.nothingui.widgets;
+- removed the upstream Nd palette dependency and made lit/matrix/accent/off colours explicit
+  parameters, using our own NothingUi palette tokens;
+- added the matrix colour to the bitmap cache key;
+- changed bar() to take explicit accent and off colours;
+- kept the self-drawn 7-row glyph set and dot rendering algorithm;
+- did not copy the upstream app, providers, MediaTracker, Ticker, services, fonts or assets.
+
+Nothing here is affiliated with or endorsed by Nothing Technology Limited. The upstream fonts are
+not bundled by this project; DotWel Launcher uses its own OFL Doto fonts under licenses/fonts/.
+
+--------------------------------------------------------------------------------
+
+MIT License
+
+Copyright (c) 2026 oceansde012
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
