@@ -43,6 +43,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.TextClock;
 
+import androidx.annotation.LayoutRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
@@ -50,6 +51,8 @@ import androidx.lifecycle.DefaultLifecycleObserver;
 import androidx.lifecycle.LifecycleOwner;
 
 import app.lawnchair.preferences2.PreferenceManager2;
+import app.lawnchair.smartspace.model.LawnchairSmartspace;
+import app.lawnchair.smartspace.model.SmartspaceMode;
 import com.android.launcher3.BuildConfig;
 import com.android.launcher3.BuildConfigs;
 import com.android.launcher3.CellLayout;
@@ -112,7 +115,7 @@ public class LauncherPreviewRenderer extends BaseContext
     private final ItemInflater<LauncherPreviewRenderer> mItemInflater;
 
     // LC-Note: (we don't use QSB preview)
-    private int mWorkspaceSearchContainer = R.layout.smartspace_container;
+    private int mWorkspaceSearchContainer;
     private final PreferenceManager2 mPreferenceManager2;
 
     public LauncherPreviewRenderer(Context context,
@@ -129,10 +132,31 @@ public class LauncherPreviewRenderer extends BaseContext
             LauncherModel model,
             int themeRes,
             @Nullable InvariantDeviceProfile previewIdp) {
+        this(context, workspaceScreenId, wallpaperColorResources, model, themeRes, previewIdp, 0);
+    }
+
+    /**
+     * @param workspaceSearchContainerResId explicit first-page smartspace layout override, or
+     *        0 to use the same selected {@link SmartspaceMode} layout as the live workspace.
+     */
+    public LauncherPreviewRenderer(Context context,
+            int workspaceScreenId,
+            @Nullable SparseIntArray wallpaperColorResources,
+            LauncherModel model,
+            int themeRes,
+            @Nullable InvariantDeviceProfile previewIdp,
+            @LayoutRes int workspaceSearchContainerResId) {
 
         super(context, themeRes);
         mPreferenceManager2 = PreferenceManager2.getInstance(context);
-        
+        // Resolve the default before addCallbacksAndLoad() below, because an already-loaded
+        // model can bind synchronously and inflate the first page inside this constructor.
+        if (workspaceSearchContainerResId != 0) {
+            mWorkspaceSearchContainer = workspaceSearchContainerResId;
+        } else {
+            mWorkspaceSearchContainer = getDefaultSmartspaceLayout(context, mPreferenceManager2);
+        }
+
         mUiHandler = new Handler(Looper.getMainLooper());
         mIdp = previewIdp != null ? previewIdp : InvariantDeviceProfile.INSTANCE.get(context);
         mDp = getDeviceProfileForPreview(context).toBuilder(context)
@@ -397,6 +421,24 @@ public class LauncherPreviewRenderer extends BaseContext
         }
     }
     
+    /**
+     * Mirrors the live workspace's first-page smartspace source so previews match HOME.
+     *
+     * <p>{@link LawnchairSmartspace} is channel-aware: on the Play channel it resolves to the
+     * original NothingUI header layout, while github/nightly keep the inherited smartspace
+     * container. Explicit overrides (for example the dummy backup placeholder) are handled by
+     * the caller before this default is used.
+     */
+    private static int getDefaultSmartspaceLayout(
+            Context context, PreferenceManager2 preferenceManager) {
+        SmartspaceMode mode = PreferenceCacheExtensionsKt.firstCached(
+                preferenceManager.getSmartspaceMode());
+        if (mode == null || !mode.isAvailable(context)) {
+            mode = LawnchairSmartspace.INSTANCE;
+        }
+        return mode.getLayoutResourceId();
+    }
+
     // LC-Note: LC stuff that set the search container of preview (but we dont use it as search container)
     public void setWorkspaceSearchContainer(int resId) {
         mWorkspaceSearchContainer = resId;

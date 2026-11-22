@@ -89,11 +89,10 @@ class LauncherPreviewView(
             model,
             themeRes,
             idp,
+            // Apply the dummy override in the constructor: an already-loaded model can bind
+            // synchronously during construction, before a post-construction setter would run.
+            if (dummySmartspace) R.layout.smartspace_widget_placeholder else 0,
         )
-
-        if (dummySmartspace) {
-            renderer.setWorkspaceSearchContainer(R.layout.smartspace_widget_placeholder)
-        }
 
         // The renderer exposes a CompletableFuture that completes when the model is bound and view is measured
         renderer.initialRender.thenAcceptAsync({ view ->
