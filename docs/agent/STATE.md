@@ -5,8 +5,9 @@ when no task input is given, and continues from "next".
 
 - current_phase: **P5 home-widget-composition-v1 — PR19 provider identity, page discovery and device Settings proof**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `81afb5e` (`test(smoke): exercise device Settings pills at measured bounds`); this STATE
-  commit follows. Previous commits this run: `56bb219`, `a46a487`, `709795a`; start `010d928`.
+- head: `6262c21` (`test(smoke): guard page swipes by exact launcher foreground`); this STATE
+  commit follows. Previous commits this run: `81afb5e`, `56bb219`, `a46a487`, `709795a`; start
+  `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI147** (coordinator-reported, not reproduced locally) — compile/assemble, Kotlin/Java
   style and **62 unit tests passed**; the own-widget runtime phase succeeded; the third-party
