@@ -3,18 +3,52 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19/CI136 formatter-only correction**.
+- current_phase: **P5 home-widget-composition-v1 — PR19/CI136 DotWel provider-package correction**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `e9df3ab` (`fix(widgets): keep pitchFor expression body on one line for spotless`); base
-  `452ffb4`. This STATE commit follows.
+- head: `18c8ac4` (`fix(widgets): move providers into DotWel widget package`); previous head
+  `80cc479`, base `452ffb4`. This STATE commit follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI136** run `45004303499` — `check-style` failed only `spotlessKotlinCheck` on
-  `DotText.kt:122`; the Android build was still running and the unit-tests job passed. Do not
-  cancel it; this correction push re-triggers CI.
-- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, unit tests, API 37 smoke) and
-  inspect the dark/light home artifacts. No further app change planned. Do not merge from here.
+- ci: **CI136** — Android `assemble` and all unit tests passed, but `Verify Play manifest and
+  identity` failed the existing `play-brand-guard` on `play/res/xml/default_workspace_4x5.xml`.
+  Its broad scan found the new `NothingUI` comment and the two fully qualified
+  `app.nothingui.widgets.NothingUi*WidgetProvider` names there. The earlier
+  `spotlessKotlinCheck` failure on `DotText.kt:122` was already fixed by `e9df3ab`. The guard was
+  not weakened; this correction push re-triggers CI.
+- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, unit tests, Verify Play manifest
+  and identity, API 37 smoke) and inspect the clean dark/light home screenshots. No further app
+  change planned. Do not merge from here.
 
-## done (this run — PR19 CI136 spotless Kotlin correction)
+## done (this run — PR19 CI136 DotWel provider-package correction)
+
+- **CI136 failure diagnosed, not guessed:** Android `assemble` and all unit tests passed, but
+  `Verify Play manifest and identity` failed the existing `play-brand-guard`. Its broad
+  case-insensitive scan found the new default-workspace comment (`NothingUI`) and the two fully
+  qualified `app.nothingui.widgets.NothingUiClockWidgetProvider` /
+  `...NothingUiBatteryWidgetProvider` names in `play/res/xml/default_workspace_4x5.xml`. The guard
+  was not weakened, skipped or excepted; the production references were renamed instead.
+- **Provider package move:** only the two new provider classes moved to
+  `lawnchair/src/app/dotwel/widgets/` as `DotWelClockWidgetProvider.kt` and
+  `DotWelBatteryWidgetProvider.kt`, package `app.dotwel.widgets`, with matching class and
+  `ComponentName` names. `NothingUiWidgetColors`, `NothingUiWidgetBudget`, `NothingUiBatteryArt`,
+  `NothingUiWidgetMonitor` and the MIT `DotText` renderer stayed in `app.nothingui.widgets`; the
+  moved providers import those helpers, and the monitor imports the two providers. Resource IDs,
+  widget XML metadata, layouts, refresh logic and theme handling are untouched.
+- **References updated:** Play manifest receivers, the fresh-install default workspace, the
+  lifecycle monitor, `nothingui-widget-guard.sh` and its fixtures, the emulator smoke
+  provider-instance parsers/fixtures and `docs/agent/emulator-verification.md`. The default
+  workspace comment now says "original DotWel widgets". No provider alias and no second widget.
+- **Preserved:** no visual, layout, data, permission, refresh, theme, workflow, Gradle/SDK,
+  applicationId, signing, paid-service, database, wallpaper or preference change. `w/` remains
+  untracked scratch.
+- **Verification actually run (no Gradle, no emulator):** `play-brand-guard.sh` OK and its suite
+  22/22; `nothingui-widget-guard.sh` OK and its suite 26/26; `nothingui-home-guard.sh` OK and its
+  suite 18/18; `verify-play-build-test.sh` 11/11; `emulator-smoke-test.sh` 342/342;
+  `emulator-smoke-drawer-test.sh` 38/38; `sh -n` clean on every edited script; `git diff --check`
+  clean. The Android build, unit tests, spotless and API 37 emulator captures remain CI gates.
+- **Blocked/unknown:** no runtime/emulator claim; CI must still compile, test and produce the clean
+  dark/light home screenshots. PR19 is not merged.
+
+## done (previous run — PR19 CI136 spotless Kotlin correction)
 
 - **Formatter-only:** `DotText.pitchFor`'s short expression body now has `=` and
   `minOf(boxW / cols(text), boxH / ROWS).coerceAtLeast(0.5f)` on the same single line, as the
