@@ -15,8 +15,9 @@ when no task input is given, and continues from "next".
 - branch: `agent/a1-settings-palette-tiny-check`
 - head: app `236f00f` (`feat(settings): apply NothingUi palette to Play settings`), guards/tests
   `b1f5d10`, smoke `e17b860`; this STATE commit follows.
-- pr: created for `agent/a1-settings-palette-tiny-check` after the final push; main/supervisor owns
-  approval. CI builds via PR review; no Gradle build or emulator run happened in this run.
+- pr: not opened in this run because the runner has no `GH_TOKEN`; the branch is pushed and the
+  agent-dev workflow/supervisor should open the PR. Main/supervisor owns approval. CI builds via PR
+  review; no Gradle build or emulator run happened in this run.
 
 ## done (this run — A1 settings palette partial checkpoint)
 
