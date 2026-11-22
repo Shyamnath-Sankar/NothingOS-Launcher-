@@ -3,22 +3,65 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 CI155 HOME long-press smoke-harness recovery**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 CI159 placed-widget page-geometry smoke recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `3c00ebc` (`fix(smoke): reject widget hosts as empty HOME long-press points`); this STATE
-  commit follows. Previous commits: `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`,
-  `a46a487`, `709795a`; start `010d928`.
+- head: `80550c1` (`fix(smoke): validate placed widgets on actual page geometry`); this STATE
+  commit follows. Previous commits: `ccf424c`, `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`,
+  `81afb5e`, `56bb219`, `a46a487`, `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI155** (coordinator-reported, not reproduced locally) — compiled, branding passed, **69
-  JUnit tests passed**, all three own widgets had live values, and the measured Wi-Fi/Sound/Display
-  shortcuts passed with unchanged ids. It then failed at `home_longpress_target`: the returned
-  `540,896` was inside the new Device host and opened its resize frame instead of the empty HOME
-  popup. A fresh PR19 run is required at this head.
+- ci: **CI159** (coordinator-reported, not reproduced locally) — compiled, style passed and **69
+  JUnit tests passed**; all own widgets and the measured Settings shortcuts passed again. It then
+  failed at the placed-widget header/dock check: the Calendar bounds `38 107 524 738` were compared
+  with the pre-widget first-page header bottom `312` and dock `1481`, but the later placed page has
+  no launcher `search_container_workspace` header. A fresh PR19 run is required at this head.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. Inspect the HOME long-press target
-  and the existing widget/device Settings evidence; do not merge until the API 37 smoke is green.
+  tests, Verify Play manifest and identity, and the API 37 smoke. The new check uses the actual
+  placed-page workspace/`hotseat` geometry and enforces a header band only when the launcher header
+  is really visible on that page. Do not merge until the API 37 smoke is green.
 
-## done (this run — CI155 HOME long-press widget-host recovery)
+## done (this run — CI159 placed-widget page-geometry recovery)
+
+- **Diagnosed from the reported evidence, not guessed:** the old check measured
+  `_cwp_ref_dock_top` and `_cwp_ref_header_bottom` from the pre-widget first page and applied them to
+  the page where the Calendar was actually found. The later page legitimately has no launcher
+  `search_container_workspace` header, so its Calendar top `107` is valid; the stale first-page
+  header bottom `312` falsely rejected it.
+- **Page-local geometry helper:** new pure `home_widget_page_geometry_ok <xml> <bounds>` reads the
+  workspace actually present on the placed page (`workspace`/`workspace_right`/`workspace_grid`),
+  the actual `hotseat` dock top, and `ui_header_bottom` only when a launcher header really exists on
+  that page. It rejects out-of-workspace bounds, real header overlap, real dock overlap and
+  missing/malformed workspace or dock geometry. It never inherits the first-page header and never
+  invents the old 15 percent band. It deliberately does not use the labelled-row `ui_dock_top`,
+  which can report `1196` for ordinary Gallery/Settings icons on a later page.
+- **Identity retained:** new `placed_widget_page_is_safe` re-runs `home_widget_bounds` with the
+  selected provider label and requires the exact placed bounds before the geometry check, so
+  absent, foreign, picker-preview and mismatched hosts still fail closed.
+- **Smoke wiring:** `capture_widgets_picker` now calls `placed_widget_page_is_safe` on
+  `$_cwp_placed` with the reference, provider title and placed bounds. The stale
+  `_cwp_ref_dock_top`/`_cwp_ref_header_bottom` block is gone. Add/Create, new AppWidgetId/host/
+  provider ownership, later-page discovery, post-Settings/HOME survival, exact foreground,
+  own-widget/header/dock and no-permanent-binding guards are unchanged.
+- **Fixtures:** CI159 first page (header bottom `312`, Calendar `38 328 524 738`) and no-header
+  later page (Calendar `38 107 524 738`, Gallery/Settings at `1196`) are accepted; first-page header
+  overlap, dock overlap, out-of-workspace, missing hotseat, missing workspace, malformed/non-numeric/
+  empty bounds, absent host, foreign label, picker preview and mismatched bounds are rejected. The
+  later-page `ui_dock_top=1196` hazard is asserted explicitly.
+- **Docs:** `docs/agent/emulator-verification.md` records the page-local validation, the no-header
+  later-page rule and the fail-closed geometry.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` 469/469; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite 19/19;
+  `play-brand-guard-test.sh` 22/22; `play-identity-guard-test.sh` 8/8;
+  `nothingui-home-role-guard-test.sh` 7/7; `manifest-guard-test.sh` 31/31;
+  `nothingui-theme-guard-test.sh` 12/12; `nothingui-icon-render-guard-test.sh` 15/15;
+  `nothingui-native-surfaces-guard-test.sh` 14/14; `nothingui-drawer-trace-guard-test.sh` 8/8;
+  `verify-play-build-test.sh` 11/11; `sh -n` clean on all three edited scripts;
+  `git diff --check` clean.
+- **Blocked/unknown:** the API 37 runtime smoke must confirm the later-page Calendar now passes and
+  the strict first-page header/dock/workspace negatives still fail closed. No runtime, APK or pixel
+  claim. PR19 is not merged; a fresh CI is required.
+
+## done (previous run — CI155 HOME long-press widget-host recovery)
 
 - **Diagnosed failure fixed in the harness:** CI155's `home_longpress_target` chose `540,896`,
   which is inside the third real widget host (`38,770,1042,1180`, the Device card). The old
