@@ -618,14 +618,31 @@ ui_navigation_bar_bounds() (
 
 # Print "home lock" wallpaper IDs from a `dumpsys wallpaper` dump. Home is
 # required; the lock ID prints as "-" when the dump has no separate lock row.
-# Explicit "Home wallpaper ID" / "Lock wallpaper ID" labels win, then the
-# AOSP `mWallpaperId` / `mLockWallpaperId` fields. Prints nothing when no Home
-# ID is measurable so the caller can fail closed instead of guessing.
+#
+# Current AOSP (WallpaperManagerService.dump/dumpWallpaper) emits three
+# sections -- "System wallpaper state:", "Lock wallpaper state:" and
+# "Fallback wallpaper state:" -- and each entry is
+#   " User <userId>: id=<wallpaperId>: mWhich=...: mSystemWasBoth=...: ...".
+# Parse only the System and Lock sections for the current user; the fallback
+# section and other users are ignored. The current user may be passed as $2;
+# when omitted the dump is accepted only if it has exactly one System user.
+# Compatible legacy fixtures ("Home wallpaper ID", `mWallpaperId`,
+# `mLockWallpaperId`) are still honoured only when no current System section is
+# present. Prints nothing and fails closed on missing or ambiguous evidence.
 wallpaper_ids_from_dump() (
     dump=$1
+    want_user=${2:-}
     [ -s "$dump" ] || return 0
-    awk '
-        BEGIN { explicit_home = -1; plain_home = -1; lock = -1 }
+    awk -v want_user="$want_user" '
+        BEGIN {
+            section = ""
+            sys_seen = 0
+            lock_seen = 0
+            n_sys = 0
+            explicit_home = -1
+            plain_home = -1
+            legacy_lock = -1
+        }
         function id_of(s,    v) {
             gsub(/[^0-9]/, "", s)
             if (s == "") return -1
@@ -633,10 +650,43 @@ wallpaper_ids_from_dump() (
         }
         {
             l = tolower($0)
+            if (l ~ /^[[:space:]]*system wallpaper state:/) {
+                section = "system"
+                sys_seen = 1
+                next
+            }
+            if (l ~ /^[[:space:]]*lock wallpaper state:/) {
+                section = "lock"
+                lock_seen = 1
+                next
+            }
+            if (l ~ /^[[:space:]]*fallback wallpaper state:/) {
+                section = "fallback"
+                next
+            }
+            if (match($0, /User[[:space:]]+[0-9]+:[[:space:]]*id=[0-9]+/)) {
+                row = substr($0, RSTART, RLENGTH)
+                u = row
+                sub(/^User[[:space:]]+/, "", u)
+                sub(/:.*/, "", u)
+                v = row
+                sub(/^.*id=/, "", v)
+                v = id_of(v)
+                if (v >= 0) {
+                    if (section == "system") {
+                        if (!(u in sys)) n_sys++
+                        sys[u] = v
+                    } else if (section == "lock") {
+                        lock_ids[u] = v
+                    }
+                }
+                next
+            }
+            if (section == "system" || section == "lock" || section == "fallback") next
             if (l ~ /lock/ && l ~ /wallpaper/) {
                 if (match(l, /(lock wallpaper id|mlockwallpaperid|mlastlockwallpaperid)[^0-9]*[0-9]+/)) {
                     v = id_of(substr(l, RSTART, RLENGTH))
-                    if (v >= 0) lock = v
+                    if (v >= 0) legacy_lock = v
                 }
                 next
             }
@@ -651,25 +701,47 @@ wallpaper_ids_from_dump() (
             }
         }
         END {
+            if (sys_seen) {
+                user = want_user
+                if (user == "") {
+                    if (n_sys != 1) exit 1
+                    for (u in sys) {
+                        user = u
+                        break
+                    }
+                }
+                if (!(user in sys)) exit 1
+                home = sys[user]
+                if (home < 0) exit 1
+                if (lock_seen) {
+                    lock = (user in lock_ids) ? lock_ids[user] : "-"
+                } else {
+                    lock = (legacy_lock >= 0) ? legacy_lock : "-"
+                }
+                print home, lock
+                exit
+            }
             home = (explicit_home >= 0) ? explicit_home : plain_home
             if (home < 0) exit 1
-            if (lock < 0) lock = "-"
+            lock = (legacy_lock >= 0) ? legacy_lock : "-"
             print home, lock
         }
     ' "$dump"
 )
 
-# Android may share the lock wallpaper sentinel with the previous Home image
-# after a FLAG_SYSTEM-only change. A recorded lock ID must not move; an absent
-# lock ID may stay absent or materialise as the prior Home ID. Anything else
-# means the Home-only operation changed the lock target.
+# A Home-only FLAG_SYSTEM change may share the lock image with the prior Home
+# wallpaper. A recorded lock ID must not move. When the prior lock was shared
+# or absent (reported as "-"), the old Home image is preserved only if it
+# materialises as a lock ID equal to the prior Home ID; a still-absent lock
+# after a changed Home is not proof that the lock image survived. Anything
+# else means the Home-only operation changed the lock target.
 wallpaper_lock_preserved() (
     before_home=$1
     before_lock=$2
     after_lock=$3
     [ -n "$before_home" ] && [ -n "$before_lock" ] && [ -n "$after_lock" ] || return 1
     if [ "$before_lock" = '-' ]; then
-        [ "$after_lock" = '-' ] || [ "$after_lock" = "$before_home" ]
+        [ "$after_lock" = "$before_home" ]
         return
     fi
     [ "$after_lock" = "$before_lock" ]
@@ -924,6 +996,115 @@ ui_clickable_label_bounds() (
                 else if (fallback != "") emit(fallback)
             }
         '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the largest measured scrollable container
+# on a settings screen, clipped to the safe viewport above the optional
+# navigation-bar top. The settings screens use a Compose verticalScroll Column,
+# so this reads the real `scrollable="true"` node rather than a guessed phone
+# height or a hardcoded coordinate. Prints nothing when no scrollable container
+# is measurable.
+ui_scroll_container_bounds() (
+    xml=$1
+    nav_top=${2:-}
+    [ -s "$xml" ] || return 0
+    case "$nav_top" in '' | *[!0-9]*) nav_top= ;; esac
+    values=$(tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function area(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return -1
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return (p[3] - p[1]) * (p[4] - p[2])
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "scrollable") != "true") next
+                b = attr($0, "bounds")
+                a = area(b)
+                if (a > best_area) {
+                    best_area = a
+                    best = b
+                }
+            }
+            END { if (best != "") print best }
+        ')
+    [ -n "$values" ] || return 0
+    values=$(printf '%s\n' "$values" | tr '[],' '   ')
+    set -- $values
+    x1=$1
+    y1=$2
+    x2=$3
+    y2=$4
+    if [ -n "$nav_top" ] && [ "$nav_top" -gt 0 ] && [ "$y2" -gt "$nav_top" ]; then
+        y2=$nav_top
+    fi
+    [ "$y2" -gt "$y1" ] || return 0
+    printf '%s %s %s %s\n' "$x1" "$y1" "$x2" "$y2"
+)
+
+# Print the clickable label's bounds only when the whole control is measured
+# inside the supplied viewport. A control clipped by the viewport edge is not
+# tappable evidence and prints nothing.
+ui_clickable_label_within() (
+    xml=$1
+    label=$2
+    viewport=$3
+    [ -n "$viewport" ] || return 0
+    bounds=$(ui_clickable_label_bounds "$xml" "$label")
+    [ -n "$bounds" ] || return 0
+    set -- $bounds
+    [ "$#" -eq 4 ] || return 0
+    bx1=$1
+    by1=$2
+    bx2=$3
+    by2=$4
+    set -- $viewport
+    [ "$#" -eq 4 ] || return 0
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    [ "$by2" -gt "$by1" ] || return 0
+    if [ "$by1" -lt "$vy1" ] || [ "$by2" -gt "$vy2" ]; then
+        return 0
+    fi
+    if [ "$bx1" -lt "$vx1" ] || [ "$bx2" -gt "$vx2" ]; then
+        return 0
+    fi
+    printf '%s %s %s %s\n' "$bx1" "$by1" "$bx2" "$by2"
+)
+
+# Print "x y_from y_to" for a genuine vertical scroll inside the measured
+# settings scroll container, clipped to the safe viewport. Prints nothing when
+# the container or a usable band is unavailable so the caller fails closed.
+settings_scroll_target() (
+    xml=$1
+    nav_top=${2:-}
+    container=$(ui_scroll_container_bounds "$xml" "$nav_top")
+    [ -n "$container" ] || return 1
+    set -- $container
+    x=$((($1 + $3) / 2))
+    y1=$2
+    y2=$4
+    span=$((y2 - y1))
+    [ "$span" -ge 200 ] || return 1
+    y_from=$((y2 - span / 5))
+    y_to=$((y1 + span / 5))
+    [ "$y_from" -gt "$y_to" ] || return 1
+    printf '%s %s %s\n' "$x" "$y_from" "$y_to"
 )
 
 # Print the bottom y of the workspace header search container above the measured

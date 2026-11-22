@@ -2944,20 +2944,113 @@ EOF
 assert_eq 'modern Rect frame syntax is measured' \
     '0 1794 1080 1920' "$(ui_navigation_bar_bounds "$nav_insets_rect")"
 
+# Current AOSP WallpaperManagerService.dump/dumpWallpaper format: System, Lock
+# and Fallback sections, each entry " User <id>: id=<wallpaperId>: mWhich=...".
 wallpaper_dump="$TMP_DIR/wallpaper-dump.txt"
 cat > "$wallpaper_dump" <<'EOF'
+WallpaperManagerService:
+mDefaultWallpaperComponent=null
+mImageWallpaper=com.android.systemui.wallpapers.ImageWallpaper
+System wallpaper state:
+ User 0: id=41: mWhich=1: mSystemWasBoth=false: mBindSource=SET_STATIC
+ Display state:
+  displayId=0
+  mWidth=1080
+  mHeight=1920
+  mPadding=Rect(0, 0 - 0, 0)
+  mCropHint=Rect(0, 0 - 0, 0)
+  mName=/data/system/users/0/wallpaper
+  mAllowBackup=true
+  mWallpaperComponent=null
+  mWallpaperDimAmount=0.0
+  isColorExtracted=false
+  mUidToDimAmount:
+Lock wallpaper state:
+ User 0: id=12: mWhich=2: mSystemWasBoth=false: mBindSource=SET_STATIC
+ Display state:
+  displayId=0
+Fallback wallpaper state:
+ User 0: id=1: mWhich=1: mSystemWasBoth=false: mBindSource=INITIALIZE_FALLBACK
+EOF
+assert_eq 'current-format separate Home and lock IDs are measured' \
+    '41 12' "$(wallpaper_ids_from_dump "$wallpaper_dump")"
+assert_eq 'the current user may be supplied explicitly' \
+    '41 12' "$(wallpaper_ids_from_dump "$wallpaper_dump" 0)"
+
+wallpaper_dump_shared="$TMP_DIR/wallpaper-dump-shared.txt"
+cat > "$wallpaper_dump_shared" <<'EOF'
+System wallpaper state:
+ User 0: id=41: mWhich=1: mSystemWasBoth=false: mBindSource=SET_STATIC
+Lock wallpaper state:
+Fallback wallpaper state:
+ User 0: id=1: mWhich=1: mSystemWasBoth=false: mBindSource=INITIALIZE_FALLBACK
+EOF
+assert_eq 'an empty Lock section reports a shared lock, never the fallback' \
+    '41 -' "$(wallpaper_ids_from_dump "$wallpaper_dump_shared")"
+
+wallpaper_dump_users="$TMP_DIR/wallpaper-dump-users.txt"
+cat > "$wallpaper_dump_users" <<'EOF'
+System wallpaper state:
+ User 0: id=41: mWhich=1: mSystemWasBoth=false: mBindSource=SET_STATIC
+ User 10: id=99: mWhich=1: mSystemWasBoth=false: mBindSource=SET_STATIC
+Lock wallpaper state:
+ User 0: id=12: mWhich=2: mSystemWasBoth=false: mBindSource=SET_STATIC
+ User 10: id=88: mWhich=2: mSystemWasBoth=false: mBindSource=SET_STATIC
+Fallback wallpaper state:
+ User 0: id=1: mWhich=1: mSystemWasBoth=false: mBindSource=INITIALIZE_FALLBACK
+EOF
+assert_eq 'the current user row is selected among multiple users' \
+    '41 12' "$(wallpaper_ids_from_dump "$wallpaper_dump_users" 0)"
+assert_eq 'another explicitly requested user is selected' \
+    '99 88' "$(wallpaper_ids_from_dump "$wallpaper_dump_users" 10)"
+assert_eq 'multiple users without a current user is ambiguous' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_users")"
+assert_eq 'a missing requested user fails closed' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_users" 7)"
+
+wallpaper_dump_fallback="$TMP_DIR/wallpaper-dump-fallback.txt"
+cat > "$wallpaper_dump_fallback" <<'EOF'
+System wallpaper state:
+Lock wallpaper state:
+Fallback wallpaper state:
+ User 0: id=7: mWhich=1: mSystemWasBoth=false: mBindSource=INITIALIZE_FALLBACK
+EOF
+assert_eq 'a fallback-only dump is not a Home wallpaper' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_fallback" 0)"
+
+wallpaper_dump_missing="$TMP_DIR/wallpaper-dump-missing.txt"
+cat > "$wallpaper_dump_missing" <<'EOF'
+WallpaperManagerService:
+mDefaultWallpaperComponent=null
+Lock wallpaper state:
+ User 0: id=12: mWhich=2: mSystemWasBoth=false: mBindSource=SET_STATIC
+EOF
+assert_eq 'a missing System section fails closed even with a lock row' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_missing" 0)"
+
+wallpaper_dump_empty_system="$TMP_DIR/wallpaper-dump-empty-system.txt"
+cat > "$wallpaper_dump_empty_system" <<'EOF'
+System wallpaper state:
+Lock wallpaper state:
+ User 0: id=12: mWhich=2: mSystemWasBoth=false: mBindSource=SET_STATIC
+EOF
+assert_eq 'a System section without a current-user row fails closed' \
+    '' "$(wallpaper_ids_from_dump "$wallpaper_dump_empty_system" 0)"
+
+wallpaper_dump_legacy="$TMP_DIR/wallpaper-dump-legacy.txt"
+cat > "$wallpaper_dump_legacy" <<'EOF'
   mCurrentUserId=0
   mWallpaperId: 41
   mLockWallpaperId: 40
 EOF
-assert_eq 'Home and lock wallpaper IDs are measured separately' \
-    '41 40' "$(wallpaper_ids_from_dump "$wallpaper_dump")"
+assert_eq 'the compatible legacy Home and lock fields are still measured' \
+    '41 40' "$(wallpaper_ids_from_dump "$wallpaper_dump_legacy")"
 
 wallpaper_dump_home_only="$TMP_DIR/wallpaper-dump-home-only.txt"
 cat > "$wallpaper_dump_home_only" <<'EOF'
   Home wallpaper ID: 41
 EOF
-assert_eq 'a Home-only wallpaper dump reports no invented lock ID' \
+assert_eq 'a Home-only legacy dump reports no invented lock ID' \
     '41 -' "$(wallpaper_ids_from_dump "$wallpaper_dump_home_only")"
 
 wallpaper_dump_none="$TMP_DIR/wallpaper-dump-none.txt"
@@ -2969,12 +3062,49 @@ assert_true 'an unchanged lock ID is preserved' \
     wallpaper_lock_preserved 41 40 40
 assert_false 'a moved lock ID is rejected' \
     wallpaper_lock_preserved 41 40 39
-assert_true 'an absent lock ID may materialise as the prior Home ID' \
+assert_true 'a shared lock materialises as the prior Home ID' \
     wallpaper_lock_preserved 41 - 41
-assert_true 'an absent lock ID may stay absent' \
+assert_false 'a still-absent lock after a changed Home is not preservation' \
     wallpaper_lock_preserved 41 - -
-assert_false 'an absent lock ID may not take the new Home ID' \
+assert_false 'a shared lock may not take the new Home ID' \
     wallpaper_lock_preserved 41 - 42
+
+# Settings scroll fixtures: the real scrollable container and safe viewport are
+# measured, a clipped control is not tappable evidence, and the scroll gesture
+# stays inside the measured band.
+settings_scroll_xml="$TMP_DIR/settings-scroll.xml"
+cat > "$settings_scroll_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" scrollable="false" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.view.View" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" text="Apply to Home screen" class="android.widget.Button" clickable="true" bounds="[40,1700][1040,1780]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the settings scroll container is measured from the scrollable node' \
+    '0 72 1080 1794' "$(ui_scroll_container_bounds "$settings_scroll_xml" 1794)"
+assert_eq 'the settings scroll container is clipped to the navigation top' \
+    '0 72 1080 1700' "$(ui_scroll_container_bounds "$settings_scroll_xml" 1700)"
+assert_eq 'a control fully inside the viewport is tappable evidence' \
+    '40 1700 1040 1780' \
+    "$(ui_clickable_label_within "$settings_scroll_xml" 'Apply to Home screen' '0 72 1080 1794')"
+assert_eq 'a control clipped by the viewport is not tappable evidence' \
+    '' \
+    "$(ui_clickable_label_within "$settings_scroll_xml" 'Apply to Home screen' '0 72 1080 1750')"
+assert_eq 'the settings scroll gesture stays inside the measured band' \
+    '540 1450 416' "$(settings_scroll_target "$settings_scroll_xml" 1794)"
+
+settings_no_scroll="$TMP_DIR/settings-no-scroll.xml"
+cat > "$settings_no_scroll" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" scrollable="false" bounds="[0,0][1080,1920]" />
+</hierarchy>
+EOF
+assert_eq 'a settings screen without a scrollable node has no scroll target' \
+    '' "$(settings_scroll_target "$settings_no_scroll" 1794)"
 
 nav_none="$TMP_DIR/nav-none.txt"
 printf 'no window data here\n' > "$nav_none"
