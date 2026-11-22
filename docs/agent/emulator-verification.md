@@ -87,9 +87,17 @@ a view.
   never tapped, even when its resource id is valid. It expands the measured header only when no
   preview exists yet, re-resolves the expanded title header by its `app_title` so a stale collapsed
   position cannot pick a later provider's preview, captures `widgets-provider.xml`/`.png`, and taps
-  the fully visible `widget_preview_container`. It then polls for the real `widget_add_button`
-  resource id, captures `widgets-add.xml`/`.png`, and taps the measured Add button. The platform may
-  then show the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
+  the fully visible `widget_preview_container`. It then polls for the real enabled, clickable
+  `widget_add_button` resource id. The Add can sit partly under the navigation bar (CI120:
+  `[434,1755][645,1881]` with the navigation bar beginning around 1800, so the original centre 1818
+  opened Android HOME). The smoke remeasures the viewport from the exposed Add hierarchy, intersects
+  the Add bounds with it, pulls the intersection 32 px above the viewport bottom so it clears the
+  navigation bar, and taps only that safe intersection when it is at least 24 px in both dimensions.
+  It never taps the original Add centre. If no large-enough safe intersection remains it performs up
+  to three genuine vertical swipes inside the measured widget list, re-resolves the Add after every
+  scroll, and fails with `widgets-add-last.xml`/`.png` rather than guessing a coordinate. It
+  captures `widgets-add.xml`/`.png` and logs the original and safe bounds. The platform may then show
+  the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
   `Create widget and allow access?` dialog owned by `com.android.settings`, whose `android:id/message`
   names the launcher (`DotWel Launcher`) and the selected widget, and which exposes an enabled,
   clickable `android:id/button1` control whose label is `Create` or the platform-rendered `CREATE`,
@@ -103,7 +111,10 @@ a view.
   instead of faking the picker's long-press drag. It then polls for a new `AppWidgetHostView`-suffixed
   node in the workspace and, with bounded retries, a new `AppWidgetId` whose host package is this
   launcher in `dumpsys appwidget` (current `[N] id=N`/`host=HostId{..., pkg:...}` and legacy
-  `AppWidgetId=N`/`hostPackage=` shapes are both parsed). The HOME comparison parses both hierarchies
+  `AppWidgetId=N`/`hostPackage=` shapes are both parsed). API 37 wraps the provider in
+  `ProviderId{cmp:ComponentInfo{...}}`; that wrapper is accepted only inside a real widget-id block
+  and only when the same block is owned by this launcher. Provider catalogs and other hosts are
+  rejected. The HOME comparison parses both hierarchies
   as node records, so a compact single-line UIAutomator dump is handled, and it ignores hosts inside
   picker/sheet previews. It captures `widgets-home-placed.xml`/`.png`, and fails with saved
   `widgets-add-last.xml`/`.png` if a configuration activity, an uncompleted consent or an unbound

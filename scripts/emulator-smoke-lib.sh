@@ -1114,7 +1114,8 @@ widget_picker_scroll_target() (
 )
 
 # Print the bounds of the exposed widget Add button by its real resource id.
-# The button may be icon-only, so English text is not required.
+# The button may be icon-only, so English text is not required. It must be
+# enabled as well as clickable, so a disabled overlay is never tapped.
 widget_picker_add_button_bounds() (
     xml=$1
     [ -s "$xml" ] || return 0
@@ -1143,10 +1144,62 @@ widget_picker_add_button_bounds() (
                 if ($0 !~ /<node[[:space:]]/) next
                 if (attr($0, "resource-id") !~ /(^|\/)widget_add_button$/) next
                 if (attr($0, "clickable") != "true") next
+                if (attr($0, "enabled") != "true") next
                 emit(attr($0, "bounds"))
                 exit
             }
         '
+)
+
+# Print the safe intersection ("x1 y1 x2 y2") of an exposed Add button and the
+# measured picker viewport, pulled 32 px above the viewport's bottom edge so the
+# tap can never land on the navigation bar. CI120 exposed Add at
+# [434,1755][645,1881] while the navigation bar begins around 1800; the original
+# centre 1818 was unsafe. A result is printed only when the remaining box is at
+# least 24 px in both dimensions, so a clipped or fully hidden Add is rejected
+# instead of being tapped at its unsafe original centre. Prints nothing when
+# there is no large-enough safe intersection.
+widget_add_safe_bounds() (
+    add=$1
+    viewport=$2
+    [ -n "$add" ] || return 0
+    [ -n "$viewport" ] || return 0
+    set -- $add
+    [ "$#" -eq 4 ] || return 0
+    ax1=$1
+    ay1=$2
+    ax2=$3
+    ay2=$4
+    set -- $viewport
+    [ "$#" -eq 4 ] || return 0
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    x1=$ax1
+    if [ "$vx1" -gt "$x1" ]; then
+        x1=$vx1
+    fi
+    y1=$ay1
+    if [ "$vy1" -gt "$y1" ]; then
+        y1=$vy1
+    fi
+    x2=$ax2
+    if [ "$vx2" -lt "$x2" ]; then
+        x2=$vx2
+    fi
+    y2=$ay2
+    if [ "$vy2" -lt "$y2" ]; then
+        y2=$vy2
+    fi
+    y2=$((y2 - 32))
+    if [ "$x2" -le "$x1" ] || [ "$y2" -le "$y1" ]; then
+        return 0
+    fi
+    if [ "$((x2 - x1))" -lt 24 ] || [ "$((y2 - y1))" -lt 24 ]; then
+        return 0
+    fi
+    printf '%s %s %s %s\n' "$x1" "$y1" "$x2" "$y2"
 )
 
 # Succeed only for the real Android widget-bind consent dialog
@@ -1396,12 +1449,26 @@ appwidget_new_providers() (
                 provider = ""
                 host = ""
             }
+            function provider_of(line,    wrapped) {
+                if (match(line, /provider=ComponentInfo\{[^}]*\}/))
+                    return substr(line, RSTART, RLENGTH)
+                if (match(line, /provider=ProviderId\{[^}]*ComponentInfo\{[^}]*\}/)) {
+                    wrapped = substr(line, RSTART, RLENGTH)
+                    if (match(wrapped, /ComponentInfo\{[^}]*\}/))
+                        return "provider=" substr(wrapped, RSTART, RLENGTH)
+                }
+                return ""
+            }
             {
                 if ($1 != kind) {
                     flush()
                     kind = $1
                 }
                 line = substr($0, index($0, "\t") + 1)
+                if (line ~ /^[[:space:]]*[A-Za-z][A-Za-z ]*:[[:space:]]*$/) {
+                    flush()
+                    next
+                }
                 if (line ~ /^[[:space:]]*\[[0-9]+\][[:space:]]+id=[0-9]+[[:space:]]*$/) {
                     flush()
                     id = line
@@ -1416,8 +1483,12 @@ appwidget_new_providers() (
                     next
                 }
                 if (id == "") next
-                if (match(line, /provider=ComponentInfo\{[^}]*\}/))
-                    provider = substr(line, RSTART, RLENGTH)
+                p = provider_of(line)
+                if (p != "") {
+                    if (provider != "") flush()
+                    if (id == "") next
+                    provider = p
+                }
                 if (match(line, /host=HostId\{[^}]*\}/)) {
                     h = substr(line, RSTART, RLENGTH)
                     if (match(h, /pkg:[^},]*/)) {

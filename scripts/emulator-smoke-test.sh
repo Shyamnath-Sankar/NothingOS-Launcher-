@@ -633,15 +633,62 @@ assert_eq 'the expanded title header associates the preview with the selected pr
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
-  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" content-desc="Add Clock widget" clickable="true" bounds="[200,800][400,900]" />
+  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" content-desc="Add Clock widget" clickable="true" enabled="true" bounds="[200,800][400,900]" />
 </hierarchy>
 EOF
-assert_eq 'the exposed widget Add button is selected by its resource id' \
+assert_eq 'the exposed enabled widget Add button is selected by its resource id' \
     '200 800 400 900' \
     "$(widget_picker_add_button_bounds "$widget_add_xml")"
 assert_eq 'an English Add label without the add-button id is rejected' \
     '' \
     "$(widget_picker_add_button_bounds "$home_xml")"
+
+widget_add_disabled_xml="$TMP_DIR/widget-add-disabled.xml"
+cat > "$widget_add_disabled_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" clickable="true" enabled="false" bounds="[200,800][400,900]" />
+</hierarchy>
+EOF
+assert_eq 'a disabled Add button is not a safe tap target' \
+    '' \
+    "$(widget_picker_add_button_bounds "$widget_add_disabled_xml")"
+
+# CI120 exposed Add at [434,1755][645,1881] on the real picker while the
+# navigation bar begins around 1800. The root-100 viewport bottom is 1820, so the
+# original Add centre 1818 is unsafe. The safe intersection must be pulled above
+# the navigation bar and only tapped when it is still large enough.
+widget_add_low_xml="$TMP_DIR/widget-add-low.xml"
+cat > "$widget_add_low_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]" />
+    <node index="2" text="Add" resource-id="com.launchernos.dotwellabs.debug:id/widget_add_button" class="android.widget.Button" clickable="true" enabled="true" bounds="[434,1755][645,1881]" />
+  </node>
+</hierarchy>
+EOF
+widget_add_low_viewport=$(widget_picker_viewport_bounds "$widget_add_low_xml")
+assert_eq 'the CI120 Add viewport is remeasured from the exposed Add hierarchy' \
+    '0 350 1080 1820' \
+    "$widget_add_low_viewport"
+assert_eq 'the CI120 partially hidden Add has a safe intersection above the navigation bar' \
+    '434 1755 645 1788' \
+    "$(widget_add_safe_bounds '434 1755 645 1881' "$widget_add_low_viewport")"
+assert_eq 'a fully visible Add keeps a safe tappable intersection' \
+    '200 800 400 868' \
+    "$(widget_add_safe_bounds '200 800 400 900' "$widget_add_low_viewport")"
+assert_eq 'a fully hidden Add below the viewport has no safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '434 1830 645 1881' "$widget_add_low_viewport")"
+assert_eq 'a barely visible Add leaves no large-enough safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '434 1775 645 1881' "$widget_add_low_viewport")"
+assert_eq 'an Add outside the horizontal viewport has no safe intersection' \
+    '' \
+    "$(widget_add_safe_bounds '1100 1755 1300 1881' "$widget_add_low_viewport")"
 
 # A real CI114 picker: the Calendar header sits near the bottom and its preview
 # is clipped to 51 px under the navigation bar. The usable viewport is below the
@@ -877,6 +924,103 @@ assert_eq 'a hostPackage line also proves launcher ownership' \
 assert_eq 'a hostPackage owned by another launcher is rejected' \
     '' \
     "$(appwidget_new_providers '' "$appwidget_hostpackage" com.other.launcher)"
+
+# API 37 wraps the provider in ProviderId{cmp:ComponentInfo{...}}. The wrapper is
+# only accepted inside a real widget-id block, and the block must still be owned
+# by this launcher. Provider catalogs and other hosts must never satisfy placement.
+appwidget_api37_before="$TMP_DIR/appwidget-api37-before.txt"
+cat > "$appwidget_api37_before" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=1
+EOF
+appwidget_api37_after="$TMP_DIR/appwidget-api37-after.txt"
+cat > "$appwidget_api37_after" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=2
+EOF
+assert_eq 'an API37 ProviderId wrapper inside a launcher-owned widget-id block is reported' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_after" com.launchernos.dotwellabs.debug)"
+assert_eq 'an API37 ProviderId wrapper owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_after" com.other.launcher)"
+
+appwidget_api37_other_host="$TMP_DIR/appwidget-api37-other-host.txt"
+cat > "$appwidget_api37_other_host" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=7
+    host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper in another launcher host block is rejected' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_other_host" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_catalog="$TMP_DIR/appwidget-api37-catalog.txt"
+cat > "$appwidget_api37_catalog" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+Installed providers:
+  provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+  provider=ProviderId{cmp:ComponentInfo{com.example.two/.Two}, profile:0}
+EOF
+assert_eq 'an API37 provider catalog without a new widget id is not a new widget' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_catalog" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_loose_catalog="$TMP_DIR/appwidget-api37-loose-catalog.txt"
+cat > "$appwidget_api37_loose_catalog" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  Provider catalog:
+    provider=ProviderId{cmp:ComponentInfo{com.example.two/.Two}, profile:0}
+EOF
+assert_eq 'an API37 provider catalog after a widget block is not attributed to the old id' \
+    '' \
+    "$(appwidget_new_providers "$appwidget_api37_before" "$appwidget_api37_loose_catalog" com.launchernos.dotwellabs.debug)"
+
+appwidget_api37_legacy="$TMP_DIR/appwidget-api37-legacy.txt"
+cat > "$appwidget_api37_legacy" <<'EOF'
+AppWidgets:
+  AppWidgetId=9:
+    hostPackage=com.launchernos.dotwellabs.debug
+    provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper also works in a legacy AppWidgetId block with hostPackage' \
+    'provider=ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}' \
+    "$(appwidget_new_providers '' "$appwidget_api37_legacy" com.launchernos.dotwellabs.debug)"
+assert_eq 'a legacy API37 wrapper owned by another launcher is rejected' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_api37_legacy" com.other.launcher)"
+
+appwidget_api37_no_block="$TMP_DIR/appwidget-api37-no-block.txt"
+cat > "$appwidget_api37_no_block" <<'EOF'
+Installed providers:
+  provider=ProviderId{cmp:ComponentInfo{com.android.deskclock/com.android.alarmclock.DigitalAppWidgetProvider}, profile:0}
+EOF
+assert_eq 'an API37 wrapper outside any widget-id block is not a bound widget' \
+    '' \
+    "$(appwidget_new_providers '' "$appwidget_api37_no_block" com.launchernos.dotwellabs.debug)"
 
 # --- widget bind consent fixtures ------------------------------------------
 
@@ -1234,8 +1378,18 @@ assert_true 'the widgets capture keeps the re-resolved header for the preview' \
     grep -Fq '_cwp_header=$_cwp_candidate_header' "$widgets_body"
 assert_true 'the widgets capture taps the measured preview, not a fixed point' \
     grep -Fq 'tap_center_of_bounds "$_cwp_preview"' "$widgets_body"
-assert_true 'the widgets capture taps the measured Add button, not a fixed point' \
+assert_true 'the widgets capture remeasures the safe viewport after exposing Add' \
+    grep -Fq 'widget_picker_viewport_bounds "$_cwp_add_xml"' "$widgets_body"
+assert_true 'the widgets capture intersects the Add button with the safe viewport' \
+    grep -Fq 'widget_add_safe_bounds' "$widgets_body"
+assert_true 'the widgets capture taps the safe Add intersection, not a fixed point' \
+    grep -Fq 'tap_center_of_bounds "$_cwp_safe_add"' "$widgets_body"
+assert_false 'the widgets capture never taps the unsafe original Add centre' \
     grep -Fq 'tap_center_of_bounds "$_cwp_add"' "$widgets_body"
+assert_true 'the widgets capture bounds the measured Add re-scroll attempts' \
+    grep -Fq '_cwp_max_add_scrolls=3' "$widgets_body"
+assert_true 'the widgets capture re-resolves Add after a measured list scroll' \
+    grep -Fq 'widgets-add-scroll-$_cwp_add_scroll.xml' "$widgets_body"
 assert_true 'the widgets capture detects the exact launcher/widget bind consent' \
     grep -Fq 'widget_bind_consent_is_ready' "$widgets_body"
 assert_true 'the widgets capture requires the launcher identity and widget name' \

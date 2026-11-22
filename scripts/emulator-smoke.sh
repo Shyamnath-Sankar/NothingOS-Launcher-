@@ -934,14 +934,64 @@ capture_widgets_picker() {
                     capture_screenshot_to widgets-add-last.png
                     fail "the widget Add button was not exposed after tapping the fully visible preview (no fake drag fallback)"
                 fi
+                # The exposed Add can sit partly under the navigation bar (CI120:
+                # [434,1755][645,1881], navbar from about 1800, so the original
+                # centre 1818 opened Android HOME). Remeasure the viewport from
+                # the same hierarchy, intersect it with the enabled clickable Add
+                # and pull the tap above the navigation bar. Never tap the
+                # original centre. If no safe intersection remains, scroll the
+                # measured real list and re-resolve, bounded, then fail with the
+                # last hierarchy and PNG instead of guessing a coordinate.
+                _cwp_add_scroll=0
+                _cwp_max_add_scrolls=3
+                _cwp_safe_add=
+                _cwp_add_viewport=
+                while :; do
+                    _cwp_add_viewport=$(widget_picker_viewport_bounds "$_cwp_add_xml")
+                    _cwp_safe_add=$(widget_add_safe_bounds \
+                        "$_cwp_add" "$_cwp_add_viewport")
+                    if [ -n "$_cwp_safe_add" ]; then
+                        break
+                    fi
+                    if [ "$_cwp_add_scroll" -ge "$_cwp_max_add_scrolls" ]; then
+                        break
+                    fi
+                    _cwp_add_scroll_target=$(widget_picker_scroll_target \
+                        "$_cwp_add_xml") || break
+                    set -- $_cwp_add_scroll_target
+                    printf 'add-scroll=%s from=%s,%s to=%s,%s add=%s viewport=%s\n' \
+                        "$((_cwp_add_scroll + 1))" "$1" "$2" "$1" "$3" \
+                        "$_cwp_add" "$_cwp_add_viewport" \
+                        >> "$ARTIFACTS/widgets-add-log.txt"
+                    adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
+                        >> "$ARTIFACTS/widgets-add-log.txt" 2>&1 ||
+                        fail "could not scroll the measured widget list to expose a safe Add button"
+                    _cwp_add_scroll=$((_cwp_add_scroll + 1))
+                    sleep 1
+                    if ! capture_ui_xml \
+                        "widgets-add-scroll-$_cwp_add_scroll.xml"; then
+                        break
+                    fi
+                    _cwp_add_xml="$ARTIFACTS/widgets-add-scroll-$_cwp_add_scroll.xml"
+                    _cwp_add=$(widget_picker_add_button_bounds "$_cwp_add_xml")
+                    [ -n "$_cwp_add" ] || break
+                done
+                if [ -z "$_cwp_safe_add" ]; then
+                    cp "$_cwp_add_xml" "$ARTIFACTS/widgets-add.xml" || true
+                    capture_ui_xml widgets-add-last.xml || true
+                    capture_screenshot_to widgets-add-last.png
+                    fail "the widget Add button had no safe intersection above the navigation bar after $_cwp_add_scroll measured scroll(s) (add=$_cwp_add viewport=$_cwp_add_viewport)"
+                fi
                 cp "$_cwp_add_xml" "$ARTIFACTS/widgets-add.xml"
                 capture_screenshot_to widgets-add.png
                 [ -s "$ARTIFACTS/widgets-add.png" ] ||
                     fail "widget Add screenshot capture failed"
-                printf 'route=add-button add=%s\n' "$_cwp_add" \
+                printf 'route=add-button add=%s safe=%s viewport=%s scrolls=%s\n' \
+                    "$_cwp_add" "$_cwp_safe_add" "$_cwp_add_viewport" \
+                    "$_cwp_add_scroll" \
                     >> "$ARTIFACTS/widgets-add-log.txt"
-                tap_center_of_bounds "$_cwp_add" ||
-                    fail "could not tap the measured widget Add button"
+                tap_center_of_bounds "$_cwp_safe_add" ||
+                    fail "could not tap the safe widget Add intersection"
 
                 # Wait, bounded, for the sheet to close and a real
                 # AppWidgetHostView to appear in the workspace. The platform may
