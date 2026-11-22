@@ -71,7 +71,10 @@ fun LawnchairTheme(
 
 @Composable
 fun ComponentActivity.EdgeToEdge(darkTheme: Boolean = isSelectedThemeDark) {
-    val scrimColor = if (MaterialTheme.colorScheme.background.toArgb() == Color.BLACK) {
+    val scrimColor = if (
+        NothingUiFeature.themeEnabled &&
+        MaterialTheme.colorScheme.background.toArgb() == Color.BLACK
+    ) {
         Color.BLACK
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.95f).toArgb()

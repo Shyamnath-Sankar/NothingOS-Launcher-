@@ -115,7 +115,8 @@ package app.lawnchair.ui.preferences.components.layout
 
 @Composable
 fun TopBar() {
-    val onAmoled = MaterialTheme.colorScheme.background == Color.Black
+    val onAmoled = NothingUiFeature.themeEnabled &&
+        MaterialTheme.colorScheme.background == Color.Black
     val containerColor = if (onAmoled) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.surface
     val expandedScrolledColor = if (onAmoled) {
         MaterialTheme.colorScheme.background
@@ -135,7 +136,10 @@ package app.lawnchair.ui.theme
 
 @Composable
 fun ComponentActivity.EdgeToEdge() {
-    val scrimColor = if (MaterialTheme.colorScheme.background.toArgb() == Color.BLACK) {
+    val scrimColor = if (
+        NothingUiFeature.themeEnabled &&
+        MaterialTheme.colorScheme.background.toArgb() == Color.BLACK
+    ) {
         Color.BLACK
     } else {
         MaterialTheme.colorScheme.surface.copy(alpha = 0.95f).toArgb()
@@ -391,7 +395,7 @@ expect_fail_contains 'a non-black dark settings background fails' "$palette_not_
 
 scrim_not_black="$TMP_DIR/scrim-not-black"
 cp -R "$clean" "$scrim_not_black"
-sed -i 's/if (MaterialTheme.colorScheme.background.toArgb() == Color.BLACK)/if (false)/' \
+sed -i 's/MaterialTheme.colorScheme.background.toArgb() == Color.BLACK/false/' \
     "$scrim_not_black/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
 expect_fail_contains 'a non-black navigation-bar scrim fails' "$scrim_not_black" \
     'navigation-bar scrim must use the pure-black background'

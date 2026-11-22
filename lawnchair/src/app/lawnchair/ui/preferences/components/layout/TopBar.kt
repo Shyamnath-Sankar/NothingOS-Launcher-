@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import app.nothingui.theme.NothingUiFeature
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -50,7 +51,8 @@ fun TopBar(
 ) {
     val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     val buttonPadding = 4.dp
-    val onAmoled = MaterialTheme.colorScheme.background == Color.Black
+    val onAmoled = NothingUiFeature.themeEnabled &&
+        MaterialTheme.colorScheme.background == Color.Black
     val appBarColors = TopAppBarDefaults.topAppBarColors()
     val containerColor = if (onAmoled) MaterialTheme.colorScheme.background else appBarColors.containerColor
     val expandedScrolledColor = if (onAmoled) {

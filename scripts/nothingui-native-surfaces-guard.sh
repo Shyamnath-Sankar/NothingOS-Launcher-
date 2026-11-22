@@ -91,8 +91,12 @@ grep -Fq 'val Black = Color(0xFF000000)' "$COLORS" ||
     fail "missing the pure-black palette swatch"
 grep -Fq 'background = NothingUiPalette.Black' "$COLORS" ||
     fail "the dark settings background must be pure black"
+grep -Fq 'NothingUiFeature.themeEnabled &&' "$TOPBAR" ||
+    fail "the AMOLED top bar must stay Play-gated"
 grep -Fq 'MaterialTheme.colorScheme.background == Color.Black' "$TOPBAR" ||
     fail "the AMOLED top bar must detect the pure-black background"
+grep -Fq 'NothingUiFeature.themeEnabled &&' "$THEME" ||
+    fail "the AMOLED navigation-bar scrim must stay Play-gated"
 grep -Fq 'MaterialTheme.colorScheme.background.toArgb() == Color.BLACK' "$THEME" ||
     fail "the AMOLED navigation-bar scrim must use the pure-black background"
 
