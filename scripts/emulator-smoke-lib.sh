@@ -1491,8 +1491,17 @@ home_widget_bounds() (
                     if (kind == "R") {
                         if (!preview) seen[bounds] = 1
                     } else if (!preview) {
-                        if (ws && first_ws == "") first_ws = bounds
-                        if (!ws && first_nonws == "") first_nonws = bounds
+                        # Select the first eligible unseen host while scanning.
+                        # The reference is fully processed before the current
+                        # tree, so `seen` is complete here. Previously the first
+                        # current workspace host was recorded and then rejected
+                        # if it was pre-existing, so a later new host (the added
+                        # Calendar) was never examined.
+                        if (ws) {
+                            if (!(bounds in seen) && chosen_ws == "") chosen_ws = bounds
+                        } else if (!(bounds in seen) && chosen_nonws == "") {
+                            chosen_nonws = bounds
+                        }
                     }
                 }
                 if (!selfclose) {
@@ -1502,9 +1511,8 @@ home_widget_bounds() (
                 }
             }
             END {
-                if (first_ws != "") chosen = first_ws
-                else if (!cur_saw_ws) chosen = first_nonws
-                if (chosen != "" && !(chosen in seen)) emit(chosen)
+                if (chosen_ws != "") emit(chosen_ws)
+                else if (!cur_saw_ws && chosen_nonws != "") emit(chosen_nonws)
             }
         '
 )

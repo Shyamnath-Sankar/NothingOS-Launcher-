@@ -865,6 +865,45 @@ assert_eq 'a host outside a workspace that is present is rejected' \
     '' \
     "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
 
+# CI147 regression: the pre-widget HOME already exposes the two own widgets.
+# After the third-party Calendar is added, both own hosts remain and the new
+# Calendar host appears after them in document order with nested children. The
+# detector must select the first eligible unseen host during scanning, not stop
+# at the first workspace host and reject it because it already existed.
+multi_host_ref_xml="$TMP_DIR/multi-host-ref.xml"
+cat > "$multi_host_ref_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Battery" bounds="[556,328][1042,738]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+multi_host_placed_xml="$TMP_DIR/multi-host-placed.xml"
+cat > "$multi_host_placed_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Battery" bounds="[556,328][1042,738]" />
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,770][524,1401]">
+        <node index="0" text="21" class="android.widget.TextView" bounds="[60,800][200,900]" />
+        <node index="1" text="" class="android.widget.FrameLayout" bounds="[60,920][500,1380]">
+          <node index="0" text="Fri" class="android.widget.TextView" bounds="[80,940][180,1000]" />
+        </node>
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'two pre-existing own hosts before a nested Calendar still yield the new Calendar bounds' \
+    '38 770 524 1401' \
+    "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml")"
+
 # --- pending own-widget fixtures -------------------------------------------
 #
 # After a denied automatic bind, the fresh layout keeps each own slot as a
