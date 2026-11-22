@@ -2252,6 +2252,9 @@ _cwg_measure_control() {
             "$_cmc_attempt" "$_cmc_label" "${_cmc_viewport:-none}" "${_cmc_bounds:-none}" \
             >> "$_cmc_log"
         if [ -n "$_cmc_bounds" ]; then
+            cp "$_cmc_xml" \
+                "$ARTIFACTS/wallpaper-scroll-$_cmc_tag-visible.xml" || return 1
+            capture_screenshot_to "wallpaper-scroll-$_cmc_tag-visible.png"
             printf '%s\n' "$_cmc_bounds"
             return 0
         fi
@@ -2340,14 +2343,31 @@ capture_wallpaper_gallery() {
             _cwg_failure="wallpaper preview $_cwg_name XML capture failed"
             break
         fi
-        for _cwg_label in 'Apply to Home screen' 'CC BY 4.0' \
-            'https://creativecommons.org/licenses/by/4.0/'; do
-            grep -Fq "$_cwg_label" "$ARTIFACTS/wallpaper-preview-$_cwg_name.xml" ||
-                { _cwg_failure="wallpaper preview $_cwg_name is missing '$_cwg_label'"; break; }
-        done
-        [ -z "$_cwg_failure" ] || break
         capture_screenshot_to "wallpaper-preview-$_cwg_name.png"
-        _cwg_cancel=$(_cwg_measure_control 'Cancel preview' "cancel-$_cwg_name" 4) ||
+        # The selected preview's credit, licence and Apply/Cancel controls sit
+        # below the initial viewport, so they are absent from the unscrolled
+        # XML. Reveal and measure each one through the bounded, navigation-aware
+        # settings scroll before asserting it.
+        _cwg_credit=$(_cwg_measure_control \
+            'Copyright (c) 2024 Tecdrop. CC BY 4.0.' \
+            "attribution-$_cwg_name" 8) ||
+            { _cwg_failure="could not reveal the CC BY 4.0 attribution in $_cwg_name mode"; break; }
+        _cwg_credit_xml="$ARTIFACTS/wallpaper-scroll-attribution-$_cwg_name-visible.xml"
+        grep -Fq 'CC BY 4.0' "$_cwg_credit_xml" ||
+            { _cwg_failure="the revealed $_cwg_name preview is missing 'CC BY 4.0'"; break; }
+        _cwg_license=$(_cwg_measure_control \
+            'License: https://creativecommons.org/licenses/by/4.0/' \
+            "license-$_cwg_name" 8) ||
+            { _cwg_failure="could not measure the CC BY 4.0 licence control in $_cwg_name mode"; break; }
+        _cwg_license_xml="$ARTIFACTS/wallpaper-scroll-license-$_cwg_name-visible.xml"
+        grep -Fq 'https://creativecommons.org/licenses/by/4.0/' "$_cwg_license_xml" ||
+            { _cwg_failure="the revealed $_cwg_name preview is missing the CC BY 4.0 licence URL"; break; }
+        _cwg_apply=$(_cwg_measure_control 'Apply to Home screen' \
+            "apply-preview-$_cwg_name" 8) ||
+            { _cwg_failure="could not measure a real Apply button in $_cwg_name mode"; break; }
+        [ -n "$_cwg_apply" ] ||
+            { _cwg_failure="the $_cwg_name preview Apply button has no measured bounds"; break; }
+        _cwg_cancel=$(_cwg_measure_control 'Cancel preview' "cancel-$_cwg_name" 8) ||
             { _cwg_failure="could not measure the Cancel preview control in $_cwg_name mode"; break; }
         tap_center_of_bounds "$_cwg_cancel"
         sleep 1

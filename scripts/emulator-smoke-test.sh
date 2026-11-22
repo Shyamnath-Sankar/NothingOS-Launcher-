@@ -3069,6 +3069,39 @@ assert_false 'a still-absent lock after a changed Home is not preservation' \
 assert_false 'a shared lock may not take the new Home ID' \
     wallpaper_lock_preserved 41 - 42
 
+# The wallpaper preview must reveal the below-the-fold credit, licence and
+# controls through the measured settings scroll before asserting them. The
+# initial unscrolled XML is not evidence for offscreen content.
+wallpaper_body="$TMP_DIR/capture_wallpaper_gallery.sh"
+sed -n '/^capture_wallpaper_gallery() {/,/^}/p' "$SMOKE" > "$wallpaper_body"
+assert_true 'the wallpaper preview reads the revealed CC BY 4.0 attribution XML' \
+    grep -Fq "'CC BY 4.0' \"\$_cwg_credit_xml\"" "$wallpaper_body"
+assert_true 'the wallpaper preview reads the revealed CC BY 4.0 licence URL XML' \
+    grep -Fq "'https://creativecommons.org/licenses/by/4.0/' \"\$_cwg_license_xml\"" \
+    "$wallpaper_body"
+attribution_line=$(grep -n 'Copyright (c) 2024 Tecdrop. CC BY 4.0.' "$wallpaper_body" |
+    sed -n '1s/:.*//p')
+credit_assert_line=$(grep -n "'CC BY 4.0' \"\$_cwg_credit_xml\"" "$wallpaper_body" |
+    sed -n '1s/:.*//p')
+license_line=$(grep -n 'License: https://creativecommons.org/licenses/by/4.0/' \
+    "$wallpaper_body" | sed -n '1s/:.*//p')
+license_url_line=$(grep -n "'https://creativecommons.org/licenses/by/4.0/' \"\$_cwg_license_xml\"" \
+    "$wallpaper_body" | sed -n '1s/:.*//p')
+apply_line=$(grep -n "_cwg_measure_control 'Apply to Home screen'" "$wallpaper_body" |
+    sed -n '1s/:.*//p')
+cancel_line=$(grep -n "_cwg_measure_control 'Cancel preview'" "$wallpaper_body" |
+    sed -n '1s/:.*//p')
+if [ -n "$attribution_line" ] && [ -n "$credit_assert_line" ] &&
+    [ -n "$license_line" ] && [ -n "$license_url_line" ] &&
+    [ -n "$apply_line" ] && [ -n "$cancel_line" ] &&
+    [ "$attribution_line" -lt "$credit_assert_line" ] &&
+    [ "$license_line" -lt "$license_url_line" ] &&
+    [ "$apply_line" -lt "$cancel_line" ]; then
+    pass 'the wallpaper preview reveals attribution/licence/Apply before asserting them'
+else
+    fail 'the wallpaper preview reveals attribution/licence/Apply before asserting them'
+fi
+
 # Settings scroll fixtures: the real scrollable container and safe viewport are
 # measured, a clipped control is not tappable evidence, and the scroll gesture
 # stays inside the measured band.

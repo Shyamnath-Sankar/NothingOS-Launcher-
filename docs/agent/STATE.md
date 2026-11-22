@@ -3,22 +3,66 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 Torus packaging/format repair done; combined
-  CI and runtime evidence still pending**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 wallpaper-gallery smoke ordering correction done;
+  runtime preview/Cancel/Back/apply/Lock/widget proof still pending**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `ca39dcc` (`style(wallpaper): satisfy ktlint 1.8 import and signature rules`). The packaging
-  repair is `4c0dd58`; this STATE commit follows. CI192 is the withheld candidate (`5687f05`
-  assembled, 87 JUnit passed, gallery crashed on the AAPT sentinel). CI181 (`6824907`) remains the
+- head: this commit (`fix(smoke): reveal wallpaper preview controls before asserting`). The packaging
+  repair is `4c0dd58`, the APK sentinel check `026f74b`. CI195 is the withheld candidate: its compiled
+  APK passed the sentinel check, six compiled Torus paths equalled source, the installed APK SHA-256 was
+  `f4f01c8d8aa31b1a16d0465e484ae7a75ea52f6d0829df45dcd3744215d4425a`, style and 87 JUnit passed, and
+  the gallery rendered without a crash, but the runtime stopped in `capture_wallpaper_gallery` because
+  the unscrolled preview XML lacked the below-the-fold CC BY 4.0 credit. CI181 (`6824907`) remains the
   last verified runtime fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **no CI result is claimed for this head.** CI192 proved assembly plus 87 JUnit tests but the
-  gallery crashed when Compose parsed AAPT's `STRING_TOO_LARGE` sentinel in the packaged Torus XML.
+- ci: **CI195 proves compiled packaging/format, style and unit tests only; its runtime gallery proof is
+  incomplete.** No new CI result exists for this head.
 - next: a fresh CI must assemble the Play debug APK, run the 87 JUnit tests and
   `spotlessKotlinCheck`, then run the API 37 emulator smoke. It must confirm the gallery opens from
-  both dashboard and Home Screen settings, the Torus preview renders without the sentinel, and the
-  measured scroll exposes Apply/Cancel. Then prove Pitch Black and Torus each change only the Home
-  wallpaper ID, preserve widget IDs/layout, and keep the lock-preservation rule on the real dump.
-  Release/hosting/merge stay paused; CI192 stays the withheld candidate, CI181 the fallback.
+  both dashboard and Home Screen settings, the Torus preview renders, and the corrected measured
+  scroll reveals the CC BY 4.0 credit, exact licence URL and real Apply/Cancel controls before
+  asserting them in both dark and light. Then prove Cancel/Back change no IDs, Pitch Black and Torus
+  each change only the Home wallpaper ID, preserve widget IDs/layout, and keep the lock-preservation
+  rule on the real dump. Release/hosting/merge stay paused; CI195 stays withheld, CI181 the fallback.
+
+## done (this run — wallpaper preview scroll ordering)
+
+- **Root cause from the CI195 runtime stop, not guessed:** `capture_wallpaper_gallery` grepped the
+  initial unscrolled `wallpaper-preview-<mode>.xml` for `Apply to Home screen`, `CC BY 4.0` and the
+  licence URL before calling the measured-scroll helper. The selected preview begins near the viewport
+  bottom, so the credit, licence and buttons are below the fold and absent from that XML.
+- **Ordering only:** after the existing tile tap, initial preview XML/PNG capture, the smoke now uses
+  the existing bounded, navigation-aware `_cwg_measure_control` scroll to reveal each item before
+  asserting it, in both dark and light modes. No app, layout, resource, licence, asset, dependency,
+  SDK, permission, manifest, signing, applicationId or workflow changed; no screen coordinate is
+  hardcoded.
+- **Exact evidence kept:** the CC BY 4.0 attribution is asserted from the revealed XML of the exact
+  `Copyright (c) 2024 Tecdrop. CC BY 4.0.` credit; the licence is a measured visible control whose
+  exact text is `License: https://creativecommons.org/licenses/by/4.0/`; Apply is a measured exact
+  visible `Apply to Home screen` control, so the hint text mentioning Apply is not accepted. Cancel
+  preview is still measured and tapped, never a fake undo.
+- **Fresh evidence:** on every successful reveal the helper copies the measured XML to
+  `wallpaper-scroll-<tag>-visible.xml` and captures the matching `wallpaper-scroll-<tag>-visible.png`,
+  so attribution, licence, Apply and Cancel are checked in a measured visible viewport rather than
+  requiring all offscreen content in one XML.
+- **Preserved:** the initial preview XML/PNG, Cancel/Back/no-implicit-change proofs, both explicit
+  Pitch Black/Torus Home-only applies, real Home/Lock ID assertions, widget/layout preservation,
+  immutable selection while applying, safe navigation boundaries and all earlier theme/drawer/widget
+  evidence. No assertion was weakened or skipped.
+- **Regression fixture:** `emulator-smoke-test.sh` now extracts `capture_wallpaper_gallery` and checks
+  that the attribution reveal precedes its `CC BY 4.0` assertion, the licence reveal precedes its URL
+  assertion, and the exact Apply measurement precedes Cancel; it also checks both assertions read the
+  `-visible.xml` evidence rather than the initial preview XML.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` all pass (576 ok); `nothingui-wallpaper-guard.sh` OK (compiled sentinel
+  skipped with no local APK); `nothingui-polish-guard.sh` OK; `sh -n` clean on the edited scripts;
+  `git diff --check` clean.
+- **Blocked/unknown:** no local APK, JUnit, merged manifest or emulator result exists. CI195's
+  compiled packaging/style/unit evidence is separate from the still-pending runtime proof: the
+  scrolled preview attribution/licence/controls, Cancel/Back no-ID change, Pitch Black/Torus Home-ID
+  changes, Lock preservation and widget/layout preservation are CI gates. CI195 stays withheld and
+  CI181 stays the fallback until that runtime verification passes. No merge, release or final design
+  acceptance.
+
 
 ## done (this run — PR19 Torus packaging and formatter repair)
 
