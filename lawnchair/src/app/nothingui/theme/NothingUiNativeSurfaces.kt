@@ -35,46 +35,35 @@ import app.lawnchair.theme.color.tokens.withContext
  * Non-Play channels keep the inherited color tokens unchanged.
  */
 object NothingUiNativeSurfaces {
-    fun popupSurface(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
+    fun popupSurface(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
 
     fun popupShadeFirst(dark: Boolean): Color = popupSurface(dark)
 
-    fun popupShadeSecond(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Paper
+    fun popupShadeSecond(dark: Boolean): Color = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Paper
 
-    fun popupShadeThird(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
+    fun popupShadeThird(dark: Boolean): Color = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
 
     fun popupSecondary(dark: Boolean): Color = popupSurface(dark)
 
-    fun popupTertiary(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
+    fun popupTertiary(dark: Boolean): Color = if (dark) NothingUiPalette.Gray700 else NothingUiPalette.Gray100
 
-    fun textPrimary(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
+    fun textPrimary(dark: Boolean): Color = if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
 
-    fun textPrimaryInverse(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Ink else NothingUiPalette.Paper
+    fun textPrimaryInverse(dark: Boolean): Color = if (dark) NothingUiPalette.Ink else NothingUiPalette.Paper
 
-    fun allAppsBackground(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
+    fun allAppsBackground(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
 
     fun allAppsHeader(dark: Boolean): Color = allAppsBackground(dark)
 
     fun allAppsTabBackground(dark: Boolean): Color = allAppsBackground(dark)
 
-    fun allAppsTabSelected(dark: Boolean): Color =
-        if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
+    fun allAppsTabSelected(dark: Boolean): Color = if (dark) NothingUiPalette.Paper else NothingUiPalette.Ink
 
-    fun allAppsScrim(dark: Boolean): Color =
-        allAppsBackground(dark).copy(alpha = SCRIM_ALPHA)
+    fun allAppsScrim(dark: Boolean): Color = allAppsBackground(dark).copy(alpha = SCRIM_ALPHA)
 
-    fun allAppsExpressive(dark: Boolean): Color =
-        allAppsBackground(dark).copy(alpha = EXPRESSIVE_ALPHA)
+    fun allAppsExpressive(dark: Boolean): Color = allAppsBackground(dark).copy(alpha = EXPRESSIVE_ALPHA)
 
-    fun allAppsBlurBackground(dark: Boolean): Color =
-        allAppsBackground(dark).copy(alpha = BLUR_LAYER_ALPHA)
+    fun allAppsBlurBackground(dark: Boolean): Color = allAppsBackground(dark).copy(alpha = BLUR_LAYER_ALPHA)
 
     fun allAppsBlurForeground(dark: Boolean): Color = if (dark) {
         NothingUiPalette.Gray700.copy(alpha = BLUR_LAYER_ALPHA)
@@ -117,11 +106,9 @@ object NothingUiNativeSurfaces {
         allAppsBlurForeground(dark = true),
     )
 
-    private fun neutral(light: Color, dark: Color): DayNightColorToken =
-        DayNightColorToken(static(light), static(dark))
+    private fun neutral(light: Color, dark: Color): DayNightColorToken = DayNightColorToken(static(light), static(dark))
 
-    private fun static(color: Color): StaticColorToken =
-        StaticColorToken(color.toArgb().toLong())
+    private fun static(color: Color): StaticColorToken = StaticColorToken(color.toArgb().toLong())
 
     private const val SCRIM_ALPHA = 0.40f
     private const val EXPRESSIVE_ALPHA = 0.50f
