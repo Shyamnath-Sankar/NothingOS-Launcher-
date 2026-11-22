@@ -385,6 +385,149 @@ capture_settings_theme() {
     return_home settings-theme
 }
 
+# Capture the real HOME long-press options popup under the current system night
+# mode. The popup is opened with a genuine long-press on empty workspace, never
+# by starting an activity, and it is dismissed with BACK before returning.
+capture_native_home_popup() {
+    _cnhp_name=$1
+    _cnhp_max_attempts=3
+    : > "$ARTIFACTS/native-popup-$_cnhp_name-longpress-log.txt"
+    _cnhp_attempt=1
+    while [ "$_cnhp_attempt" -le "$_cnhp_max_attempts" ]; do
+        wait_for_launcher_idle \
+            "$ARTIFACTS/native-popup-$_cnhp_name-idle-$_cnhp_attempt.txt" 10 ||
+            fail "launcher was not idle before the $_cnhp_name native popup attempt $_cnhp_attempt"
+        capture_ui_xml "native-popup-$_cnhp_name-before-$_cnhp_attempt.xml" ||
+            fail "could not capture HOME before the $_cnhp_name native popup attempt $_cnhp_attempt"
+        _cnhp_target=$(home_longpress_target \
+            "$ARTIFACTS/native-popup-$_cnhp_name-before-$_cnhp_attempt.xml") ||
+            fail "could not compute an empty HOME long-press target for the $_cnhp_name native popup"
+        set -- $_cnhp_target
+        printf 'attempt=%s longpress=%s,%s duration=1000\n' \
+            "$_cnhp_attempt" "$1" "$2" \
+            >> "$ARTIFACTS/native-popup-$_cnhp_name-longpress-log.txt"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$2" 1000 \
+            > "$ARTIFACTS/native-popup-$_cnhp_name-longpress-$_cnhp_attempt.txt" 2>&1 ||
+            fail "could not long-press HOME for the $_cnhp_name native popup"
+
+        _cnhp_popup=
+        _cnhp_poll=1
+        while [ "$_cnhp_poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml \
+                "native-popup-$_cnhp_name-$_cnhp_attempt-$_cnhp_poll.xml" &&
+                home_popup_is_ready \
+                    "$ARTIFACTS/native-popup-$_cnhp_name-$_cnhp_attempt-$_cnhp_poll.xml"; then
+                _cnhp_popup="$ARTIFACTS/native-popup-$_cnhp_name-$_cnhp_attempt-$_cnhp_poll.xml"
+                break
+            fi
+            _cnhp_poll=$((_cnhp_poll + 1))
+        done
+
+        if [ -n "$_cnhp_popup" ]; then
+            cp "$_cnhp_popup" "$ARTIFACTS/native-popup-$_cnhp_name.xml"
+            capture_screenshot_to "native-popup-$_cnhp_name.png"
+            [ -s "$ARTIFACTS/native-popup-$_cnhp_name.png" ] ||
+                fail "native popup $_cnhp_name screenshot capture failed"
+            grep -Fq 'Widgets' "$ARTIFACTS/native-popup-$_cnhp_name.xml" ||
+                fail "native popup $_cnhp_name did not expose the Widgets option"
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                > "$ARTIFACTS/native-popup-$_cnhp_name-close.txt" 2>&1 || true
+            sleep 1
+            return 0
+        fi
+        printf 'attempt=%s popup-not-ready\n' "$_cnhp_attempt" \
+            >> "$ARTIFACTS/native-popup-$_cnhp_name-longpress-log.txt"
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            >> "$ARTIFACTS/native-popup-$_cnhp_name-longpress-log.txt" 2>&1 || true
+        sleep 1
+        _cnhp_attempt=$((_cnhp_attempt + 1))
+    done
+    fail "the real HOME long-press did not open the $_cnhp_name native popup after $_cnhp_max_attempts bounded attempts"
+}
+
+# Capture the real HOME long-press popup and the real app drawer in both system
+# night modes while the launcher preference stays SYSTEM. The previous night mode
+# is restored even when a capture fails. The diagnostic theme sample is not used.
+capture_native_surfaces_theme() {
+    _cnst_night_before=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r')
+    printf '%s\n' "$_cnst_night_before" \
+        > "$ARTIFACTS/native-surfaces-night-before.txt"
+    _cnst_night_value=$(printf '%s\n' "$_cnst_night_before" |
+        sed -n 's/^[Nn]ight mode:[[:space:]]*//p' | sed -n '1p')
+    case "$_cnst_night_value" in
+        yes | no | auto) ;;
+        *) _cnst_night_value=auto ;;
+    esac
+
+    assert_settings_theme_choice_system
+
+    _cnst_failure=
+    for _cnst_mode in yes no; do
+        case "$_cnst_mode" in
+            yes) _cnst_name=dark ;;
+            no) _cnst_name=light ;;
+        esac
+        if ! _cnst_out=$(adb_cmd shell cmd uimode night "$_cnst_mode" 2>&1); then
+            printf '%s\n' "$_cnst_out" \
+                > "$ARTIFACTS/native-surfaces-$_cnst_name-night.txt"
+            _cnst_failure="could not switch the emulator to night $_cnst_mode for the $_cnst_name native surfaces"
+            break
+        fi
+        printf '%s\n' "$_cnst_out" \
+            > "$ARTIFACTS/native-surfaces-$_cnst_name-night.txt"
+        sleep 2
+
+        # A subshell lets a failed helper exit without skipping the night-mode
+        # restore below; its artifact writes still land in $ARTIFACTS.
+        if ! ( capture_native_home_popup "$_cnst_name" ); then
+            _cnst_failure="native popup $_cnst_name capture failed"
+            break
+        fi
+        if ! ( return_home "native-popup-$_cnst_name" ); then
+            _cnst_failure="could not return HOME after the $_cnst_name native popup"
+            break
+        fi
+
+        if ! ( open_app_drawer ); then
+            _cnst_failure="native drawer $_cnst_name open failed"
+            break
+        fi
+        cp "$ARTIFACTS/appdrawer.xml" "$ARTIFACTS/native-drawer-$_cnst_name.xml"
+        cp "$ARTIFACTS/appdrawer.png" "$ARTIFACTS/native-drawer-$_cnst_name.png"
+        if [ ! -s "$ARTIFACTS/native-drawer-$_cnst_name.png" ]; then
+            _cnst_failure="native drawer $_cnst_name screenshot capture failed"
+            break
+        fi
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            > "$ARTIFACTS/native-drawer-$_cnst_name-close.txt" 2>&1 || true
+        sleep 1
+        if ! ( return_home "native-drawer-$_cnst_name" ); then
+            _cnst_failure="could not return HOME after the $_cnst_name native drawer"
+            break
+        fi
+
+        printf 'Native surfaces (%s): the real HOME popup and app drawer were captured under system night %s.\n' \
+            "$_cnst_name" "$_cnst_mode" \
+            > "$ARTIFACTS/native-surfaces-$_cnst_name.txt"
+        printf 'Screenshots: native-popup-%s.png, native-drawer-%s.png.\n' \
+            "$_cnst_name" "$_cnst_name" \
+            >> "$ARTIFACTS/native-surfaces-$_cnst_name.txt"
+    done
+
+    if ! _cnst_restore_out=$(adb_cmd shell cmd uimode night "$_cnst_night_value" 2>&1); then
+        printf '%s\n' "$_cnst_restore_out" \
+            > "$ARTIFACTS/native-surfaces-night-restore.txt"
+        fail "could not restore the emulator night mode to $_cnst_night_value"
+    fi
+    printf '%s\n' "$_cnst_restore_out" \
+        > "$ARTIFACTS/native-surfaces-night-restore.txt"
+    sleep 1
+
+    [ -z "$_cnst_failure" ] || fail "$_cnst_failure"
+    return_home native-surfaces
+}
+
 # Extract the first UIAutomator bounds tuple for a node that contains the given
 # needle. Prints "x1 y1 x2 y2" or nothing.
 ui_bounds_for() (
@@ -1495,6 +1638,7 @@ return_home app-info
 capture_about
 return_home about
 capture_settings_theme
+capture_native_surfaces_theme
 capture_theme_sample dark
 capture_theme_sample light
 return_home theme-sample

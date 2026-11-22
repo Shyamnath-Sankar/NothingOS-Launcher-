@@ -37,6 +37,7 @@ sh "$SCRIPT_DIR/play-identity-guard-test.sh"
 sh "$SCRIPT_DIR/manifest-guard-test.sh"
 sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-native-surfaces-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-role-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
@@ -55,6 +56,11 @@ fi
 # NothingUI theme foundation and Play-only gate (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/theme" ]; then
     sh "$SCRIPT_DIR/nothingui-theme-guard.sh" "$ROOT"
+fi
+
+# Play-only neutral native popup and app-drawer tokens (skipped for minimal fixtures).
+if [ -f "$ROOT/lawnchair/src/app/nothingui/theme/NothingUiNativeSurfaces.kt" ]; then
+    sh "$SCRIPT_DIR/nothingui-native-surfaces-guard.sh" "$ROOT"
 fi
 
 # NothingUI actual-home slice and Play-only gate (skipped for minimal fixtures).

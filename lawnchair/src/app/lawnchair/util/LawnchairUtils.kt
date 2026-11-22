@@ -43,6 +43,7 @@ import android.util.Log
 import android.util.Size
 import android.view.View
 import android.widget.TextView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.util.lerp
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.createBitmap
@@ -53,6 +54,8 @@ import app.lawnchair.preferences2.PreferenceManager2
 import app.lawnchair.preferences2.firstCached
 import app.lawnchair.theme.color.ColorOption
 import app.lawnchair.theme.color.tokens.ColorTokens
+import app.nothingui.theme.NothingUiFeature
+import app.nothingui.theme.NothingUiNativeSurfaces
 import com.android.launcher3.BaseActivity
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
@@ -160,8 +163,18 @@ fun supportsRoundedCornersOnWindows(context: Context): Boolean {
 
 fun overrideAllAppsTextColor(textView: TextView) {
     val context = textView.context
-    val luminance = getAllAppsBaseColor(context, ColorTokens.AllAppsScrimColor.resolveColor(context)).luminance
     val opacity = PreferenceManager.getInstance(context).drawerOpacity.get()
+    if (NothingUiFeature.themeEnabled) {
+        if (opacity <= 0.3f) {
+            textView.setTextColor(Themes.getAttrColor(context, R.attr.allAppsAlternateTextColor))
+        } else {
+            textView.setTextColor(
+                NothingUiNativeSurfaces.textPrimary(Utilities.isDarkTheme(context)).toArgb(),
+            )
+        }
+        return
+    }
+    val luminance = getAllAppsBaseColor(context, ColorTokens.AllAppsScrimColor.resolveColor(context)).luminance
     if (luminance > 0.5f || opacity <= 0.3f) {
         textView.setTextColor(Themes.getAttrColor(context, R.attr.allAppsAlternateTextColor))
     }

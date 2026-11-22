@@ -3,6 +3,8 @@ package app.lawnchair.theme.color.tokens
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import app.nothingui.theme.NothingUiNativeSurfaces
+import app.nothingui.theme.playNativeSurface
 
 @Suppress("MemberVisibilityCanBePrivate", "unused")
 object ColorTokens {
@@ -74,6 +76,7 @@ object ColorTokens {
     val SurfaceVariantDark = Neutral1_700
 
     @JvmField val SurfaceDimColor = DayNightColorToken(Neutral2_600.setLStar(87.0), Neutral2_600.setLStar(6.0))
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsBackground)
 
     @JvmField val SurfaceBrightColor = DayNightColorToken(Neutral2_600.setLStar(98.0), Neutral2_600.setLStar(24.0))
 
@@ -86,18 +89,24 @@ object ColorTokens {
     @JvmField val ColorPrimary = DayNightColorToken(Neutral1_50, Neutral1_900)
 
     @JvmField val TextColorPrimary = DayNightColorToken(Neutral1_900, Neutral1_50)
+        .playNativeSurface(NothingUiNativeSurfaces.TextPrimary)
 
-    @JvmField val TextColorPrimaryInverse = TextColorPrimary.inverse()
+    @JvmField val TextColorPrimaryInverse = DayNightColorToken(Neutral1_50, Neutral1_900)
+        .playNativeSurface(NothingUiNativeSurfaces.TextPrimaryInverse)
 
     @JvmField val TextColorSecondary = DayNightColorToken(StaticColorToken(0xde000000), Neutral2_200)
 
     @JvmField val AllAppsHeaderProtectionColor = DayNightColorToken(SurfaceContainerHighest, SurfaceContainerLow)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsHeader)
 
     @JvmField val AllAppsScrimColor = StaticColorToken(0x404040).setAlpha(.40f)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsScrim)
 
     @JvmField val AllAppsTabBackground = DayNightColorToken(Neutral1_100, Neutral1_800.setLStar(22.0))
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsTabBackground)
 
     @JvmField val AllAppsTabBackgroundSelected = DayNightColorToken(Accent1_600, Accent1_200)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsTabSelected)
 
     @JvmField val FocusHighlight = DayNightColorToken(Neutral1_0, Neutral1_700)
 
@@ -146,16 +155,22 @@ object ColorTokens {
     @JvmField val FolderPreviewColor = DayNightColorToken(Accent2_200, Neutral1_900.setLStar(12.0))
 
     @JvmField val PopupColorPrimary = DayNightColorToken(Accent2_50, Neutral2_800)
+        .playNativeSurface(NothingUiNativeSurfaces.PopupSurface)
 
     @JvmField val PopupColorSecondary = DayNightColorToken(Neutral2_100, Neutral1_900)
+        .playNativeSurface(NothingUiNativeSurfaces.PopupSecondary)
 
     @JvmField val PopupColorTertiary = DayNightColorToken(Neutral2_300, Neutral2_700)
+        .playNativeSurface(NothingUiNativeSurfaces.PopupTertiary)
 
     @JvmField val PopupShadeFirst = DayNightColorToken(PopupColorPrimary.setLStar(98.0), PopupColorPrimary.setLStar(20.0))
+        .playNativeSurface(NothingUiNativeSurfaces.PopupShadeFirst)
 
     @JvmField val PopupShadeSecond = DayNightColorToken(PopupColorPrimary.setLStar(95.0), PopupColorPrimary.setLStar(15.0))
+        .playNativeSurface(NothingUiNativeSurfaces.PopupShadeSecond)
 
     @JvmField val PopupShadeThird = DayNightColorToken(PopupColorPrimary.setLStar(90.0), PopupColorPrimary.setLStar(10.0))
+        .playNativeSurface(NothingUiNativeSurfaces.PopupShadeThird)
 
     @JvmField val PopupArrow = PopupShadeFirst
 
@@ -194,15 +209,18 @@ object ColorTokens {
 
     // Material 3 Expressive
     @JvmField val ExpressiveAllApps = DayNightColorToken(Accent1_100, Accent1_800).setAlpha(0.5f)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsExpressive)
 
     @JvmField val BottomSheetBackgroundColorBlurFallback = DayNightColorToken(Accent2_200, Accent2_800)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsBackground)
 
     @JvmField val shade_panel_fg_color = DayNightColorToken(
         Accent1_100.setAlpha(0.32f),
         Accent1_800.setAlpha(0.32f),
-    )
+    ).playNativeSurface(NothingUiNativeSurfaces.AllAppsBlurForeground)
 
     @JvmField val shade_panel_bg_color = Surface.setAlpha(0.32f)
+        .playNativeSurface(NothingUiNativeSurfaces.AllAppsBlurBackground)
 
     @JvmField val pageIndicatorDotColor = DayNightColorToken(
         Accent1_600,
