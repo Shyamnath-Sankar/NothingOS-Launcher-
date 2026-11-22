@@ -3,27 +3,70 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 CI165 no-header later-page swipe geometry recovery**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 stale native-theme refresh and AMOLED foundation**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `dcb378b` (`fix(smoke): bound page swipes to actual workspace and hotseat`); this STATE
-  commit follows. Previous commits: `5c51124`, `a3250b0`, `ab2a06e`, `1557650`, `e289362`,
-  `80550c1`, `ccf424c`, `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`,
-  `56bb219`, `a46a487`, `709795a`; start `010d928`.
+- head: `9fdf6e1` (`feat(theme): add amoled black settings and drawer foundation`); this STATE
+  commit follows. Theme-run commits: `5842557`, `a869292`, `ea6eeee`, `9fdf6e1`. Previous head
+  `d52255e`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI165** (coordinator-reported, not reproduced locally) — build, style and **69 JUnit tests
-  passed**. The runtime smoke placed a genuine third-party Calendar host at `38 107 524 738` on a
-  later HOME page, passed the actual-page geometry, added launcher-owned ID9 with the Calendar
-  provider, and retained that exact host on page1 after launching Settings and returning HOME. It
-  then failed exactly at `could not compute the bounded HOME page return swipe`. The app build was
-  green; this is a harness geometry bug. A fresh CI is required at this head after coordinator
-  review.
+- ci: **CI167 green before this theme run** (coordinator-reported, not reproduced locally) — build,
+  style, **69 JUnit tests** and the API 37 smoke. This run adds the native-theme resume refresh,
+  debug theme evidence, smoke readiness polling and the first AMOLED foundation, so a fresh CI at
+  `9fdf6e1` is required. No runtime/APK/pixel success is claimed locally.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. The swipe helper now derives every
-  horizontal workspace page swipe from the current page's actual workspace and hotseat, protects a
-  real header, and accepts a genuine no-header later page. Do not merge until the API 37 smoke is
-  green. Release and hosting stay paused.
+  tests, Verify Play manifest and identity, and the API 37 smoke. Confirm the new
+  `theme-refresh night=... resolvedDark=...` readiness line appears before each native capture and
+  inspect `native-popup-dark/light.png`, `native-drawer-dark/light.png`,
+  `clean-home-dark/light.png`, `settings-theme-dark/light.png` for pure-black large surfaces and
+  charcoal cards/popups while light stays unchanged. Do not merge until the API 37 smoke is green.
+  Release and hosting stay paused.
 
-## done (this run — CI165 no-header later-page swipe geometry recovery)
+## done (this run — stale native theme refresh and AMOLED foundation)
+
+- **Diagnosed from the reported screenshots, not guessed:** the Compose settings screen changed with
+  system night mode, but the native HOME long-press popup and app drawer, including the own widgets,
+  stayed light while `pref_launcherTheme=system`. `WallpaperThemeManager` re-read the activity theme
+  in `onConfigurationChanged` but did not remember the expected theme or re-check on resume, so a
+  launcher stopped while the system theme changed could keep a stale native activity theme.
+- **Native refresh fix:** `WallpaperThemeManager.updateTheme()` now returns early when the activity
+  already has the expected theme, otherwise records it with `setTheme` and recreates for an actual
+  change. A scoped `onActivityResumed` re-runs the check only for the manager's own activity.
+  `onActivityDestroyed` now removes the wallpaper listeners, unregisters the component callbacks and
+  the lifecycle callbacks, so no recreate loop or leaked callbacks remain. No theme preference,
+  workspace or file label is changed.
+- **Evidence:** new debug-only `DotWelTheme` trace
+  `theme-refresh night=... resolvedDark=... expected=...` is emitted only when
+  `BuildConfig.DEBUG`; it reads the resolved native activity theme through
+  `UiColorMode(Themes.getAttrInteger(activity, R.attr.uiColorMode)).isDarkTheme`. Release builds
+  carry no trace.
+- **AMOLED foundation:** the dark settings background and native drawer/header/tab background are
+  now `NothingUiPalette.Black` (pure black); popups, cards and elevated surfaces stay charcoal
+  (`Gray900`/`Gray700`). `NothingUiPalette.Ink` is unchanged because it is also light-mode
+  foreground text. Light colors are unchanged, and non-Play paths keep the inherited tokens. The
+  settings top bars and the edge-to-edge navigation-bar scrim switch to the pure-black background
+  only when the resolved background is black; Back/predictive navigation, nav/IME insets and the
+  `BottomSpacer` behavior are untouched.
+- **Smoke readiness:** before each native popup/drawer capture the smoke reads back
+  `cmd uimode night`, then polls the debug trace from a per-mode logcat baseline until it reports the
+  expected night and resolved dark state. It stores `native-theme-<mode>-system-night.txt` and
+  `native-theme-<mode>-state.txt` before capturing. A stale pre-switch line cannot satisfy the next
+  mode, and the smoke still never writes a theme preference. `docs/agent/emulator-verification.md`
+  records the readiness and AMOLED evidence.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **517/517**; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-theme-guard.sh` OK and suite 15/15; `nothingui-native-surfaces-guard.sh` OK and suite
+  17/17; `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite
+  19/19; `play-brand-guard-test.sh` 22/22; `play-identity-guard-test.sh` 8/8;
+  `nothingui-home-role-guard-test.sh` 7/7; `manifest-guard-test.sh` 31/31;
+  `nothingui-icon-render-guard-test.sh` 15/15; `nothingui-drawer-trace-guard-test.sh` 8/8;
+  `verify-play-build-test.sh` 11/11; all source guards OK; `sh -n` clean on the edited scripts;
+  `git diff --check` clean. `verify-play-build.sh` then stopped only at the expected missing
+  `build/intermediates` because Gradle did not run.
+- **Blocked/unknown:** the API 37 runtime smoke must confirm the native dark/light popup and drawer
+  now match settings and Home, and that the new readiness trace is present before each capture. No
+  runtime, APK or pixel claim is made from fixtures. PR19 is not merged.
+
+## done (previous run — CI165 no-header later-page swipe geometry recovery)
 
 - **Root cause from CI165, not guessed:** `workspace_page_swipe` still required the labelled-row
   `ui_dock_top` and a nonempty `ui_header_bottom`. The genuine later page has workspace
