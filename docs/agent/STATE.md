@@ -3,22 +3,65 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — Play-only drawer bottom drawing boundary
-  (pending fresh CI/pixels)**.
+- current_phase: **P5 home-widget-composition-v1 — offline AMOLED wallpaper gallery slice
+  (pending combined CI/pixels)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `9fc8ed0` (`test(drawer): capture drawer bottom boundary in emulator smoke`); this STATE
-  commit follows. Start `6824907`; the behavior commit is `a3ce358`
-  (`fix(play): clip all-apps drawing above reserved bottom`).
+- head: `9bd0a8d` (`fix(smoke): measure modern nav insets and prove wallpaper gallery`).
+  This STATE commit follows. Candidate base was the reviewed `88c05dd1`; asset commit `7e5822f`,
+  gallery commit `6322e84`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: last coordinator-reported green head is **CI181** (`6824907`): assembly, style and Play
-  verification passed; the **73 JUnit tests** and own-widget retention passed, and the API 37
-  native dark/light runtime checks passed. No CI result is claimed for this run's new head.
-- next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, the
-  JUnit suite (now including `AllAppsBottomClipTest`), Verify Play manifest and identity, and the
-  API 37 smoke. Confirm the new drawer mid-scroll screenshot no longer paints app rows into the
-  navigation area, the measured final row reaches above the navigation-bar top, and the existing
-  native dark/light, widget and preference checks stay green. Native-theme recreation is **not**
-  reopened. Release and hosting stay paused.
+- ci: last verified runtime checkpoint is **CI181** (`6824907`). No CI result is claimed for this
+  head. `69` had only source/cheap-fixture review, not accepted pixels. The next combined CI must
+  prove spacing plus this gallery.
+- next: run the Play build/style, JUnit (including the two new wallpaper tests), Verify Play
+  manifest/identity and the API 37 smoke. Confirm the modern `InsetsSource navigationBars`
+  `frame=[0,1794][1080,1920]` is measured, the gallery opens from both dashboard and Home Screen
+  settings, preview/theme/Cancel/Back leave both wallpaper IDs and widget IDs unchanged, Pitch Black
+  and Torus each change only the Home ID and preserve widgets/layout, and the actual `dumpsys
+  wallpaper` field names match `wallpaper_ids_from_dump`. Release/hosting stay paused.
+
+## done (this run — offline AMOLED wallpaper gallery)
+
+- **Assets fetched once, hashes exact:** Tecdrop `pitch-black-wallpaper-fhd-mobile-1080x1920-1bit.png`
+  (348 B) SHA-256 `d0e03819…58181d` is committed as
+  `lawnchair/res/drawable-nodpi/dotwel_wallpaper_pitch_black.png` with bytes unchanged and only the
+  filename changed. Walldye `db0311a07de8.svg` (46,935 B) SHA-256 `db0311a0…fd074f0` is kept under
+  `docs/wallpapers`; the literal-colour recolour hashes `cd1c1671…f5612d1`. Provenance, licence and
+  transformation notes are in `docs/wallpapers/README.md` and `licenses/wallpapers/`; visible in-app
+  credit, source link and the Tecdrop rename-only notice are rendered in the preview.
+- **Vector conversion:** `dotwel_wallpaper_wireframe_torus.xml` keeps the 1080×2340 viewport, all
+  source `pathData`, the rect geometry, literal stroke widths 1.2/1.6/3, source round caps and no
+  fill on stroked paths, with the four recoloured values. No generator/site/tool code copied.
+- **Gallery:** Play-only `AmoledWallpaperPreferences` uses the existing typed
+  `AmoledWallpapers` `PreferenceRootRoute`, `PreferenceNavigation`, `PreferenceLayout` and normal
+  Back. It is linked near Home Screen on the dashboard and inside the existing Home Screen wallpaper
+  group. Exactly two labelled tiles (Pitch Black, Wireframe Torus) use Compose painters; selecting
+  one shows a larger preview, credit, source link and a separate explicit `Apply to Home screen`
+  button. Preview/Back never apply. No new activity, manifest entry or identity route.
+- **Apply:** after the explicit tap, the applier checks `isWallpaperSupported` /
+  `isSetWallpaperAllowed`, streams the PNG resource with
+  `setStream(..., null, true, FLAG_SYSTEM)`, renders the vector to a bounded 1080×2340 bitmap on IO
+  with `setBitmap(..., null, true, FLAG_SYSTEM)`, recycles the bitmap and confirms the positive
+  returned ID equals `getWallpaperId(FLAG_SYSTEM)`. It guards repeat taps, rethrows cancellation and
+  distinguishes unsupported/policy/security/IO/unconfirmed results. No FLAG_LOCK, provider,
+  storage permission or protected-image read.
+- **Harness:** `ui_navigation_bar_bounds` now also reads a visible modern
+  `InsetsSource type=navigationBars` bracket or `Rect` frame before the display fallback, with new
+  fixtures; legacy fixtures and fail-closed behavior stay. New `wallpaper_ids_from_dump` and
+  `wallpaper_lock_preserved` helpers parse Home/Lock IDs and allow only the documented shared-lock
+  sentinel. `emulator-smoke.sh` adds `capture_wallpaper_gallery` after the existing native/theme
+  captures: dark/light gallery and Pitch Black preview captures, ID/widget-unchanged preview/Back
+  proof, then explicit Pitch Black and Torus applies with Home-ID change, lock preservation, widget
+  ID equality and `verify_home_widgets`. Drawer mid-scroll/end proof and all old checks are retained;
+  no workflow was edited.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-wallpaper-guard.sh` OK; `nothingui-polish-guard.sh` OK and suite passed;
+  `emulator-smoke-test.sh` all pass; `emulator-smoke-drawer-test.sh` all pass;
+  `verify-play-build-test.sh` all pass; `sh -n` clean on every edited script; `git diff --check`
+  clean.
+- **Blocked/unknown:** no local JUnit/APK/merged-manifest/pixel result. The runtime `dumpsys
+  wallpaper` format, the deep-link gallery opening, the measured Apply button, and the new emulator
+  captures are **not** proven until the next API 37 CI. No completion claim, no merge, no release.
 
 ## done (this run — Play-only drawer bottom drawing boundary)
 
