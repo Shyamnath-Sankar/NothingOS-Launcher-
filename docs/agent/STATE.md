@@ -3,31 +3,64 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — Play HOME uiMode recreation candidate (pending
-  fresh CI/pixels)**.
+- current_phase: **P5 home-widget-composition-v1 — Play-only drawer bottom drawing boundary
+  (pending fresh CI/pixels)**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `cf530a4` (`fix(play): let HOME recreate for uiMode changes`); this STATE commit follows.
-  Start `4d5409d`.
+- head: `9fc8ed0` (`test(drawer): capture drawer bottom boundary in emulator smoke`); this STATE
+  commit follows. Start `6824907`; the behavior commit is `a3ce358`
+  (`fix(play): clip all-apps drawing above reserved bottom`).
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI179** (coordinator-reported): assembly, style and Play verification passed, and the
-  actual **73 JUnit tests** had zero failures/errors/skips. The API 37 **native dark readiness
-  check still failed** (artifact `14762050688` under run `45039964002`). The actual
-  `LawnchairLauncher` callback had `suppliedNight=true` and `appNight=true` while
-  `activity.resources` night=false, `resolvedDark=false`, expected `AppTheme.DarkMainColor`; the
-  posted config diagnostic stayed false. This run's only behavior change is the Play HOME
-  `configChanges`: **uiMode removed** so the platform recreates the activity with fresh resources.
-  This is a **candidate pending fresh CI/pixels**, not a proven native-theme fix.
+- ci: last coordinator-reported green head is **CI181** (`6824907`): assembly, style and Play
+  verification passed; the **73 JUnit tests** and own-widget retention passed, and the API 37
+  native dark/light runtime checks passed. No CI result is claimed for this run's new head.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, the
-  JUnit suite, Verify Play manifest and identity (now also checking merged/source Play
-  `configChanges`), and the API 37 smoke. Confirm the merged `LawnchairLauncher` excludes `uiMode`
-  while retaining `keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|
-  smallestScreenSize`, HOME stays on `LawnchairLauncher`, exactly one DotWel Settings MAIN/LAUNCHER
-  entry exists with no HOME, unset Play drawer opacity stays 1.0 (github/nightly 0.5, saved values
-  untouched), and role consent/cancel still refreshes the default-home card. Native dark/light
-  pixels still must be observed; do not merge until the API 37 smoke is green. Release and hosting
-  stay paused.
+  JUnit suite (now including `AllAppsBottomClipTest`), Verify Play manifest and identity, and the
+  API 37 smoke. Confirm the new drawer mid-scroll screenshot no longer paints app rows into the
+  navigation area, the measured final row reaches above the navigation-bar top, and the existing
+  native dark/light, widget and preference checks stay green. Native-theme recreation is **not**
+  reopened. Release and hosting stay paused.
 
-## done (this run — Play HOME uiMode recreation candidate)
+## done (this run — Play-only drawer bottom drawing boundary)
+
+- **Root cause from the live code, not guessed:** `ActivityAllAppsContainerView.applyAdapterSideAndBottomPaddings`
+  already sets the recycler bottom padding to `max(mInsets.bottom, mNavBarScrimHeight)` and
+  `AdapterHolder.applyPadding` adds the work/private/floating-search offsets. `all_apps_rv_layout.xml`
+  explicitly keeps `android:clipToPadding="false"`, so scrolled children paint into that reserved
+  bottom area even though the inset math is correct. This run changes the drawing boundary, not the
+  padding.
+- **Smallest Play-only clip:** new pure `app.nothingui.drawer.AllAppsBottomClip` returns
+  `height - paddingBottom` (clamped at 0) only when the Play gate is on and `paddingBottom > 0`,
+  otherwise `NO_CLIP`. `AllAppsRecyclerView.dispatchDraw` saves the canvas, clips only the bottom
+  (`0..width`, `0..clipBottom`), draws children, and restores the save count. No `Rect` is allocated
+  per frame, the top overflow is untouched, and `SearchRecyclerView` inherits the same boundary.
+- **Gate:** reuses `NothingUiFeature.INSTANCE.getHomeEnabled()` (`NOTHINGUI_HOME_ENABLED`, Play
+  only). Non-Play and zero/negative-inset layouts keep the inherited drawing exactly.
+- **Preserved:** the existing bottom padding and the final row's ability to scroll fully into view;
+  top padding overflow for floating headers/search; left/right geometry; fast scrolling; profile
+  tabs and work/private/floating-search offsets; LIGHT/DARK/SYSTEM and every saved preference;
+  wallpaper/workspace/widget IDs, navigation mode, activity flags, theme/opacity/background choices.
+  No workflow, dependency, SDK, permission, signing, applicationId, manifest or release change.
+- **Regression coverage:** new `tests/unit/java/app/nothingui/drawer/AllAppsBottomClipTest.kt`
+  covers Play vs non-Play, zero/negative inset, exact fit, oversized padding and non-positive
+  height. `emulator-smoke-test.sh` adds fixtures for navigation-bar frame/fallback/no-data, list
+  bounds, sibling-search-bar exclusion, ancestry-scoped final row, stable/changed scroll signatures,
+  the safe scroll gesture and a degenerate list, plus source-wiring checks for the helper, gate,
+  save/restore and unchanged `clipToPadding="false"`.
+- **Emulator script only:** `emulator-smoke.sh` gains `capture_drawer_bottom_boundary`, called after
+  `exercise_app_drawer`. It captures mid-scroll and true end-of-list XML+PNG, the raw
+  `dumpsys window` dump and resolved navigation bounds, then requires the measured final row bottom
+  to be at or above the navigation top. Scrolling is bounded to six swipes and stops only on a stable
+  row signature; missing navigation/list/row measurements fail closed. No workflow was edited.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **546/546**; `emulator-smoke-drawer-test.sh` all pass;
+  `nothingui-polish-guard.sh` OK and its suite all pass; `verify-play-build-test.sh` all pass;
+  `sh -n` clean on all three edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** no local JUnit, APK, merged-manifest or post-change pixel result. The new
+  JUnit test, the Play build/style and the API 37 drawer/navigation captures are CI gates. The
+  native-theme recreation candidate from the previous run is **not** re-proven here. PR19 is not
+  merged. Wallpaper gallery and charcoal-not-AMOLED remain separate future work.
+
+## done (previous run — Play HOME uiMode recreation candidate)
 
 - **Candidate, not a claimed fix:** the only production change is `play/AndroidManifest.xml`,
   removing `uiMode` from the Play `LawnchairLauncher` `android:configChanges`. Every other flag and
