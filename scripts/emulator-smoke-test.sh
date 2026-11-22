@@ -2903,6 +2903,80 @@ else
     fail 'the real settings and native surface captures run before the diagnostic sample'
 fi
 
+# --- drawer bottom boundary fixtures ---------------------------------------
+
+nav_window="$TMP_DIR/nav-window.txt"
+cat > "$nav_window" <<'EOF'
+  Window #0 Window{abc u0 NavigationBar0}:
+    mDisplayId=0
+    mFrame=[0,1824][1080,1920]
+EOF
+assert_eq 'the navigation bar frame is the measured safe-area edge' \
+    '0 1824 1080 1920' "$(ui_navigation_bar_bounds "$nav_window")"
+
+nav_display="$TMP_DIR/nav-display.txt"
+cat > "$nav_display" <<'EOF'
+  mDisplayFrames=DisplayFrames{mCurrent=Rect(0, 0 - 1080, 1920) mStable=Rect(0, 0 - 1080, 1824)}
+EOF
+assert_eq 'the stable display frame is the navigation fallback' \
+    '0 1824 1080 1920' "$(ui_navigation_bar_bounds "$nav_display")"
+
+nav_none="$TMP_DIR/nav-none.txt"
+printf 'no window data here\n' > "$nav_none"
+assert_eq 'an unmeasurable navigation bar prints nothing' \
+    '' "$(ui_navigation_bar_bounds "$nav_none")"
+
+drawer_xml="$TMP_DIR/drawer-bottom.xml"
+cat > "$drawer_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" clickable="false" bounds="[0,0][1080,1920]">
+    <node index="1" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_all_apps" class="android.widget.EditText" clickable="true" bounds="[0,1850][1080,1920]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/apps_list_view" class="androidx.recyclerview.widget.RecyclerView" clickable="false" bounds="[0,300][1080,1920]">
+      <node index="0" text="Alpha" class="android.widget.TextView" clickable="true" bounds="[40,1600][300,1700]" />
+      <node index="1" text="Zulu" class="android.widget.TextView" clickable="true" bounds="[40,1720][300,1830]" />
+      <node index="2" text="Z" class="android.widget.TextView" clickable="false" bounds="[40,1800][100,1860]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the drawer list bounds are measured from the real list id' \
+    '0 300 1080 1920' "$(drawer_list_bounds "$drawer_xml")"
+assert_eq 'the final row ignores the sibling search bar and non-clickable headers' \
+    '40 1720 300 1830' "$(drawer_last_row_bounds "$drawer_xml" '0 300 1080 1920')"
+assert_eq 'the scroll signature is stable for the same hierarchy' \
+    "$(drawer_scroll_signature "$drawer_xml" '0 300 1080 1920')" \
+    "$(drawer_scroll_signature "$drawer_xml" '0 300 1080 1920')"
+drawer_moved="$TMP_DIR/drawer-moved.xml"
+sed 's/\[40,1600\]\[300,1700\]/[40,1500][300,1600]/' "$drawer_xml" > "$drawer_moved"
+assert_false 'the scroll signature changes when a row moves' \
+    test "$(drawer_scroll_signature "$drawer_xml" '0 300 1080 1920')" = \
+    "$(drawer_scroll_signature "$drawer_moved" '0 300 1080 1920')"
+
+assert_eq 'the scroll gesture stays above the navigation bar' \
+    '540 1634 540 490' "$(drawer_scroll_swipe_target '0 300 1080 1920' 1824)"
+assert_eq 'a degenerate list has no safe scroll gesture' \
+    '' "$(drawer_scroll_swipe_target '0 500 1080 400' 1824)"
+
+# Source wiring: the Play-gated bottom clip lives in the drawer recycler, keeps
+# clipToPadding=false for top overflow, and reuses the existing home gate.
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+RECYCLER="$ROOT_DIR/src/com/android/launcher3/allapps/AllAppsRecyclerView.java"
+CLIP="$ROOT_DIR/lawnchair/src/app/nothingui/drawer/AllAppsBottomClip.kt"
+RV_LAYOUT="$ROOT_DIR/res/layout/all_apps_rv_layout.xml"
+assert_true 'the drawer recycler clips children to the reserved bottom' \
+    grep -Fq 'AllAppsBottomClip.INSTANCE.clipBottom' "$RECYCLER"
+assert_true 'the drawer bottom clip reuses the Play home gate' \
+    grep -Fq 'NothingUiFeature.INSTANCE.getHomeEnabled()' "$RECYCLER"
+assert_true 'the drawer bottom clip saves and restores the canvas' \
+    grep -Fq 'canvas.restoreToCount(saveCount)' "$RECYCLER"
+assert_true 'the drawer bottom clip is the pure geometry helper' \
+    grep -Fq 'fun clipBottom(enabled: Boolean, height: Int, paddingBottom: Int): Int' "$CLIP"
+assert_true 'the drawer layout still allows top padding overflow' \
+    grep -Fq 'android:clipToPadding="false"' "$RV_LAYOUT"
+assert_false 'the drawer layout does not globally enable clipToPadding' \
+    grep -Fq 'android:clipToPadding="true"' "$RV_LAYOUT"
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1

@@ -1303,6 +1303,91 @@ exercise_app_drawer() {
         fail "HOME screenshot capture after the app launch failed"
 }
 
+# Capture the real drawer at mid-scroll and at the true end of the list, then
+# prove the final app row can be brought entirely above the measured navigation
+# bar. The navigation bar is a separate SystemUI window, so its bounds come from
+# `dumpsys window`, never a guessed phone height. Scrolling is bounded and stops
+# only when the visible app-row signature stops changing.
+capture_drawer_bottom_boundary() {
+    open_app_drawer
+    capture_ui_xml appdrawer-bottom-start.xml ||
+        fail "could not capture the opened app drawer for the bottom-boundary check"
+    capture_screenshot_to appdrawer-bottom-start.png
+    [ -s "$ARTIFACTS/appdrawer-bottom-start.png" ] ||
+        fail "app drawer bottom-boundary start screenshot capture failed"
+
+    adb_cmd shell dumpsys window windows \
+        > "$ARTIFACTS/appdrawer-navigation-window.txt" 2>&1 || true
+    adb_cmd shell dumpsys window displays \
+        >> "$ARTIFACTS/appdrawer-navigation-window.txt" 2>&1 || true
+    _cdbb_nav=$(ui_navigation_bar_bounds "$ARTIFACTS/appdrawer-navigation-window.txt")
+    [ -n "$_cdbb_nav" ] ||
+        fail "could not measure the navigation bar bounds from dumpsys window"
+    set -- $_cdbb_nav
+    _cdbb_nav_top=$2
+    printf 'navigation=%s navigation_top=%s\n' "$_cdbb_nav" "$_cdbb_nav_top" \
+        > "$ARTIFACTS/appdrawer-navigation-bounds.txt"
+
+    _cdbb_list=$(drawer_list_bounds "$ARTIFACTS/appdrawer-bottom-start.xml")
+    [ -n "$_cdbb_list" ] || fail "could not measure the app drawer list bounds"
+    printf 'list=%s\n' "$_cdbb_list" >> "$ARTIFACTS/appdrawer-navigation-bounds.txt"
+
+    _cdbb_target=$(drawer_scroll_swipe_target "$_cdbb_list" "$_cdbb_nav_top") ||
+        fail "could not compute a safe drawer scroll above the navigation bar"
+    set -- $_cdbb_target
+    adb_cmd shell input swipe "$1" "$2" "$3" "$4" 600 \
+        > "$ARTIFACTS/appdrawer-scroll-mid.txt" 2>&1 ||
+        fail "could not scroll the app drawer to the mid-scroll capture"
+    sleep 1
+    capture_ui_xml appdrawer-mid-scroll.xml ||
+        fail "app drawer mid-scroll UI XML capture failed"
+    capture_screenshot_to appdrawer-mid-scroll.png
+    [ -s "$ARTIFACTS/appdrawer-mid-scroll.png" ] ||
+        fail "app drawer mid-scroll screenshot capture failed"
+
+    _cdbb_previous=$(drawer_scroll_signature \
+        "$ARTIFACTS/appdrawer-mid-scroll.xml" "$_cdbb_list")
+    _cdbb_attempt=1
+    _cdbb_max=6
+    while [ "$_cdbb_attempt" -le "$_cdbb_max" ]; do
+        adb_cmd shell input swipe "$1" "$2" "$3" "$4" 600 \
+            > "$ARTIFACTS/appdrawer-scroll-end-$_cdbb_attempt.txt" 2>&1 ||
+            fail "could not scroll the app drawer toward the end of the list"
+        sleep 1
+        capture_ui_xml "appdrawer-end-attempt-$_cdbb_attempt.xml" ||
+            fail "app drawer end-of-list UI XML capture failed"
+        _cdbb_current=$(drawer_scroll_signature \
+            "$ARTIFACTS/appdrawer-end-attempt-$_cdbb_attempt.xml" "$_cdbb_list")
+        cp "$ARTIFACTS/appdrawer-end-attempt-$_cdbb_attempt.xml" \
+            "$ARTIFACTS/appdrawer-end.xml"
+        capture_screenshot_to appdrawer-end.png
+        [ -s "$ARTIFACTS/appdrawer-end.png" ] ||
+            fail "app drawer end-of-list screenshot capture failed"
+        if [ "$_cdbb_current" = "$_cdbb_previous" ]; then
+            printf 'end reached after %s bounded swipe(s)\n' "$_cdbb_attempt" \
+                >> "$ARTIFACTS/appdrawer-navigation-bounds.txt"
+            break
+        fi
+        _cdbb_previous=$_cdbb_current
+        _cdbb_attempt=$((_cdbb_attempt + 1))
+    done
+    [ "$_cdbb_attempt" -le "$_cdbb_max" ] ||
+        fail "the app drawer did not reach a stable end after $_cdbb_max bounded swipes"
+
+    _cdbb_last=$(drawer_last_row_bounds "$ARTIFACTS/appdrawer-end.xml" "$_cdbb_list")
+    [ -n "$_cdbb_last" ] ||
+        fail "could not measure the final app drawer row above the navigation bar"
+    set -- $_cdbb_last
+    _cdbb_last_bottom=$4
+    [ "$_cdbb_last_bottom" -le "$_cdbb_nav_top" ] ||
+        fail "the final app drawer row bottom $_cdbb_last_bottom is below the navigation bar top $_cdbb_nav_top"
+    printf 'last_row=%s navigation_top=%s\n' "$_cdbb_last" "$_cdbb_nav_top" \
+        >> "$ARTIFACTS/appdrawer-navigation-bounds.txt"
+    printf 'Drawer bottom boundary: mid-scroll and end-of-list captured; final row %s is above navigation top %s.\n' \
+        "$_cdbb_last" "$_cdbb_nav_top" > "$ARTIFACTS/appdrawer-bottom.txt"
+    return_home drawer-bottom
+}
+
 # Open the real Home screen grid preferences through the existing
 # lawnchair://settings/home-screen-grid deep link and the existing
 # PreferenceActivity. This is read-only: no slider is moved, Apply must still be
@@ -2344,6 +2429,7 @@ exercise_device_settings_shortcuts
 capture_grid_settings
 capture_widgets_picker
 exercise_app_drawer
+capture_drawer_bottom_boundary
 
 capture_app_info
 return_home app-info

@@ -519,6 +519,250 @@ drawer_is_ready() (
     return 1
 )
 
+# Print the navigation-bar bounds ("x1 y1 x2 y2") from a `dumpsys window`
+# dump. The NavigationBar window is a separate SystemUI window, so its frame is
+# the authoritative safe-area edge for the edge-to-edge launcher drawer. When
+# the window frame is absent, fall back to the stable display frame
+# (`mStable=Rect(...)`) and the current display frame (`mCurrent=Rect(...)`).
+# Prints nothing when neither source is measurable, so the caller can fail
+# closed instead of guessing a coordinate.
+ui_navigation_bar_bounds() (
+    dump=$1
+    [ -s "$dump" ] || return 0
+    nav=$(awk '
+        /^[[:space:]]*Window #[0-9]+ Window\{/ {
+            nav = ($0 ~ /NavigationBar/)
+            next
+        }
+        nav && /mFrame=\[/ {
+            line = $0
+            if (match(line, /mFrame=\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]/)) {
+                b = substr(line, RSTART + 7, RLENGTH - 7)
+                gsub(/[^0-9]+/, " ", b)
+                sub(/^ +/, "", b)
+                sub(/ +$/, "", b)
+                n = split(b, p, / +/)
+                if (n == 4) {
+                    print p[1], p[2], p[3], p[4]
+                    exit
+                }
+            }
+        }
+    ' "$dump")
+    if [ -n "$nav" ]; then
+        printf '%s\n' "$nav"
+        return 0
+    fi
+    awk '
+        /mCurrent=Rect\(/ {
+            line = $0
+            sub(/^.*mCurrent=Rect\(/, "", line)
+            sub(/\).*$/, "", line)
+            gsub(/[^0-9]+/, " ", line)
+            sub(/^ +/, "", line)
+            sub(/ +$/, "", line)
+            if (split(line, c, / +/) == 4) {
+                cur_right = c[3]
+                cur_bottom = c[4]
+            }
+        }
+        /mStable=Rect\(/ {
+            line = $0
+            sub(/^.*mStable=Rect\(/, "", line)
+            sub(/\).*$/, "", line)
+            gsub(/[^0-9]+/, " ", line)
+            sub(/^ +/, "", line)
+            sub(/ +$/, "", line)
+            if (split(line, s, / +/) == 4) stable_bottom = s[4]
+        }
+        END {
+            if (cur_bottom <= 0) exit
+            if (stable_bottom <= 0 || stable_bottom > cur_bottom) {
+                stable_bottom = cur_bottom
+            }
+            print 0, stable_bottom, cur_right, cur_bottom
+        }
+    ' "$dump"
+)
+
+# Print the measured bounds ("x1 y1 x2 y2") of the real all-apps list container.
+drawer_list_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    for id in apps_list_view apps_list_view_work; do
+        values=$(ui_bounds_values "$(ui_node_attribute "$xml" "$id" bounds)")
+        if [ -n "$values" ]; then
+            printf '%s\n' "$values"
+            return 0
+        fi
+    done
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the lowest labelled clickable row inside
+# the measured list container. This is the final visible app row, not the fast
+# scroller letters or section headers (they are not clickable). Prints nothing
+# when no row is fully inside the container.
+drawer_last_row_bounds() (
+    xml=$1
+    list=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$list" ] || return 0
+    set -- $list
+    lx1=$1
+    ly1=$2
+    lx2=$3
+    ly2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v lx1="$lx1" -v ly1="$ly1" -v lx2="$lx2" -v ly2="$ly2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (depth > 0) depth--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                rid = attr($0, "resource-id")
+                if (!selfclose) {
+                    depth++
+                    stack[depth] = (rid ~ /(^|\/)(apps_list_view|apps_list_view_work)$/) ||
+                        (depth > 1 && stack[depth - 1])
+                }
+                if (!(depth > 0 && stack[depth])) next
+                if (attr($0, "clickable") != "true") next
+                if (attr($0, "text") == "" && attr($0, "content-desc") == "") next
+                b = attr($0, "bounds")
+                if (b == "") next
+                x1 = v_of(b, 1)
+                y1 = v_of(b, 2)
+                x2 = v_of(b, 3)
+                y2 = v_of(b, 4)
+                if (x1 < lx1 || x2 > lx2 || y1 < ly1 || y2 > ly2) next
+                if (y2 > best_bottom) {
+                    best_bottom = y2
+                    best_x1 = x1
+                    best_y1 = y1
+                    best_x2 = x2
+                }
+            }
+            END {
+                if (best_bottom > 0) print best_x1, best_y1, best_x2, best_bottom
+            }
+        '
+)
+
+# Print a stable signature of the labelled clickable rows inside the list. The
+# smoke compares consecutive signatures to prove a bounded scroll reached the
+# true end instead of assuming a fixed swipe count.
+drawer_scroll_signature() (
+    xml=$1
+    list=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$list" ] || return 0
+    set -- $list
+    lx1=$1
+    ly1=$2
+    lx2=$3
+    ly2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v lx1="$lx1" -v ly1="$ly1" -v lx2="$lx2" -v ly2="$ly2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function v_of(b, field,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[field] + 0
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (depth > 0) depth--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                rid = attr($0, "resource-id")
+                if (!selfclose) {
+                    depth++
+                    stack[depth] = (rid ~ /(^|\/)(apps_list_view|apps_list_view_work)$/) ||
+                        (depth > 1 && stack[depth - 1])
+                }
+                if (!(depth > 0 && stack[depth])) next
+                if (attr($0, "clickable") != "true") next
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text == "" && desc == "") next
+                b = attr($0, "bounds")
+                if (b == "") next
+                x1 = v_of(b, 1)
+                y1 = v_of(b, 2)
+                x2 = v_of(b, 3)
+                y2 = v_of(b, 4)
+                if (x1 < lx1 || x2 > lx2 || y1 < ly1 || y2 > ly2) next
+                label = (text != "") ? text : desc
+                printf "%s %s %s\n", y1, y2, label
+            }
+        ' |
+        sort
+)
+
+# Compute an upward scroll gesture ("x1 y1 x2 y2") inside the measured list and
+# above the measured navigation bar. Prints nothing for a degenerate list or
+# when the safe band is too small.
+drawer_scroll_swipe_target() (
+    list=$1
+    nav_top=${2:-}
+    [ -n "$list" ] || return 1
+    set -- $list
+    lx1=$1
+    ly1=$2
+    lx2=$3
+    ly2=$4
+    case "$lx1" in '' | *[!0-9]*) return 1 ;; esac
+    case "$ly1" in '' | *[!0-9]*) return 1 ;; esac
+    case "$lx2" in '' | *[!0-9]*) return 1 ;; esac
+    case "$ly2" in '' | *[!0-9]*) return 1 ;; esac
+    safe_bottom=$ly2
+    case "$nav_top" in
+        '' | *[!0-9]*) ;;
+        *) [ "$nav_top" -lt "$safe_bottom" ] && safe_bottom=$nav_top ;;
+    esac
+    [ "$safe_bottom" -gt "$ly1" ] || return 1
+    x=$(((lx1 + lx2) / 2))
+    height=$((safe_bottom - ly1))
+    margin=$((height / 8))
+    [ "$margin" -gt 0 ] || margin=1
+    start_y=$((safe_bottom - margin))
+    end_y=$((ly1 + margin))
+    [ "$start_y" -gt "$end_y" ] || return 1
+    printf '%s %s %s %s\n' "$x" "$start_y" "$x" "$end_y"
+)
+
 # Print the bounds ("x1 y1 x2 y2") of the clickable node that represents the
 # app labelled $2 in a UIAutomator XML dump. A clickable node that matches
 # directly wins; otherwise the nearest clickable ancestor of any matching node

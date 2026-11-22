@@ -323,6 +323,24 @@ Every wait is a bounded UIAutomator poll. The existing role-consent Cancel, the 
 drawer swipe, the Settings search/tap and the exact `com.android.settings` foreground check are
 unchanged.
 
+## Drawer bottom drawing boundary
+
+After the Settings search/tap flow, the smoke opens the drawer again and captures
+`appdrawer-bottom-start.xml`/`.png`, then measures the real navigation bar from
+`dumpsys window windows` (the separate SystemUI `NavigationBar` frame) with a stable-display-frame
+fallback from `dumpsys window displays`. It writes the raw dump to
+`appdrawer-navigation-window.txt` and the resolved values to `appdrawer-navigation-bounds.txt`.
+
+It then swipes once for `appdrawer-mid-scroll.xml`/`.png` and keeps swiping, bounded to six attempts,
+until the labelled clickable rows inside the real `apps_list_view` stop changing. The stable capture
+is `appdrawer-end.xml`/`.png`; the final row bounds must sit at or above the measured navigation-bar
+top, proving the bottom clip did not hide the end of the list. The check fails closed when the
+navigation bar, the list bounds or the final row cannot be measured. The clip is Play-only and
+bottom-only: the top padding overflow for floating headers/search, the left/right geometry, fast
+scrolling, the work/private tabs and the floating-search offsets are unchanged. `SearchRecyclerView`
+inherits the same recycler, so search results use the same bottom boundary without a separate
+capture.
+
 ## Locked private-space validation
 
 `scripts/private-space-check.sh` is deliberately separate. It detects an
