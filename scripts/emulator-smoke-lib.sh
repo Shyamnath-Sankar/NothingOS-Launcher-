@@ -1553,9 +1553,9 @@ home_pending_widget_bounds() (
                 parent_preview = (sp > 0 ? stack_preview[sp] : 0)
                 ws = parent_ws || is_workspace(rid, cls)
                 preview = parent_preview || is_preview(rid, cls)
+                if (ws) saw_ws = 1
                 if (cls ~ /PendingAppWidgetHostView/ && read_bounds(bounds) && !preview) {
                     if (ws) {
-                        saw_ws = 1
                         n_ws++
                         ws_key[n_ws] = bx1
                         ws_val[n_ws] = bx1 " " by1 " " bx2 " " by2
