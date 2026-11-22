@@ -88,6 +88,68 @@ ui_root_bounds() (
         sed -n '1p'
 )
 
+# Print one attribute of the first UIAutomator node whose resource-id ends with
+# /<suffix>. The dump may be a single physical line, so it is split into node
+# records first. Prints nothing when the child is not exposed.
+ui_node_attribute() (
+    xml=$1
+    id_suffix=$2
+    attribute=$3
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v id_suffix="$id_suffix" -v attribute="$attribute" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if (found) exit
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                if (rid !~ ("(^|/)" id_suffix "$")) next
+                print attr($0, attribute)
+                found = 1
+            }
+        '
+)
+
+home_widget_clock_text() (
+    ui_node_attribute "$1" nothingui_clock_time text
+)
+
+home_widget_battery_description() (
+    ui_node_attribute "$1" nothingui_battery_art content-desc
+)
+
+# The clock text must be the live TextClock value, not an expected constant.
+home_widget_clock_text_is_live() (
+    printf '%s\n' "$1" | grep -Eq '^[0-9]{1,2}:[0-9]{2}$'
+)
+
+# The battery description must be a real 0..100 percentage or the explicit
+# unknown `--` fallback; an arbitrary or fabricated number is rejected.
+home_widget_battery_description_is_real() (
+    value=$1
+    case "$value" in
+        -- | --,\ charging) return 0 ;;
+    esac
+    case "$value" in
+        *,\ charging) value=${value%, charging} ;;
+    esac
+    case "$value" in
+        *%) percent=${value%\%} ;;
+        *) return 1 ;;
+    esac
+    case "$percent" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    [ "$percent" -le 100 ]
+)
+
 # Print the top y of the lowest labelled row (the hotseat/dock) from a
 # UIAutomator dump, using the root bounds to exclude the upper workspace. The
 # row is found by position, not by a hard-coded app name, so it survives
@@ -1428,11 +1490,13 @@ home_widget_bounds() (
 # When $3 is set, the new widget's host package must equal it. Current Android
 # prints the host in the widget block as `host=HostId{..., pkg:<package>}`; a
 # `hostPackage=<package>` line is also accepted. If ownership cannot be proven,
-# the helper prints nothing and the smoke fails closed.
+# the helper prints nothing and the smoke fails closed. When $4 is `id`, each
+# line is `<AppWidgetId><TAB><provider>` instead of just the provider.
 appwidget_new_providers() (
     before=$1
     after=$2
     want_host=${3:-}
+    with_id=${4:-}
     [ -s "$after" ] || return 0
     {
         if [ -n "$before" ] && [ -s "$before" ]; then
@@ -1500,18 +1564,33 @@ appwidget_new_providers() (
             }
             END { flush() }
         ' |
-        awk -F '\t' '
+        awk -F '\t' -v with_id="$with_id" '
             $1 == "B" {
                 seen[$2] = 1
                 next
             }
             $1 == "A" {
                 if (!($2 in seen) && !($2 in printed)) {
-                    print $3
+                    if (with_id == "id") {
+                        print $2 "\t" $3
+                    } else {
+                        print $3
+                    }
                     printed[$2] = 1
                 }
             }
         '
+)
+
+# Print the `<AppWidgetId><TAB><provider>` records currently owned by the given
+# launcher host. This reuses the record-aware new-provider parser with an empty
+# "before" dump, so a provider catalog, a widget owned by another host, or a
+# provider name mentioned outside a widget-id block can never satisfy the proof.
+appwidget_launcher_instances() (
+    dump=$1
+    host=$2
+    [ -s "$dump" ] || return 0
+    appwidget_new_providers '' "$dump" "$host" id
 )
 
 # Succeed only when the native widget picker search/list is visible and differs

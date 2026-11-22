@@ -825,6 +825,64 @@ assert_eq 'a host outside a workspace that is present is rejected' \
     '' \
     "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
 
+home_widgets_xml="$TMP_DIR/home-widgets.xml"
+cat > "$home_widgets_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[40,400][500,800]">
+        <node index="0" text="3:07" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_clock_time" class="android.widget.TextClock" bounds="[40,400][500,800]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[540,400][1000,800]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_battery_art" class="android.widget.ImageView" content-desc="87%" bounds="[540,400][1000,800]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the HOME widget proof reads the real clock child text' \
+    '3:07' "$(home_widget_clock_text "$home_widgets_xml")"
+assert_eq 'the HOME widget proof reads the real battery description' \
+    '87%' "$(home_widget_battery_description "$home_widgets_xml")"
+assert_true 'a live HH:mm clock text is accepted' \
+    home_widget_clock_text_is_live '3:07'
+assert_true 'a two-digit live clock text is accepted' \
+    home_widget_clock_text_is_live '23:59'
+assert_false 'an empty clock text is rejected' \
+    home_widget_clock_text_is_live ''
+assert_false 'a non-time clock text is rejected' \
+    home_widget_clock_text_is_live 'soon'
+assert_true 'a real percentage battery description is accepted' \
+    home_widget_battery_description_is_real '87%'
+assert_true 'a full charging battery description is accepted' \
+    home_widget_battery_description_is_real '100%, charging'
+assert_true 'the explicit unknown battery description is accepted' \
+    home_widget_battery_description_is_real '--'
+assert_true 'the explicit unknown charging description is accepted' \
+    home_widget_battery_description_is_real '--, charging'
+assert_false 'an out-of-range battery percentage is rejected' \
+    home_widget_battery_description_is_real '101%'
+assert_false 'a bare battery number is rejected' \
+    home_widget_battery_description_is_real '87'
+assert_false 'an empty battery description is rejected' \
+    home_widget_battery_description_is_real ''
+
+home_widgets_missing_child_xml="$TMP_DIR/home-widgets-missing-child.xml"
+cat > "$home_widgets_missing_child_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="3:07" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_clock_time" class="android.widget.TextClock" bounds="[40,400][500,800]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a missing battery child id is not read as a value' \
+    '' "$(home_widget_battery_description "$home_widgets_missing_child_xml")"
+assert_false 'a missing battery child id fails the real-value check' \
+    home_widget_battery_description_is_real \
+    "$(home_widget_battery_description "$home_widgets_missing_child_xml")"
+
 appwidget_before="$TMP_DIR/appwidget-before.txt"
 cat > "$appwidget_before" <<'EOF'
 AppWidgets:
@@ -1021,6 +1079,50 @@ EOF
 assert_eq 'an API37 wrapper outside any widget-id block is not a bound widget' \
     '' \
     "$(appwidget_new_providers '' "$appwidget_api37_no_block" com.launchernos.dotwellabs.debug)"
+
+# The fresh-HOME proof needs distinct launcher-owned ids, not just provider
+# names. The same record-aware parser is reused with an empty before dump.
+appwidget_api37_instances="$TMP_DIR/appwidget-api37-instances.txt"
+cat > "$appwidget_api37_instances" <<'EOF'
+Widgets:
+  [0] id=4
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}, profile:0}
+  [1] id=5
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiBatteryWidgetProvider}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=2
+EOF
+assert_eq 'API37 launcher-owned clock and battery instances keep distinct ids' \
+    "$(printf '4\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}\n5\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiBatteryWidgetProvider}')" \
+    "$(appwidget_launcher_instances "$appwidget_api37_instances" com.launchernos.dotwellabs.debug)"
+assert_eq 'a provider catalog alone yields no launcher-owned instances' \
+    '' \
+    "$(appwidget_launcher_instances "$appwidget_api37_no_block" com.launchernos.dotwellabs.debug)"
+
+appwidget_other_host_only="$TMP_DIR/appwidget-other-host-only.txt"
+cat > "$appwidget_other_host_only" <<'EOF'
+Widgets:
+  [0] id=7
+    host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'instances owned by another host are rejected' \
+    '' \
+    "$(appwidget_launcher_instances "$appwidget_other_host_only" com.launchernos.dotwellabs.debug)"
+
+appwidget_legacy_instances="$TMP_DIR/appwidget-legacy-instances.txt"
+cat > "$appwidget_legacy_instances" <<'EOF'
+AppWidgets:
+  AppWidgetId=9:
+    hostPackage=com.launchernos.dotwellabs.debug
+    provider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}
+EOF
+assert_eq 'a legacy launcher-owned instance keeps its id' \
+    "$(printf '9\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.widgets.NothingUiClockWidgetProvider}')" \
+    "$(appwidget_launcher_instances "$appwidget_legacy_instances" com.launchernos.dotwellabs.debug)"
 
 # --- widget bind consent fixtures ------------------------------------------
 
@@ -1335,6 +1437,25 @@ assert_true 'the widget binding check requires the clock provider' \
     grep -Fq 'NothingUiClockWidgetProvider' "$home_widgets_body"
 assert_true 'the widget binding check requires the battery provider' \
     grep -Fq 'NothingUiBatteryWidgetProvider' "$home_widgets_body"
+assert_true 'the widget binding check requires a launcher-owned instance id' \
+    grep -Fq 'appwidget_launcher_instances' "$home_widgets_body"
+assert_true 'the widget binding check requires distinct clock and battery ids' \
+    grep -Fq '_vhw_clock_id" != "$_vhw_battery_id' "$home_widgets_body"
+assert_true 'the widget binding check requires the real clock child id' \
+    grep -Fq 'nothingui_clock_time' "$home_widgets_body"
+assert_true 'the widget binding check requires the real battery child id' \
+    grep -Fq 'nothingui_battery_art' "$home_widgets_body"
+assert_true 'the widget binding check requires live clock text' \
+    grep -Fq 'home_widget_clock_text_is_live' "$home_widgets_body"
+assert_true 'the widget binding check requires a real battery description' \
+    grep -Fq 'home_widget_battery_description_is_real' "$home_widgets_body"
+assert_true 'the clean home capture requires the SYSTEM theme choice' \
+    grep -Fq 'assert_settings_theme_choice_system' "$clean_home_body"
+assert_true 'the clean home capture proves widgets for each dark/light XML' \
+    grep -Fq 'verify_home_widgets "$ARTIFACTS/clean-home-$_ccht_name.xml"' \
+    "$clean_home_body"
+assert_true 'the clean home capture stores per-mode widget evidence' \
+    grep -Fq 'clean-home-$_ccht_name-widgets-verified.txt' "$clean_home_body"
 
 assert_true 'the grid capture uses the real Home screen grid deep link' \
     grep -Fq 'lawnchair://settings/home-screen-grid' "$grid_body"

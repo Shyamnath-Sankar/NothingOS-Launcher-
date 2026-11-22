@@ -695,15 +695,41 @@ verify_nothing_home() {
 }
 
 # Fresh Play installs seed both original 2x2 widgets through the default
-# workspace. Prove the host actually bound them instead of trusting the layout.
+# workspace. Prove the host actually bound them with distinct launcher-owned
+# AppWidgetIds and that the measured HOME exposes the real clock/battery child
+# values, instead of trusting a provider catalog or the layout file.
 verify_home_widgets() {
+    _vhw_xml=${1:-$ARTIFACTS/home.xml}
     adb_cmd shell dumpsys appwidget > "$ARTIFACTS/home-widgets.txt" 2>&1 ||
         fail "could not dump the appwidget host state"
-    grep -Fq 'NothingUiClockWidgetProvider' "$ARTIFACTS/home-widgets.txt" ||
-        fail "the clock widget is not bound on the fresh Play HOME"
-    grep -Fq 'NothingUiBatteryWidgetProvider' "$ARTIFACTS/home-widgets.txt" ||
-        fail "the battery widget is not bound on the fresh Play HOME"
-    printf 'Home widgets: clock and battery providers are bound on the fresh Play HOME.\n' \
+    appwidget_launcher_instances "$ARTIFACTS/home-widgets.txt" "$PKG" \
+        > "$ARTIFACTS/home-widgets-instances.txt"
+    _vhw_clock_id=$(awk -F '\t' \
+        '$2 ~ /app\.nothingui\.widgets\.NothingUiClockWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/home-widgets-instances.txt")
+    _vhw_battery_id=$(awk -F '\t' \
+        '$2 ~ /app\.nothingui\.widgets\.NothingUiBatteryWidgetProvider}/ { print $1; exit }' \
+        "$ARTIFACTS/home-widgets-instances.txt")
+    [ -n "$_vhw_clock_id" ] ||
+        fail "the clock widget has no launcher-owned AppWidgetId on the fresh Play HOME"
+    [ -n "$_vhw_battery_id" ] ||
+        fail "the battery widget has no launcher-owned AppWidgetId on the fresh Play HOME"
+    [ "$_vhw_clock_id" != "$_vhw_battery_id" ] ||
+        fail "the clock and battery widgets share AppWidgetId $_vhw_clock_id"
+    [ -s "$_vhw_xml" ] ||
+        fail "the HOME UI XML for the widget child proof is missing"
+    grep -Eq 'resource-id="[^"]*/nothingui_clock_time"' "$_vhw_xml" ||
+        fail "the HOME UI XML does not expose the clock child id nothingui_clock_time"
+    grep -Eq 'resource-id="[^"]*/nothingui_battery_art"' "$_vhw_xml" ||
+        fail "the HOME UI XML does not expose the battery child id nothingui_battery_art"
+    _vhw_clock_text=$(home_widget_clock_text "$_vhw_xml")
+    home_widget_clock_text_is_live "$_vhw_clock_text" ||
+        fail "the HOME clock child has no live time text (got '$_vhw_clock_text')"
+    _vhw_battery_description=$(home_widget_battery_description "$_vhw_xml")
+    home_widget_battery_description_is_real "$_vhw_battery_description" ||
+        fail "the HOME battery child has no real percentage or -- description (got '$_vhw_battery_description')"
+    printf 'Home widgets: clock AppWidgetId %s and battery AppWidgetId %s are launcher-owned; the HOME XML exposes nothingui_clock_time=%s and nothingui_battery_art=%s.\n' \
+        "$_vhw_clock_id" "$_vhw_battery_id" "$_vhw_clock_text" "$_vhw_battery_description" \
         > "$ARTIFACTS/home-widgets-verified.txt"
 }
 
@@ -711,6 +737,7 @@ verify_home_widgets() {
 # added, so the composition can be reviewed without test pollution. The previous
 # night mode is restored even when a capture fails.
 capture_clean_home_theme() {
+    assert_settings_theme_choice_system
     _ccht_night_before=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r')
     printf '%s\n' "$_ccht_night_before" \
         > "$ARTIFACTS/clean-home-night-before.txt"
@@ -751,6 +778,14 @@ capture_clean_home_theme() {
             _ccht_failure="clean home $_ccht_name still exposes inherited Lawnchair text"
             break
         fi
+        if ! ( verify_home_widgets "$ARTIFACTS/clean-home-$_ccht_name.xml" ); then
+            _ccht_failure="clean home $_ccht_name widget hosting proof failed"
+            break
+        fi
+        cp "$ARTIFACTS/home-widgets.txt" \
+            "$ARTIFACTS/clean-home-$_ccht_name-widgets.txt"
+        cp "$ARTIFACTS/home-widgets-verified.txt" \
+            "$ARTIFACTS/clean-home-$_ccht_name-widgets-verified.txt"
         capture_screenshot_to "clean-home-$_ccht_name.png"
         if [ ! -s "$ARTIFACTS/clean-home-$_ccht_name.png" ]; then
             _ccht_failure="clean home $_ccht_name screenshot capture failed"

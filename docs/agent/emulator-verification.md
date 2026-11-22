@@ -24,6 +24,17 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
   install, launch, ANR or crash-stack problems
+- proves the two original widgets are actually hosted: `dumpsys appwidget` must contain distinct
+  launcher-owned `AppWidgetId` records for `NothingUiClockWidgetProvider` and
+  `NothingUiBatteryWidgetProvider` (current `[N] id=N`/`HostId` and legacy `AppWidgetId`/
+  `hostPackage` shapes, including the API 37 `ProviderId{cmp:ComponentInfo{...}}` wrapper). A
+  provider catalog or a widget owned by another host fails. The measured HOME XML must expose the
+  `nothingui_clock_time` child with a live `H:mm`/`HH:mm` value and the `nothingui_battery_art`
+  child with a real `0..100%` or `--` description
+- before any third-party widget is added, requires the existing `pref_launcherTheme=system` choice
+  (read-only), captures `clean-home-dark.xml`/`.png` and `clean-home-light.xml`/`.png` under system
+  night `yes`/`no`, runs the same launcher-owned widget-id and child-value proof for each capture,
+  restores the previous night mode, and returns HOME
 - captures app-info and About evidence, then verifies the real Play settings palette. It reads the
   existing `pref_launcherTheme` preference and requires `system` (a clean install defaults to it; the
   smoke never writes the preference), switches the emulator with `cmd uimode night yes` and
@@ -136,6 +147,19 @@ a view.
 Evidence for these phases:
 
 ```text
+home-widgets.txt
+home-widgets-instances.txt
+home-widgets-verified.txt
+clean-home-dark.xml
+clean-home-dark.png
+clean-home-dark-widgets.txt
+clean-home-dark-widgets-verified.txt
+clean-home-light.xml
+clean-home-light.png
+clean-home-light-widgets.txt
+clean-home-light-widgets-verified.txt
+clean-home-night-before.txt
+clean-home-night-restore.txt
 grid-settings-launch.txt
 grid-settings-attempt-N.xml
 grid-settings-attempt-N.png

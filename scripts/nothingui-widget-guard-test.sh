@@ -183,9 +183,10 @@ EOF
 
     write_file "$root/lawnchair/res/layout/nothingui_widget_clock.xml" <<'EOF'
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android">
-    <View
+    <ImageView
         android:id="@+id/nothingui_clock_surface"
-        android:background="@drawable/nothingui_widget_tile_dark" />
+        android:background="@drawable/nothingui_widget_tile_dark"
+        android:importantForAccessibility="no" />
     <TextClock
         android:fontFamily="@font/doto_bold"
         android:format12Hour="h:mm"
@@ -280,9 +281,40 @@ EOF
 
     write_file "$root/src/com/android/launcher3/AutoInstallsLayout.java" <<'EOF'
 class AutoInstallsLayout {
-    private String resolveComponentPackage(String packageName) {
-        if (packageName.startsWith("@string/")) return mContext.getPackageName();
-        return packageName;
+    private String resolveComponentPackage(XmlPullParser parser) {
+        final String packageName = getAttributeValue(parser, ATTR_PACKAGE_NAME);
+        final int resourceId = getAttributeResourceValue(parser, ATTR_PACKAGE_NAME, 0);
+        final int launcherComponentId = mContext.getResources().getIdentifier(
+                "launcher_component", "string", mContext.getPackageName());
+        final String resourceValue = resourceId != 0 && resourceId != launcherComponentId
+                ? mSourceRes.getString(resourceId) : null;
+        return WidgetPackageResolver.resolve(
+                packageName, resourceId, launcherComponentId,
+                mContext.getPackageName(), resourceValue);
+    }
+}
+EOF
+
+    write_file "$root/src/com/android/launcher3/WidgetPackageResolver.java" <<'EOF'
+class WidgetPackageResolver {
+    static String resolve(String attributeValue, int resourceId,
+            int launcherComponentResourceId, String contextPackage, String resourceValue) {
+        if (resourceId != 0) {
+            if (resourceId == launcherComponentResourceId) return contextPackage;
+            return packagePart(resourceValue);
+        }
+        if (attributeValue != null && attributeValue.startsWith("@string/")) {
+            if ("launcher_component".equals(attributeValue.substring("@string/".length()))) {
+                return contextPackage;
+            }
+            if (resourceValue != null) return packagePart(resourceValue);
+        }
+        return attributeValue;
+    }
+
+    static String packagePart(String value) {
+        int separator = value.indexOf('/');
+        return separator > 0 ? value.substring(0, separator) : value;
     }
 }
 EOF
@@ -429,6 +461,33 @@ class AutoInstallsLayout {
 EOF
 expect_fail_contains 'parser without resource package resolution fails' \
     "$no_resolver" 'cannot resolve a resource package name'
+
+no_resource_id="$TMP_DIR/no-resource-id"
+cp -R "$clean" "$no_resource_id"
+write_file "$no_resource_id/src/com/android/launcher3/AutoInstallsLayout.java" <<'EOF'
+class AutoInstallsLayout {
+    private String resolveComponentPackage(String packageName) {
+        if (packageName.startsWith("@string/")) return mContext.getPackageName();
+        return packageName;
+    }
+}
+EOF
+expect_fail_contains 'parser that only matches the @string text prefix fails' \
+    "$no_resource_id" 'does not read the compiled package resource id'
+
+hardcoded_package="$TMP_DIR/hardcoded-package"
+cp -R "$clean" "$hardcoded_package"
+printf '%s\n' '// com.launchernos.dotwellabs' \
+    >> "$hardcoded_package/src/com/android/launcher3/AutoInstallsLayout.java"
+expect_fail_contains 'parser with a hardcoded applicationId fails' \
+    "$hardcoded_package" 'hardcodes the applicationId'
+
+bare_view="$TMP_DIR/bare-view"
+cp -R "$clean" "$bare_view"
+sed -i 's/<ImageView/<View/' \
+    "$bare_view/lawnchair/res/layout/nothingui_widget_clock.xml"
+expect_fail_contains 'clock tile using an unsupported bare View fails' \
+    "$bare_view" 'unsupported bare View'
 
 wrong_alarm="$TMP_DIR/wrong-alarm"
 cp -R "$clean" "$wrong_alarm"

@@ -58,6 +58,7 @@ PLAY_CONFIG=play/res/values/config.xml
 PLAY_DIMENS=play/res/values/dimens.xml
 LAUNCHER=lawnchair/src/app/lawnchair/LawnchairLauncher.kt
 PARSER=src/com/android/launcher3/AutoInstallsLayout.java
+PARSER_RESOLVER=src/com/android/launcher3/WidgetPackageResolver.java
 NOTICE=NOTICE.md
 MIT=licenses/third-party/dotline-widgets-MIT.txt
 
@@ -66,7 +67,7 @@ for file in \
     "$BATTERY_ART" "$BUDGET" "$DOT_TEXT" "$CLOCK_LAYOUT" "$BATTERY_LAYOUT" \
     "$CLOCK_TILE_DARK" "$CLOCK_TILE_LIGHT" "$COLORS" "$CLOCK_INFO" \
     "$BATTERY_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT" "$PLAY_CONFIG" \
-    "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$NOTICE" "$MIT"; do
+    "$PLAY_DIMENS" "$LAUNCHER" "$PARSER" "$PARSER_RESOLVER" "$NOTICE" "$MIT"; do
     require_file "$file"
 done
 
@@ -120,6 +121,13 @@ require_grep "$CLOCK_PROVIDER" 'fun refreshAll' \
     "the clock widget cannot be refreshed by the lifecycle monitor"
 require_grep "$CLOCK_LAYOUT" 'nothingui_clock_surface' \
     "the clock layout has no tile surface view"
+for layout in "$CLOCK_LAYOUT" "$BATTERY_LAYOUT"; do
+    if grep -Eq '<View([[:space:]]|>|$)' "$ROOT/$layout"; then
+        fail "$layout uses an unsupported bare View in a RemoteViews layout"
+    fi
+done
+require_grep "$CLOCK_LAYOUT" '<ImageView' \
+    "the clock tile is not a RemoteViews-supported ImageView"
 require_grep "$CLOCK_LAYOUT" 'nothingui_widget_tile_dark' \
     "the clock layout has no default rounded tile"
 require_grep "$CLOCK_TILE_DARK" 'nothingui_widget_surface_dark' \
@@ -264,10 +272,22 @@ forbid_grep "$DEFAULT_LAYOUT" 'com.google.android.deskclock' \
     "the fresh Play layout still seeds the Google desk clock"
 require_grep "$PARSER" 'resolveComponentPackage' \
     "the default-layout parser cannot resolve a resource package name"
-require_grep "$PARSER" '@string/' \
-    "the default-layout parser does not recognize resource package names"
+require_grep "$PARSER" 'getAttributeResourceValue(parser, ATTR_PACKAGE_NAME, 0)' \
+    "the default-layout parser does not read the compiled package resource id"
+require_grep "$PARSER" 'WidgetPackageResolver.resolve' \
+    "the default-layout parser does not use the resource-id resolver"
+require_grep "$PARSER_RESOLVER" 'launcherComponentResourceId' \
+    "the package resolver does not special-case the launcher_component resource id"
+require_grep "$PARSER_RESOLVER" 'contextPackage' \
+    "the package resolver does not use the running variant package"
+require_grep "$PARSER_RESOLVER" '@string/' \
+    "the package resolver does not keep the text-fixture string fallback"
 require_grep "$PARSER" 'mContext.getPackageName()' \
     "the default-layout parser does not use the running variant package"
+forbid_grep "$PARSER" 'com.launchernos.dotwellabs' \
+    "the default-layout parser hardcodes the applicationId"
+forbid_grep "$PARSER_RESOLVER" 'com.launchernos.dotwellabs' \
+    "the package resolver hardcodes the applicationId"
 
 # Play-only sizing: smaller home icons and a real 48dp QSB, drawer unchanged.
 require_grep "$PLAY_CONFIG" 'config_default_home_icon_size_factor' \
