@@ -3,24 +3,49 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 provider identity, page discovery and device Settings proof**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 CI155 HOME long-press smoke-harness recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `1f3dc34` (`style(widgets): join isKnown expression body to one line`); this STATE
-  commit follows. Previous commits: `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`,
-  `709795a`; start `010d928`.
+- head: `3c00ebc` (`fix(smoke): reject widget hosts as empty HOME long-press points`); this STATE
+  commit follows. Previous commits: `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`,
+  `a46a487`, `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI147** (coordinator-reported, not reproduced locally) — compile/assemble, Kotlin/Java
-  style and **62 unit tests passed**; the own-widget runtime phase succeeded; the third-party
-  placement detector failed; the Coding57 watchdog stalled and checkpoint recovery preserved work.
-  A fresh PR19 run is required at this head.
+- ci: **CI155** (coordinator-reported, not reproduced locally) — compiled, branding passed, **69
+  JUnit tests passed**, all three own widgets had live values, and the measured Wi-Fi/Sound/Display
+  shortcuts passed with unchanged ids. It then failed at `home_longpress_target`: the returned
+  `540,896` was inside the new Device host and opened its resize frame instead of the empty HOME
+  popup. A fresh PR19 run is required at this head.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. Inspect
-  `device-settings-*.xml/.png`, `activities-device-settings-*.txt`, the page-discovery
-  `widgets-placement-page-*`/`widgets-survival-page-*` evidence, and clean dark/light HOME. The
-  third-party detector still needs diagnosis from the fresh CI147-era evidence; do not guess and do
-  not merge.
+  tests, Verify Play manifest and identity, and the API 37 smoke. Inspect the HOME long-press target
+  and the existing widget/device Settings evidence; do not merge until the API 37 smoke is green.
 
-## done (this run — CI155 style-only correction)
+## done (this run — CI155 HOME long-press widget-host recovery)
+
+- **Diagnosed failure fixed in the harness:** CI155's `home_longpress_target` chose `540,896`,
+  which is inside the third real widget host (`38,770,1042,1180`, the Device card). The old
+  `ui_point_is_free` skipped every node whose `clickable` was not `true`, so a hosted widget exposed
+  as a non-clickable `LauncherAppWidgetHostView` was treated as empty.
+- **Occupancy:** `ui_point_is_free` now treats any `*AppWidgetHostView` class and any `/appwidget`
+  resource-id as occupied regardless of `clickable`, `text` or `content-desc`; pending hosts are
+  covered. Labelled clickable icons/folders keep their existing protection, and the header/dock/QSB
+  band math is unchanged.
+- **Safe candidate search:** widget-host bounds are expanded by the same measured 4% margin, and
+  `home_longpress_target` adds bounded 90/95/100 percent candidates so it can reach the genuinely
+  empty band below the Device card instead of a narrow gap or a widget edge. If all candidates are
+  occupied it still fails closed; no widget is pressed and no UI is bypassed.
+- **Fixtures:** new CI155 geometry (root 1080x1920, full-root workspace, hotseat at 1481, three
+  non-clickable "DotWel Launcher" hosts) rejects `540,896` and selects `540,1300`, which is asserted
+  below the Device card, above the dock and free. Added pending-host, unlabelled-host and
+  all-widget-occupied fail-closed fixtures. The legacy empty-layout target remains `540,834`.
+- **Docs:** `docs/agent/emulator-verification.md` records host occupancy, clearance and the
+  below-Device-card candidates.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` 450/450; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite 19/19;
+  `verify-play-build-test.sh` 11/11; `sh -n` clean on the edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** the API 37 runtime smoke must confirm the new target opens the normal HOME
+  popup. PR19 is not merged and no runtime/APK claim is made.
+
+## done (previous run — CI155 style-only correction)
 
 - **Formatter-only:** `NothingUiDeviceStorage.isKnown`'s short expression body now has `=` and
   `total > 0L && available >= 0L && available <= total` on one line, as CI155 `check-style`
@@ -1256,6 +1281,17 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-22: P5 PR19 CI155 HOME long-press harness recovery on
+  `agent/home-widget-composition-v1-new` (`3c00ebc`), from `62e1afd`. CI155 reached all three live
+  own widgets and the measured device Settings shortcuts, then `home_longpress_target` returned
+  `540,896` inside the non-clickable Device host and opened its resize frame. `ui_point_is_free` now
+  counts `*AppWidgetHostView` classes and `/appwidget` ids as occupied regardless of clickable/label
+  flags, keeps labelled clickable icon/folder protection, expands host bounds by the measured margin
+  and adds bounded 90/95/100 percent candidates to reach the empty band below the Device card.
+  Fixtures reject `540,896`, select `540,1300`, cover pending/unlabelled hosts and all-occupied
+  fail-closed, and keep the legacy `540,834` empty target. Local smoke 450/450, drawer 38/38,
+  widget guard 31/31, home guard 19/19, verify-play-build 11/11, `sh -n` and `git diff --check`
+  clean. No Gradle/emulator/CI claim; PR19 not merged.
 - 2026-11-22: P5 PR19 pending-widget smoke harness recovery on
   `agent/home-widget-composition-v1-new` (`089ca86`, `27c6baa`, `c39199a`), from `740b2cb`. The one
   reported fixture failure was reproduced: `home_pending_widget_bounds` set `saw_ws` only when a
