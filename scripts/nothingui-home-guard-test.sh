@@ -72,16 +72,11 @@ import com.android.launcher3.R
 
 class NothingUiHomeHeaderView {
     val regular = R.font.doto_regular
-    val bold = R.font.doto_bold
     val accent = NothingUiPalette.AccentRed
-    val tick = "android.intent.action.TIME_TICK"
     val tickAction = "ACTION_TIME_TICK"
     val label = "contentDescription"
-    val clock = "DateFormat.is24HourFormat"
-    val surface = NothingUiHomeChrome.surfaceColor(context)
     val ink = NothingUiHomeChrome.textColor(context)
-    const val CLOCK_TEXT_SP = 30f
-    const val DATE_TEXT_SP = 10f
+    const val DATE_TEXT_SP = 11f
 }
 EOF
 
@@ -411,11 +406,51 @@ class NothingUiHomeHeaderView {
     val accent = "NothingUiPalette.AccentRed"
     val tickAction = "ACTION_TIME_TICK"
     val label = "contentDescription"
-    val clock = "DateFormat.is24HourFormat"
+    const val DATE_TEXT_SP = 11f
 }
 EOF
 expect_fail_contains 'header without the Doto font fails' \
     "$missing_doto" 'does not use the bundled Doto font'
+
+header_card="$TMP_DIR/header-card"
+cp -R "$clean" "$header_card"
+write_file "$header_card/lawnchair/src/app/nothingui/home/NothingUiHomeHeaderView.kt" <<'EOF'
+package app.nothingui.home
+
+class NothingUiHomeHeaderView {
+    val regular = R.font.doto_regular
+    val accent = "NothingUiPalette.AccentRed"
+    val tickAction = "ACTION_TIME_TICK"
+    val label = "contentDescription"
+    val ink = NothingUiHomeChrome.textColor(context)
+    const val DATE_TEXT_SP = 11f
+    fun card() {
+        setStroke(1, 0)
+        cornerRadius = 22f
+    }
+}
+EOF
+expect_fail_contains 'bordered header card fails' \
+    "$header_card" 'bordered card instead of a borderless date strip'
+
+header_giant_clock="$TMP_DIR/header-giant-clock"
+cp -R "$clean" "$header_giant_clock"
+write_file "$header_giant_clock/lawnchair/src/app/nothingui/home/NothingUiHomeHeaderView.kt" <<'EOF'
+package app.nothingui.home
+
+class NothingUiHomeHeaderView {
+    val regular = R.font.doto_regular
+    val accent = "NothingUiPalette.AccentRed"
+    val tickAction = "ACTION_TIME_TICK"
+    val label = "contentDescription"
+    val ink = NothingUiHomeChrome.textColor(context)
+    val clockView = 1
+    const val CLOCK_TEXT_SP = 30f
+    const val DATE_TEXT_SP = 11f
+}
+EOF
+expect_fail_contains 'giant header clock fails' \
+    "$header_giant_clock" 'still renders a giant clock instead of a quiet date strip'
 
 missing_force="$TMP_DIR/missing-force"
 cp -R "$clean" "$missing_force"

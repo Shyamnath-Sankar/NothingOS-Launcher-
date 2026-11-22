@@ -39,6 +39,7 @@ sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-native-surfaces-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-widget-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-role-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
@@ -66,6 +67,11 @@ fi
 # NothingUI actual-home slice and Play-only gate (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
     sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
+fi
+
+# Play-only clock/battery widgets and fresh-install home composition (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/widgets" ]; then
+    sh "$SCRIPT_DIR/nothingui-widget-guard.sh" "$ROOT"
 fi
 
 # Play-only user-initiated HOME role consent (skipped for minimal fixtures).

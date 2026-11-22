@@ -29,8 +29,8 @@ import kotlin.math.sqrt
  *
  * Android 17 rejects a widget RemoteViews payload whose summed image memory exceeds
  * `6 × width × height` bytes of the active display. The display bounds come from
- * [WindowManager.currentWindowMetrics] on API 30+ (never from `resources.displayMetrics`), with a
- * real-size display fallback on API 26–29. Art is decoded at the widget's own size and clamped to a
+ * [WindowManager.currentWindowMetrics] on API 30+ (never from the legacy resource display size),
+ * with a real-size display fallback on API 26–29. Art is decoded at the widget's own size and clamped to a
  * small maximum, so a 2×2 widget never ships a fixed giant bitmap.
  */
 object NothingUiWidgetBudget {
@@ -45,7 +45,7 @@ object NothingUiWidgetBudget {
     }
 
     fun boundedSize(context: Context, widthDp: Int, heightDp: Int): Size {
-        val density = context.resources.displayMetrics.density
+        val density = context.resources.configuration.densityDpi / 160f
         var width = ceil(widthDp * density).toInt().coerceIn(1, MAX_DIMENSION_PX)
         var height = ceil(heightDp * density).toInt().coerceIn(1, MAX_DIMENSION_PX)
         val cap = capBytes(context)

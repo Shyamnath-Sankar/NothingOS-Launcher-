@@ -144,22 +144,29 @@ fi
 grep -Fq 'app.nothingui.home.NothingUiHomeHeaderView' "$HEADER_LAYOUT" ||
     fail "the NothingUI header layout does not inflate NothingUiHomeHeaderView"
 
-grep -Fq 'R.font.doto_bold' "$HEADER_VIEW" ||
-    fail "the home header clock does not use the bundled Doto font"
+# The home header is a quiet borderless date strip, not a second full-width clock card. The
+# time is owned by the square dot clock widget; a giant header clock or a card background here
+# would duplicate it and rebuild the fat banner the owner rejected.
 grep -Fq 'R.font.doto_regular' "$HEADER_VIEW" ||
-    fail "the home header date does not use the bundled Doto font"
-grep -Fq 'CLOCK_TEXT_SP = 30f' "$HEADER_VIEW" ||
-    fail "the home header clock is not sized to the single pinned row"
-grep -Fq 'DATE_TEXT_SP = 10f' "$HEADER_VIEW" ||
-    fail "the home header date is not sized to the single pinned row"
+    fail "the home date strip does not use the bundled Doto font"
+grep -Fq 'DATE_TEXT_SP = 11f' "$HEADER_VIEW" ||
+    fail "the home date strip is not sized to the single pinned row"
+if grep -Fq 'CLOCK_TEXT_SP' "$HEADER_VIEW" ||
+    grep -Fq 'clockView' "$HEADER_VIEW" ||
+    grep -Fq 'R.font.doto_bold' "$HEADER_VIEW"; then
+    fail "the home header still renders a giant clock instead of a quiet date strip"
+fi
+if grep -Fq 'setStroke' "$HEADER_VIEW" ||
+    grep -Fq 'cornerRadius' "$HEADER_VIEW" ||
+    grep -Fq 'cardColor' "$HEADER_VIEW"; then
+    fail "the home header is still a bordered card instead of a borderless date strip"
+fi
 grep -Fq 'NothingUiPalette.AccentRed' "$HEADER_VIEW" ||
-    fail "the home header is missing the restrained red accent"
+    fail "the home date strip is missing the restrained red accent"
 grep -Fq 'ACTION_TIME_TICK' "$HEADER_VIEW" ||
-    fail "the home header clock does not update on the time tick"
+    fail "the home date strip does not update on the time tick"
 grep -Fq 'contentDescription' "$HEADER_VIEW" ||
-    fail "the home header clock/date has no accessibility label"
-grep -Fq 'DateFormat.is24HourFormat' "$HEADER_VIEW" ||
-    fail "the home header does not respect the system 12/24-hour setting"
+    fail "the home date strip has no accessibility label"
 grep -Fq 'formatClock' "$CLOCK_FILE" ||
     fail "the pure clock formatter is missing formatClock"
 grep -Fq 'formatDate' "$CLOCK_FILE" ||
@@ -186,10 +193,8 @@ grep -Fq 'NothingUiPalette.Ink' "$CHROME_FILE" ||
     fail "the chrome surface/ink pair does not use the original ink"
 grep -Fq 'R.attr.isMainColorDark' "$CHROME_FILE" ||
     fail "the chrome pair does not retain the inherited light/dark theme choice"
-grep -Fq 'NothingUiHomeChrome.surfaceColor' "$HEADER_VIEW" ||
-    fail "the home header does not share the chrome surface pair"
 grep -Fq 'NothingUiHomeChrome.textColor' "$HEADER_VIEW" ||
-    fail "the home header does not share the chrome ink pair"
+    fail "the home date strip does not share the chrome ink pair"
 
 # Search chrome and page dots must only recolor behind the Play gate.
 grep -Fq 'NothingUiFeature.homeEnabled' "$QSB_FILE" ||
