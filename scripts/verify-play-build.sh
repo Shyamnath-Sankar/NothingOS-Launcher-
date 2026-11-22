@@ -86,6 +86,11 @@ if [ -f "$ROOT/lawnchair/src/app/nothingui/drawer/DrawerOpacityDefaults.kt" ]; t
     sh "$SCRIPT_DIR/nothingui-polish-guard.sh" "$ROOT"
 fi
 
+# Play-only offline AMOLED wallpaper gallery (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/wallpaper" ]; then
+    sh "$SCRIPT_DIR/nothingui-wallpaper-guard.sh" "$ROOT"
+fi
+
 # Play-only icon renderer policy wiring (skipped for minimal fixtures).
 if [ -f "$ROOT/lawnchair/src/app/nothingui/icons/NothingUiIconThemeController.kt" ]; then
     sh "$SCRIPT_DIR/nothingui-icon-render-guard.sh" "$ROOT"
