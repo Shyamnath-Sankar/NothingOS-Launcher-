@@ -1843,6 +1843,9 @@ sed -n '/^verify_home_widgets() {/,/^}/p' "$SMOKE" > "$home_widgets_body"
 own_widget_setup_body="$TMP_DIR/complete_own_widget_setup.sh"
 sed -n '/^complete_own_widget_setup() {/,/^}/p' "$SMOKE" > "$own_widget_setup_body"
 
+search_pages_body="$TMP_DIR/search_home_pages_for_widget.sh"
+sed -n '/^search_home_pages_for_widget() {/,/^}/p' "$SMOKE" > "$search_pages_body"
+
 assert_true 'the own-widget setup accepts only one exact own provider record' \
     grep -Fq 'own_widget_new_binding' "$own_widget_setup_body"
 assert_false 'the own-widget setup has no substring provider acceptance' \
@@ -2090,6 +2093,33 @@ assert_false 'the widgets capture never binds a widget or edits the database dir
     grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' "$widgets_body"
 assert_false 'the widgets capture never uses a fixed Add tap coordinate' \
     grep -Eq 'input tap [0-9]+ [0-9]+' "$widgets_body"
+assert_true 'the widgets capture identifies the placed provider by its selected label' \
+    grep -Fq '"$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
+assert_false 'the widgets capture never uses bounds-only widget identity' \
+    grep -Fq 'home_has_widget_bounds' "$SMOKE"
+assert_true 'the widgets capture searches measured HOME pages during initial placement' \
+    grep -Fq 'search_home_pages_for_widget \' "$widgets_body"
+assert_true 'the widgets capture bounds initial page discovery to three advances' \
+    grep -Fq '[ "$_shw_page" -lt 3 ]' "$search_pages_body"
+assert_true 'the page search requires the launcher to be resumed before a swipe' \
+    grep -Fq 'foreground_is_component' "$search_pages_body"
+assert_true 'the page search refuses to swipe an open bind consent' \
+    grep -Fq 'widget_bind_consent_is_ready' "$search_pages_body"
+assert_true 'the page search proves a real workspace host by provider label' \
+    grep -Fq 'home_widget_bounds "$_shw_xml" "$_shw_ref" "$_shw_label"' \
+    "$search_pages_body"
+assert_true 'the page search stores XML and PNG evidence per page' \
+    grep -Fq '$_shw_prefix-page-$_shw_page.xml' "$search_pages_body"
+assert_true 'the page search logs every measured advance' \
+    grep -Fq '$_shw_prefix-swipe-$_shw_next.txt' "$search_pages_body"
+assert_true 'the widgets capture stores the placement and survival page log' \
+    grep -Fq 'widgets-page-log.txt' "$widgets_body"
+assert_true 'the widgets capture records the initial placement page' \
+    grep -Fq 'placement-page=' "$widgets_body"
+assert_true 'the widgets capture records the survival page' \
+    grep -Fq 'survival-page=' "$widgets_body"
+assert_true 'the widgets capture re-proves the exact placed bounds after page navigation' \
+    grep -Fq '_cwp_recheck_bounds' "$widgets_body"
 
 placed_line=$(grep -n 'widgets-home-placed.xml' "$widgets_body" | sed -n '1s/:.*//p')
 consent_line=$(grep -n 'widgets-bind-consent.xml' "$widgets_body" | sed -n '1s/:.*//p')

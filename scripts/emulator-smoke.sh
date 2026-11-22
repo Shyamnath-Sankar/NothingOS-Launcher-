@@ -1236,6 +1236,77 @@ capture_grid_settings() {
     verify_nothing_home
 }
 
+# Search up to three measured HOME page advances for the newly placed provider,
+# identified by the picker-selected label and a real workspace host, and never
+# by geometry alone. The caller must have already verified the launcher is
+# resumed and the new launcher-owned AppWidgetId is bound. An open bind consent
+# or a configuration activity stops the search before any swipe. Results are
+# returned in _cwp_search_page, _cwp_search_bounds and _cwp_search_xml; every
+# page advance saves XML/PNG plus a line in the page log.
+search_home_pages_for_widget() {
+    _shw_label=$1
+    _shw_ref=$2
+    _shw_xml=$3
+    _shw_prefix=$4
+    _shw_log=$5
+    _shw_page=0
+    _shw_bounds=$(home_widget_bounds "$_shw_xml" "$_shw_ref" "$_shw_label")
+    printf 'page=%s xml=%s bounds=%s\n'         "$_shw_page" "$_shw_xml" "${_shw_bounds:-none}" >> "$_shw_log"
+    while [ -z "$_shw_bounds" ] && [ "$_shw_page" -lt 3 ]; do
+        _shw_next=$((_shw_page + 1))
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/$_shw_prefix-activities-$_shw_next.txt" 2>&1 || true
+        if ! foreground_is_component \
+            "$ARTIFACTS/$_shw_prefix-activities-$_shw_next.txt" \
+            "$PKG" "$LAUNCHER_ACTIVITY"; then
+            printf 'page=%s stopped=launcher-not-resumed\n' "$_shw_page" \
+                >> "$_shw_log"
+            return 1
+        fi
+        if widget_bind_consent_is_ready \
+            "$_shw_xml" "$EXPECTED_LABEL" "$_shw_label"; then
+            printf 'page=%s stopped=consent-still-open\n' "$_shw_page" \
+                >> "$_shw_log"
+            return 1
+        fi
+        _shw_swipe=$(workspace_page_swipe "$_shw_xml" next)
+        if [ -z "$_shw_swipe" ]; then
+            printf 'page=%s stopped=no-safe-page-swipe\n' "$_shw_page" \
+                >> "$_shw_log"
+            return 1
+        fi
+        set -- $_shw_swipe
+        printf 'page=%s swipe=%s,%s,%s,%s\n' \
+            "$_shw_next" "$1" "$2" "$3" "$4" >> "$_shw_log"
+        if ! adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
+            > "$ARTIFACTS/$_shw_prefix-swipe-$_shw_next.txt" 2>&1; then
+            printf 'page=%s stopped=swipe-failed\n' "$_shw_page" \
+                >> "$_shw_log"
+            return 1
+        fi
+        sleep 1
+        _shw_page=$_shw_next
+        _shw_xml="$ARTIFACTS/$_shw_prefix-page-$_shw_page.xml"
+        if ! capture_ui_xml "$_shw_prefix-page-$_shw_page.xml"; then
+            printf 'page=%s stopped=capture-failed\n' "$_shw_page" \
+                >> "$_shw_log"
+            return 1
+        fi
+        capture_screenshot_to "$_shw_prefix-page-$_shw_page.png"
+        _shw_bounds=$(home_widget_bounds "$_shw_xml" "$_shw_ref" "$_shw_label")
+        printf 'page=%s xml=%s bounds=%s\n' \
+            "$_shw_page" "$_shw_xml" "${_shw_bounds:-none}" >> "$_shw_log"
+    done
+    if [ -z "$_shw_bounds" ]; then
+        printf 'stopped=not-found-after-max-pages\n' >> "$_shw_log"
+        return 1
+    fi
+    _cwp_search_page=$_shw_page
+    _cwp_search_bounds=$_shw_bounds
+    _cwp_search_xml=$_shw_xml
+    return 0
+}
+
 # Long-press the empty central HOME workspace with a real gesture, open the real
 # options popup, tap Widgets by its measured bounds, and require the native widget
 # picker search/list. No activity is started directly and no preference is
@@ -1596,7 +1667,7 @@ capture_widgets_picker() {
                             fi
                         fi
                         _cwp_candidate_bounds=$(home_widget_bounds \
-                            "$_cwp_candidate_xml" "$_cwp_ref")
+                            "$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_provider_title")
                         if [ -n "$_cwp_candidate_bounds" ]; then
                             _cwp_placed=$_cwp_candidate_xml
                             _cwp_placed_bounds=$_cwp_candidate_bounds
@@ -1605,6 +1676,42 @@ capture_widgets_picker() {
                     fi
                     _cwp_place_poll=$((_cwp_place_poll + 1))
                 done
+                if [ -z "$_cwp_placed" ] && [ "$_cwp_bind_tapped" -eq 1 ]; then
+                    # The denser factory HOME can push the added widget onto a
+                    # later page. Only after Create has been handled, the
+                    # launcher is resumed and a new launcher-owned AppWidgetId is
+                    # bound may the measured normal HOME pages be searched. The
+                    # helper refuses to swipe while a consent or configuration
+                    # activity is open.
+                    _cwp_pre_new=
+                    _cwp_pre_aw=1
+                    while [ "$_cwp_pre_aw" -le 5 ]; do
+                        adb_cmd shell dumpsys appwidget \
+                            > "$ARTIFACTS/widgets-appwidget-page-before.txt" \
+                            2>&1 || true
+                        _cwp_pre_new=$(appwidget_new_providers \
+                            "$ARTIFACTS/widgets-appwidget-before.txt" \
+                            "$ARTIFACTS/widgets-appwidget-page-before.txt" "$PKG")
+                        [ -n "$_cwp_pre_new" ] && break
+                        _cwp_pre_aw=$((_cwp_pre_aw + 1))
+                        sleep 1
+                    done
+                    [ -n "$_cwp_pre_new" ] ||
+                        fail "no new launcher-owned AppWidgetId was bound before HOME page discovery"
+                    : > "$ARTIFACTS/widgets-page-log.txt"
+                    if search_home_pages_for_widget \
+                        "$_cwp_provider_title" "$_cwp_ref" "$_cwp_last_xml" \
+                        widgets-placement "$ARTIFACTS/widgets-page-log.txt"; then
+                        _cwp_placed=$_cwp_search_xml
+                        _cwp_placed_bounds=$_cwp_search_bounds
+                        printf 'placement-page=%s bounds=%s\n' \
+                            "$_cwp_search_page" "$_cwp_placed_bounds" \
+                            >> "$ARTIFACTS/widgets-add-log.txt"
+                    else
+                        capture_screenshot_to widgets-page-last.png
+                        fail "the new $_cwp_provider_title widget was not found on the first three measured HOME pages after Add and consent"
+                    fi
+                fi
                 if [ -z "$_cwp_placed" ]; then
                     cp "$_cwp_last_xml" "$ARTIFACTS/widgets-add-last.xml" \
                         2>/dev/null || true
@@ -1673,29 +1780,23 @@ capture_widgets_picker() {
                 [ -s "$ARTIFACTS/widgets-home-after-home.png" ] ||
                     fail "HOME-after-widget screenshot capture failed"
                 # The widget may have landed on a page other than the one visible
-                # after HOME. Search a bounded number of pages for the exact placed
-                # bounds, return to the original page, then navigate back to the
-                # widget page and re-prove the same bounds.
-                _cwp_search_xml="$ARTIFACTS/widgets-home-after-home.xml"
-                _cwp_page=0
-                _cwp_max_pages=3
-                while ! home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds"; do
-                    [ "$_cwp_page" -lt "$_cwp_max_pages" ] || break
-                    _cwp_page=$((_cwp_page + 1))
-                    _cwp_swipe=$(workspace_page_swipe "$_cwp_search_xml" next)
-                    [ -n "$_cwp_swipe" ] ||
-                        fail "could not compute a bounded HOME page swipe for the widget survival check"
-                    set -- $_cwp_swipe
-                    adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
-                        > "$ARTIFACTS/widgets-page-swipe-$_cwp_page.txt" 2>&1 ||
-                        fail "could not swipe to HOME page $_cwp_page for the widget survival check"
-                    sleep 1
-                    _cwp_search_xml="$ARTIFACTS/widgets-home-page-$_cwp_page.xml"
-                    capture_ui_xml "widgets-home-page-$_cwp_page.xml" ||
-                        fail "could not capture HOME page $_cwp_page for the widget survival check"
-                done
-                home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds" ||
-                    fail "the placed widget disappeared after launching Settings and returning HOME"
+                # after HOME. Search a bounded number of pages for the selected
+                # provider label and exact placed bounds, return to the original
+                # page, then navigate back to the widget page and re-prove the
+                # same identity and bounds.
+                if ! search_home_pages_for_widget \
+                    "$_cwp_provider_title" "$_cwp_ref" \
+                    "$ARTIFACTS/widgets-home-after-home.xml" widgets-survival \
+                    "$ARTIFACTS/widgets-page-log.txt"; then
+                    fail "the placed $_cwp_provider_title widget was not found on the first three measured HOME pages after launching Settings and returning HOME"
+                fi
+                _cwp_page=$_cwp_search_page
+                _cwp_search_xml=$_cwp_search_xml
+                [ "$_cwp_search_bounds" = "$_cwp_placed_bounds" ] ||
+                    fail "the widget found after Settings has bounds '$_cwp_search_bounds', expected '$_cwp_placed_bounds'"
+                printf 'survival-page=%s bounds=%s\n' \
+                    "$_cwp_page" "$_cwp_search_bounds" \
+                    >> "$ARTIFACTS/widgets-add-log.txt"
                 _cwp_return=0
                 while [ "$_cwp_return" -lt "$_cwp_page" ]; do
                     _cwp_return=$((_cwp_return + 1))
@@ -1728,8 +1829,10 @@ capture_widgets_picker() {
                             fail "could not capture the widget page for the survival re-check"
                     done
                 fi
-                home_has_widget_bounds "$_cwp_search_xml" "$_cwp_placed_bounds" ||
-                    fail "the placed widget did not survive bounded page navigation (expected $_cwp_placed_bounds)"
+                _cwp_recheck_bounds=$(home_widget_bounds \
+                    "$_cwp_search_xml" "$_cwp_ref" "$_cwp_provider_title")
+                [ "$_cwp_recheck_bounds" = "$_cwp_placed_bounds" ] ||
+                    fail "the placed $_cwp_provider_title widget did not survive bounded page navigation (expected $_cwp_placed_bounds, got '${_cwp_recheck_bounds:-none}')"
 
                 printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings, returning HOME and a bounded page search/return that found the widget on its actual page.\n' \
                     "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
