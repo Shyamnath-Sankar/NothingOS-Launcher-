@@ -3,21 +3,45 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **A1 settings palette — debug-warning contrast fixed; native surfaces still next**.
-  The Play settings dashboard debug warning rendered red text/icons on the Material dark-red
-  `errorContainer` (1.86:1). `NothingUiColors` now carries an explicit neutral
-  `warningContainer`/`onWarningContainer` pair mapped to `errorContainer`/`onErrorContainer`, and
-  `PreferencesDebugWarning` passes that content color to both text and icon on Play only. Contrast
-  is now 10.16:1 dark and 15.77:1 light; non-Play and all other red accents are unchanged. Native
-  `ThemeProvider`, popup, drawer and picker surfaces are still untouched and are next.
-- branch: `agent/a1-settings-palette-tiny-check`
-- head: app `550d5b2` (`fix(settings): use neutral high-contrast debug warning on Play`); this STATE
-  commit follows. Prior A1 checkpoint is `236f00f`/`b1f5d10`/`e17b860`.
-- pr: #17 (https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/17). CI128 was green on
-  build/unit/style/emulator; the only blocker was the debug-warning contrast in the captured pixels.
-  This run is source/fixtures only — no Gradle build or emulator run here.
+- current_phase: **A2 native popup/drawer — corrective checkpoint; PR18 awaiting corrected CI**.
+  A1 is merged (PR #17, CI130 green). A2 neutralizes the Play native HOME popup and app-drawer
+  surfaces and passed CI132's Android build, unit tests and API 37 emulator smoke; the actual
+  popup/drawer dark/light captures were reviewed and accepted. This run fixes only the two
+  diagnosed checks: `spotlessKotlinCheck` expression-body wrapping in
+  `NothingUiNativeSurfaces.kt`, and the sRGB 8-bit alpha expectation in
+  `NothingUiNativeSurfacesTest`. No functional behavior changed.
+- branch: `agent/a2-native-popup-drawer-small-s`
+- head: test fix `776d666` (`fix(theme): assert quantized native surface alpha in test`); the
+  formatting fix is `308b6b0`. This STATE commit follows. A2 feature commits are
+  `29988a5`/`2dda44b`/`ec4050c`.
+- pr: #18 (https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/18). CI132 was green on
+  build/unit/style/emulator and its actual native captures were accepted; this checkpoint only
+  corrects the style and alpha-assertion checks for the next CI run. Source/fixtures only — no
+  Gradle build or emulator run here.
+- next: after PR18 is green, picker A3 (widget-picker scrim stays on the inherited path in A2).
 
-## done (this run — A1 debug warning contrast)
+## done (this run — A2 corrective checkpoint)
+
+- **Root cause 1 (formatting):** `spotlessKotlinCheck` rejected short expression-body functions in
+  `NothingUiNativeSurfaces.kt` because the `=` and expression were split across lines. The simple
+  `if (dark) ... else ...` bodies and the `allAppsBackground(dark).copy(alpha = ...)` layer bodies
+  now sit on one line; the multiline block `if` for `allAppsBlurForeground` keeps the project's
+  existing `= if (dark) {` form. The private `neutral`/`static` helpers follow the same style.
+- **Root cause 2 (alpha):** Compose sRGB `Color.copy(alpha = 0.50f).alpha` quantizes to 8 bits
+  (`128/255 = 0.5019608`), so the old literal `0.50f` expectation was wrong. The drawer-layer test
+  now derives the expected alpha with `Color.White.copy(alpha = ...).alpha` and asserts it exactly
+  for all eight scrim/expressive/blur values (0.40, 0.50 and 0.32). Coverage is unchanged and the
+  tolerance was not loosened.
+- **Scope:** no functional, native UI redesign, workflow, Gradle, SDK, manifest, permission,
+  applicationId, signing, asset, other-repo or slice-B change.
+- **Verification actually run (no Gradle, no emulator):**
+  `nothingui-native-surfaces-guard.sh "$PWD"` OK; its fixture suite 14/14;
+  `verify-play-build-test.sh` 11/11; `git diff --check` clean. CI132's remaining 41 unit tests
+  passed, including the native contrast tests; the corrected CI must rerun the Android build,
+  `spotlessKotlinCheck`, unit tests and the API 37 smoke.
+- **Next:** picker A3 after PR18 is green.
+
+## done (previous run — A1 debug warning contrast)
 
 - **Root cause read from the source:** `PreferencesDebugWarning` passed
   `MaterialTheme.colorScheme.errorContainer` to `WarningPreference`, whose text/icon default to
