@@ -2139,8 +2139,8 @@ assert_true 'the widgets capture bounds initial page discovery to three advances
     grep -Fq '[ "$_shw_page" -lt 3 ]' "$search_pages_body"
 assert_true 'the page search requires the launcher to be resumed before a swipe' \
     grep -Fq 'foreground_is_component' "$search_pages_body"
-assert_true 'the page search refuses to swipe an open bind consent' \
-    grep -Fq 'widget_bind_consent_is_ready' "$search_pages_body"
+assert_true 'the page search refuses to swipe while any non-launcher activity owns the foreground' \
+    grep -Fq '"$PKG" "$LAUNCHER_ACTIVITY"' "$search_pages_body"
 assert_true 'the page search proves a real workspace host by provider label' \
     grep -Fq 'home_widget_bounds "$_shw_xml" "$_shw_ref" "$_shw_label"' \
     "$search_pages_body"

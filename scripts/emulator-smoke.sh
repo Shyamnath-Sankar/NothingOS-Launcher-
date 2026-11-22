@@ -1386,12 +1386,9 @@ search_home_pages_for_widget() {
                 >> "$_shw_log"
             return 1
         fi
-        if widget_bind_consent_is_ready \
-            "$_shw_xml" "$EXPECTED_LABEL" "$_shw_label"; then
-            printf 'page=%s stopped=consent-still-open\n' "$_shw_page" \
-                >> "$_shw_log"
-            return 1
-        fi
+        # A bind consent or configuration activity is not the launcher, so the
+        # exact resumed-component check above is the consent guard. Never swipe
+        # while any other activity owns the foreground.
         _shw_swipe=$(workspace_page_swipe "$_shw_xml" next)
         if [ -z "$_shw_swipe" ]; then
             printf 'page=%s stopped=no-safe-page-swipe\n' "$_shw_page" \
