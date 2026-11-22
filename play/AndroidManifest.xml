@@ -148,5 +148,35 @@
         <service
             android:name="app.lawnchair.bugreport.UploaderService"
             tools:node="remove" />
+
+        <!--
+          Original NothingUI home widgets. Only these two providers are declared, and only in the
+          Play overlay. They add no permission: the clock is a native TextClock, and the battery
+          reads the sticky BATTERY_CHANGED broadcast through the launcher's lifecycle receiver.
+        -->
+        <receiver
+            android:name="app.nothingui.widgets.NothingUiClockWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_clock_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.NothingUiBatteryWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+                <action android:name="android.intent.action.POWER_CONNECTED" />
+                <action android:name="android.intent.action.POWER_DISCONNECTED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_battery_widget_info" />
+        </receiver>
     </application>
 </manifest>

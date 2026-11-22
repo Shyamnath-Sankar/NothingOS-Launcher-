@@ -1098,4 +1098,9 @@
     <string name="lawnchair_action_failed">Failed to trigger action</string>
 
     <string name="please_wait">Please wait…</string>
+
+    <!-- Original NothingUI home widgets. -->
+    <string name="nothingui_clock_widget_description">Dot-matrix clock</string>
+    <string name="nothingui_battery_widget_description">Circular battery</string>
+    <string name="nothingui_battery_widget_content_description">Battery level</string>
 </resources>
