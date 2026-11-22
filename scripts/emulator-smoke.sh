@@ -28,6 +28,9 @@
 #     + .png, then returns HOME and captures home-after-app-launch.xml + .png
 #   - captures the app-info screen and the About screen (UI XML + screenshot);
 #     the About screenshot is the launcher-icon evidence, reviewed visually
+#   - captures the real Play settings dashboard in system dark/light while the
+#     launcher theme choice is SYSTEM, without the diagnostic sample extra, and
+#     restores the previous system night mode before returning HOME
 #   - opens the debug-only Play theme sample through the existing
 #     PreferenceActivity plus an explicit extra, and captures dark/light UI XML
 #     and screenshots; the sample text must be present or the run fails
@@ -274,6 +277,112 @@ capture_theme_sample() {
         "$_cts_mode" > "$ARTIFACTS/theme-sample-$_cts_mode.txt"
     printf 'Screenshot: theme-sample-%s.png.\n' "$_cts_mode" \
         >> "$ARTIFACTS/theme-sample-$_cts_mode.txt"
+}
+
+# The real Play settings surface must follow the launcher's SYSTEM theme choice
+# under system night yes/no. This reads the existing preference (a clean install
+# defaults to SYSTEM) and never writes it; the diagnostic sample extra is not
+# passed. The previous system night mode is restored even when a capture fails.
+assert_settings_theme_choice_system() {
+    _ast_prefs=$(adb_cmd shell run-as "$PKG" cat \
+        shared_prefs/com.android.launcher3.prefs.xml 2>/dev/null || true)
+    printf '%s\n' "$_ast_prefs" > "$ARTIFACTS/settings-theme-pref.xml"
+    _ast_value=$(printf '%s\n' "$_ast_prefs" |
+        sed -n 's/.*name="pref_launcherTheme"[^>]*>\([^<]*\)<.*/\1/p' |
+        sed -n '1p')
+    if [ -z "$_ast_value" ]; then
+        _ast_value=system
+    fi
+    printf 'pref_launcherTheme=%s\n' "$_ast_value" \
+        > "$ARTIFACTS/settings-theme-pref.txt"
+    [ "$_ast_value" = system ] ||
+        fail "settings theme choice is '$_ast_value', expected system"
+}
+
+capture_settings_theme() {
+    _cst_night_before=$(adb_cmd shell cmd uimode night 2>&1 | tr -d '\r')
+    printf '%s\n' "$_cst_night_before" \
+        > "$ARTIFACTS/settings-theme-night-before.txt"
+    _cst_night_value=$(printf '%s\n' "$_cst_night_before" |
+        sed -n 's/^[Nn]ight mode:[[:space:]]*//p' | sed -n '1p')
+    case "$_cst_night_value" in
+        yes | no | auto) ;;
+        *) _cst_night_value=auto ;;
+    esac
+
+    assert_settings_theme_choice_system
+
+    _cst_failure=
+    for _cst_mode in yes no; do
+        case "$_cst_mode" in
+            yes) _cst_name=dark ;;
+            no) _cst_name=light ;;
+        esac
+        if ! _cst_out=$(adb_cmd shell cmd uimode night "$_cst_mode" 2>&1); then
+            printf '%s\n' "$_cst_out" \
+                > "$ARTIFACTS/settings-theme-$_cst_name-night.txt"
+            _cst_failure="could not switch the emulator to night $_cst_mode for the $_cst_name settings capture"
+            break
+        fi
+        printf '%s\n' "$_cst_out" \
+            > "$ARTIFACTS/settings-theme-$_cst_name-night.txt"
+        sleep 2
+        if ! _cst_out=$(adb_cmd shell am start -W -f 0x18000000 \
+            -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+            printf '%s\n' "$_cst_out" \
+                > "$ARTIFACTS/settings-theme-$_cst_name-launch.txt"
+            _cst_failure="could not open the real $_cst_name settings surface"
+            break
+        fi
+        printf '%s\n' "$_cst_out" \
+            > "$ARTIFACTS/settings-theme-$_cst_name-launch.txt"
+        case "$_cst_out" in
+            *"Error:"* | *"Error type"* | *Exception*)
+                _cst_failure="real $_cst_name settings launch reported an error"
+                break
+                ;;
+        esac
+        if ! printf '%s\n' "$_cst_out" | grep -q 'Status: ok'; then
+            _cst_failure="real $_cst_name settings launch did not report Status: ok"
+            break
+        fi
+        sleep 2
+        if ! capture_ui_xml "settings-theme-$_cst_name.xml"; then
+            _cst_failure="settings theme $_cst_name UI XML capture failed"
+            break
+        fi
+        if ! grep -Fq 'Settings' "$ARTIFACTS/settings-theme-$_cst_name.xml" ||
+            ! grep -Fq 'General' "$ARTIFACTS/settings-theme-$_cst_name.xml"; then
+            _cst_failure="settings theme $_cst_name did not expose the real Preferences dashboard"
+            break
+        fi
+        if grep -Fq 'DOTWEL' "$ARTIFACTS/settings-theme-$_cst_name.xml"; then
+            _cst_failure="settings theme $_cst_name rendered the diagnostic sample"
+            break
+        fi
+        capture_screenshot_to "settings-theme-$_cst_name.png"
+        if [ ! -s "$ARTIFACTS/settings-theme-$_cst_name.png" ]; then
+            _cst_failure="settings theme $_cst_name screenshot capture failed"
+            break
+        fi
+        printf 'Settings theme (%s): real Preferences dashboard captured under system night %s.\n' \
+            "$_cst_name" "$_cst_mode" \
+            > "$ARTIFACTS/settings-theme-$_cst_name.txt"
+        printf 'Screenshot: settings-theme-%s.png.\n' "$_cst_name" \
+            >> "$ARTIFACTS/settings-theme-$_cst_name.txt"
+    done
+
+    if ! _cst_restore_out=$(adb_cmd shell cmd uimode night "$_cst_night_value" 2>&1); then
+        printf '%s\n' "$_cst_restore_out" \
+            > "$ARTIFACTS/settings-theme-night-restore.txt"
+        fail "could not restore the emulator night mode to $_cst_night_value"
+    fi
+    printf '%s\n' "$_cst_restore_out" \
+        > "$ARTIFACTS/settings-theme-night-restore.txt"
+    sleep 1
+
+    [ -z "$_cst_failure" ] || fail "$_cst_failure"
+    return_home settings-theme
 }
 
 # Extract the first UIAutomator bounds tuple for a node that contains the given
@@ -1385,6 +1494,7 @@ capture_app_info
 return_home app-info
 capture_about
 return_home about
+capture_settings_theme
 capture_theme_sample dark
 capture_theme_sample light
 return_home theme-sample

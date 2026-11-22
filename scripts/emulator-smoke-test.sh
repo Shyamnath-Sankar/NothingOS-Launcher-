@@ -1489,6 +1489,51 @@ assert_true 'the drawer still has four bounded attempts' \
 assert_true 'the exact Settings foreground check is still present' \
     grep -Fq 'wait_for_foreground com.android.settings' "$SMOKE"
 
+# --- static regression on the real Play settings theme capture ---------------
+
+settings_theme_body="$TMP_DIR/capture_settings_theme.sh"
+sed -n '/^capture_settings_theme() {/,/^}/p' "$SMOKE" > "$settings_theme_body"
+
+settings_theme_pref_body="$TMP_DIR/assert_settings_theme_choice_system.sh"
+sed -n '/^assert_settings_theme_choice_system() {/,/^}/p' "$SMOKE" \
+    > "$settings_theme_pref_body"
+
+assert_true 'the settings theme capture opens the real PreferenceActivity' \
+    grep -Fq -- '-n "$PKG/$PREFERENCES_ACTIVITY"' "$settings_theme_body"
+assert_true 'the settings theme capture uses the system night yes/no modes' \
+    grep -Fq 'for _cst_mode in yes no; do' "$settings_theme_body"
+assert_true 'the settings theme capture switches the emulator night mode' \
+    grep -Fq 'cmd uimode night "$_cst_mode"' "$settings_theme_body"
+assert_true 'the settings theme capture requires the SYSTEM theme choice' \
+    grep -Fq 'assert_settings_theme_choice_system' "$settings_theme_body"
+assert_true 'the settings theme preference check reads the real pref file' \
+    grep -Fq 'run-as "$PKG" cat' "$settings_theme_pref_body"
+assert_true 'the settings theme preference check requires system' \
+    grep -Fq '[ "$_ast_value" = system ]' "$settings_theme_pref_body"
+assert_true 'the settings theme capture stores dark and light XML evidence' \
+    grep -Fq 'settings-theme-$_cst_name.xml' "$settings_theme_body"
+assert_true 'the settings theme capture stores dark and light PNG evidence' \
+    grep -Fq 'settings-theme-$_cst_name.png' "$settings_theme_body"
+assert_true 'the settings theme capture rejects the diagnostic sample' \
+    grep -Fq 'rendered the diagnostic sample' "$settings_theme_body"
+assert_true 'the settings theme capture restores the previous night mode' \
+    grep -Fq 'cmd uimode night "$_cst_night_value"' "$settings_theme_body"
+assert_true 'the settings theme capture returns HOME' \
+    grep -Fq 'return_home settings-theme' "$settings_theme_body"
+assert_false 'the settings theme capture never passes the sample extra' \
+    grep -Fq 'THEME_SAMPLE_EXTRA' "$settings_theme_body"
+assert_false 'the settings theme capture never writes a preference' \
+    grep -Eq 'settings put|putString|putBoolean|editSp' "$settings_theme_body"
+
+settings_theme_call_line=$(grep -n '^capture_settings_theme$' "$SMOKE" | sed -n '1s/:.*//p')
+sample_call_line=$(grep -n '^capture_theme_sample dark$' "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$settings_theme_call_line" ] && [ -n "$sample_call_line" ] &&
+    [ "$settings_theme_call_line" -lt "$sample_call_line" ]; then
+    pass 'the real settings theme capture runs before the diagnostic sample'
+else
+    fail 'the real settings theme capture runs before the diagnostic sample'
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1
