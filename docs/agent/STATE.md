@@ -5,9 +5,9 @@ when no task input is given, and continues from "next".
 
 - current_phase: **P5 home-widget-composition-v1 — PR19 stale native-theme refresh and AMOLED foundation**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `9fdf6e1` (`feat(theme): add amoled black settings and drawer foundation`); this STATE
-  commit follows. Theme-run commits: `5842557`, `a869292`, `ea6eeee`, `9fdf6e1`. Previous head
-  `d52255e`; start `010d928`.
+- head: `a3afe72` (`fix(theme): keep amoled surfaces on the play path`); this STATE commit
+  follows. Theme-run commits: `5842557`, `a869292`, `ea6eeee`, `9fdf6e1`, `7842419`, `a3afe72`.
+  Previous head `d52255e`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI167 green before this theme run** (coordinator-reported, not reproduced locally) — build,
   style, **69 JUnit tests** and the API 37 smoke. This run adds the native-theme resume refresh,
@@ -44,7 +44,7 @@ when no task input is given, and continues from "next".
   (`Gray900`/`Gray700`). `NothingUiPalette.Ink` is unchanged because it is also light-mode
   foreground text. Light colors are unchanged, and non-Play paths keep the inherited tokens. The
   settings top bars and the edge-to-edge navigation-bar scrim switch to the pure-black background
-  only when the resolved background is black; Back/predictive navigation, nav/IME insets and the
+  only on the Play theme gate when the resolved background is black; Back/predictive navigation, nav/IME insets and the
   `BottomSpacer` behavior are untouched.
 - **Smoke readiness:** before each native popup/drawer capture the smoke reads back
   `cmd uimode night`, then polls the debug trace from a per-mode logcat baseline until it reports the
