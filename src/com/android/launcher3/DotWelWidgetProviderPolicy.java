@@ -28,10 +28,8 @@ import androidx.annotation.Nullable;
  */
 final class DotWelWidgetProviderPolicy {
 
-    static final String CLOCK_PROVIDER_CLASS =
-            "app.dotwel.widgets.DotWelClockWidgetProvider";
-    static final String BATTERY_PROVIDER_CLASS =
-            "app.dotwel.widgets.DotWelBatteryWidgetProvider";
+    static final String CLOCK_PROVIDER_CLASS = "app.dotwel.widgets.DotWelClockWidgetProvider";
+    static final String BATTERY_PROVIDER_CLASS = "app.dotwel.widgets.DotWelBatteryWidgetProvider";
 
     private DotWelWidgetProviderPolicy() {}
 
