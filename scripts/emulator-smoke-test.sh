@@ -884,32 +884,46 @@ widget_bind_consent_xml="$TMP_DIR/widget-bind-consent.xml"
 cat > "$widget_bind_consent_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
-  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
-    <node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" bounds="[80,600][1000,700]" />
-    <node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" bounds="[80,720][1000,980]" />
-    <node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" checkable="true" checked="false" clickable="true" bounds="[80,1000][1000,1060]" />
-    <node index="3" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" clickable="true" bounds="[100,1100][500,1200]" />
-    <node index="4" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" />
+  <node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]">
+    <node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" />
+    <node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" />
+    <node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" />
+    <node index="3" text="Cancel" resource-id="android:id/button2" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[100,1100][500,1200]" />
+    <node index="4" text="Create" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" />
   </node>
 </hierarchy>
 EOF
 assert_true 'the real launcher/widget bind consent is detected' \
     widget_bind_consent_is_ready "$widget_bind_consent_xml" 'DotWel Launcher' Calendar
-assert_eq 'the consent Create control is measured by android:id/button1' \
+assert_eq 'the titlecase consent Create control is measured by android:id/button1' \
     '600 1100 1000 1200' \
-    "$(widget_bind_create_button_bounds "$widget_bind_consent_xml")"
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_xml" 'DotWel Launcher' Calendar)"
 assert_false 'the consent Always allow checkbox starts unchecked' \
     widget_bind_always_allow_is_checked "$widget_bind_consent_xml"
 
 widget_bind_consent_compact_xml="$TMP_DIR/widget-bind-consent-compact.xml"
 cat > "$widget_bind_consent_compact_xml" <<'EOF'
-<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" bounds="[80,600][1000,700]" /><node index="1" text="Application: DotWel Launcher&#10;Widget: Clock" resource-id="android:id/message" class="android.widget.TextView" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" checked="false" clickable="true" bounds="[80,1000][1000,1060]" /><node index="3" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="Application: DotWel Launcher&#10;Widget: Clock" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" /><node index="3" text="Create" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
 EOF
-assert_true 'a compact single-line bind consent is detected' \
+assert_true 'a compact single-line titlecase bind consent is detected' \
     widget_bind_consent_is_ready "$widget_bind_consent_compact_xml" 'DotWel Launcher' Clock
-assert_eq 'a compact consent Create control is measured' \
+assert_eq 'a compact titlecase consent Create control is measured' \
     '600 1100 1000 1200' \
-    "$(widget_bind_create_button_bounds "$widget_bind_consent_compact_xml")"
+    "$(widget_bind_create_button_bounds "$widget_bind_consent_compact_xml" 'DotWel Launcher' Clock)"
+
+# The actual platform dialog (AllowBindAppWidgetActivity) is a compact dump from
+# com.android.settings with all-caps CREATE/CANCEL button labels.
+widget_bind_platform_xml="$TMP_DIR/widget-bind-platform.xml"
+cat > "$widget_bind_platform_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="After you create the widget, the application can access everything displayed.&#10;&#10;Application: DotWel Launcher&#10;Widget: Calendar&#10;" resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Always allow DotWel Launcher to create widgets and access their data" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1000][1000,1060]" /><node index="3" text="CANCEL" resource-id="android:id/button2" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[100,1100][500,1200]" /><node index="4" text="CREATE" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_true 'the actual uppercase platform bind consent is detected' \
+    widget_bind_consent_is_ready "$widget_bind_platform_xml" 'DotWel Launcher' Calendar
+assert_eq 'the uppercase platform Create control resolves its measured bounds' \
+    '600 1100 1000 1200' \
+    "$(widget_bind_create_button_bounds "$widget_bind_platform_xml" 'DotWel Launcher' Calendar)"
+assert_false 'the platform consent Always allow checkbox starts unchecked' \
+    widget_bind_always_allow_is_checked "$widget_bind_platform_xml"
 
 widget_bind_unrelated_xml="$TMP_DIR/widget-bind-unrelated.xml"
 cat > "$widget_bind_unrelated_xml" <<'EOF'
@@ -918,23 +932,48 @@ cat > "$widget_bind_unrelated_xml" <<'EOF'
   <node index="1" text="Create" resource-id="android:id/button1" class="android.widget.Button" clickable="true" bounds="[600,1100][1000,1200]" />
 </hierarchy>
 EOF
-assert_false 'an unrelated dialog with a Create button is not bind consent' \
+assert_false 'a generic dialog with a Create button is not bind consent' \
     widget_bind_consent_is_ready "$widget_bind_unrelated_xml" 'DotWel Launcher' Calendar
-assert_eq 'an unrelated dialog exposes no consent Create target' \
+assert_eq 'a generic Create dialog exposes no consent Create target' \
     '' \
-    "$(widget_bind_create_button_bounds "$widget_bind_unrelated_xml")"
+    "$(widget_bind_create_button_bounds "$widget_bind_unrelated_xml" 'DotWel Launcher' Calendar)"
 
 widget_bind_other_launcher_xml="$TMP_DIR/widget-bind-other-launcher.xml"
-sed 's/DotWel Launcher/Other Launcher/g' "$widget_bind_consent_xml" \
-    > "$widget_bind_other_launcher_xml"
-assert_false 'bind consent naming another launcher is rejected' \
+sed 's/Application: DotWel Launcher/Application: Other Launcher/' \
+    "$widget_bind_platform_xml" > "$widget_bind_other_launcher_xml"
+assert_false 'bind consent whose message names another launcher is rejected' \
     widget_bind_consent_is_ready "$widget_bind_other_launcher_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-launcher consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_other_launcher_xml" 'DotWel Launcher' Calendar)"
 
 widget_bind_other_widget_xml="$TMP_DIR/widget-bind-other-widget.xml"
-sed 's/Widget: Calendar/Widget: Weather/' "$widget_bind_consent_xml" \
+sed 's/Widget: Calendar/Widget: Weather/' "$widget_bind_platform_xml" \
     > "$widget_bind_other_widget_xml"
-assert_false 'bind consent naming another widget is rejected' \
+assert_false 'bind consent whose message names another widget is rejected' \
     widget_bind_consent_is_ready "$widget_bind_other_widget_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-widget consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_other_widget_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_wrong_package_xml="$TMP_DIR/widget-bind-wrong-package.xml"
+sed 's/package="com.android.settings"/package="com.example.fake"/g' \
+    "$widget_bind_platform_xml" > "$widget_bind_wrong_package_xml"
+assert_false 'bind consent outside the system Settings package is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_wrong_package_xml" 'DotWel Launcher' Calendar
+assert_eq 'a wrong-package consent exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_wrong_package_xml" 'DotWel Launcher' Calendar)"
+
+widget_bind_loose_text_xml="$TMP_DIR/widget-bind-loose-text.xml"
+cat > "$widget_bind_loose_text_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="0"><node index="0" text="" class="android.widget.FrameLayout" package="com.android.settings" bounds="[0,0][1080,1920]"><node index="0" text="Create widget and allow access?" resource-id="android:id/alertTitle" class="android.widget.TextView" package="com.android.settings" bounds="[80,600][1000,700]" /><node index="1" text="After you create the widget, the application can access everything displayed." resource-id="android:id/message" class="android.widget.TextView" package="com.android.settings" bounds="[80,720][1000,980]" /><node index="2" text="Application: DotWel Launcher" class="android.widget.TextView" package="com.android.settings" bounds="[80,1000][1000,1040]" /><node index="3" text="Widget: Calendar" class="android.widget.TextView" package="com.android.settings" bounds="[80,1040][1000,1080]" /><node index="4" text="Always allow DotWel Launcher" resource-id="android:id/alwaysUse" class="android.widget.CheckBox" package="com.android.settings" checkable="true" checked="false" clickable="true" enabled="true" bounds="[80,1100][1000,1160]" /><node index="5" text="CREATE" resource-id="android:id/button1" class="android.widget.Button" package="com.android.settings" clickable="true" enabled="true" bounds="[600,1100][1000,1200]" /></node></hierarchy>
+EOF
+assert_false 'launcher/widget text outside the dialog message is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_loose_text_xml" 'DotWel Launcher' Calendar
+assert_eq 'loose launcher/widget text exposes no Create target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_loose_text_xml" 'DotWel Launcher' Calendar)"
 
 widget_bind_no_create_xml="$TMP_DIR/widget-bind-no-create.xml"
 sed '/android:id\/button1/d' "$widget_bind_consent_xml" > "$widget_bind_no_create_xml"
@@ -942,13 +981,22 @@ assert_false 'bind consent without android:id/button1 is rejected' \
     widget_bind_consent_is_ready "$widget_bind_no_create_xml" 'DotWel Launcher' Calendar
 assert_eq 'bind consent without android:id/button1 has no Create target' \
     '' \
-    "$(widget_bind_create_button_bounds "$widget_bind_no_create_xml")"
+    "$(widget_bind_create_button_bounds "$widget_bind_no_create_xml" 'DotWel Launcher' Calendar)"
 
 widget_bind_checked_xml="$TMP_DIR/widget-bind-checked.xml"
 sed 's/checked="false"/checked="true"/' "$widget_bind_consent_xml" \
     > "$widget_bind_checked_xml"
 assert_true 'a checked Always allow control is detected so the flow can fail closed' \
     widget_bind_always_allow_is_checked "$widget_bind_checked_xml"
+
+widget_bind_disabled_xml="$TMP_DIR/widget-bind-disabled.xml"
+sed 's/\(resource-id="android:id\/button1"[^>]*\)enabled="true"/\1enabled="false"/' \
+    "$widget_bind_platform_xml" > "$widget_bind_disabled_xml"
+assert_false 'bind consent with a disabled Create control is rejected' \
+    widget_bind_consent_is_ready "$widget_bind_disabled_xml" 'DotWel Launcher' Calendar
+assert_eq 'a disabled Create control exposes no tap target' \
+    '' \
+    "$(widget_bind_create_button_bounds "$widget_bind_disabled_xml" 'DotWel Launcher' Calendar)"
 
 
 # --- HOME long-press geometry fixtures -------------------------------------
@@ -1198,6 +1246,10 @@ assert_true 'the widgets capture stores the bind consent PNG' \
     grep -Fq 'widgets-bind-consent.png' "$widgets_body"
 assert_true 'the widgets capture measures the android:id/button1 Create control' \
     grep -Fq 'widget_bind_create_button_bounds' "$widgets_body"
+create_bounds_context=$(grep -A2 -F 'widget_bind_create_button_bounds' "$widgets_body" || true)
+printf '%s\n' "$create_bounds_context" > "$TMP_DIR/create-bounds-context.txt"
+assert_true 'the widgets capture passes the launcher/widget identity to the Create bounds' \
+    grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$TMP_DIR/create-bounds-context.txt"
 assert_true 'the widgets capture taps the measured Create control' \
     grep -Fq 'tap_center_of_bounds "$_cwp_bind_create"' "$widgets_body"
 assert_true 'the widgets capture refuses a checked Always allow control' \

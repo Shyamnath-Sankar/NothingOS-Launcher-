@@ -974,7 +974,8 @@ capture_widgets_picker() {
                                     fail "the widget bind consent has Always allow checked; refusing to grant permanent binding"
                                 fi
                                 _cwp_bind_create=$(widget_bind_create_button_bounds \
-                                    "$ARTIFACTS/widgets-bind-consent.xml")
+                                    "$ARTIFACTS/widgets-bind-consent.xml" \
+                                    "$EXPECTED_LABEL" "$_cwp_provider_title")
                                 [ -n "$_cwp_bind_create" ] ||
                                     fail "could not find the measured android:id/button1 Create control in the widget bind consent"
                                 tap_center_of_bounds "$_cwp_bind_create" ||

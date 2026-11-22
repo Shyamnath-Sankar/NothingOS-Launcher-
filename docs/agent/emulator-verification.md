@@ -90,12 +90,15 @@ a view.
   the fully visible `widget_preview_container`. It then polls for the real `widget_add_button`
   resource id, captures `widgets-add.xml`/`.png`, and taps the measured Add button. The platform may
   then show the real `AllowBindAppWidgetActivity` consent. The smoke accepts only the exact
-  `Create widget and allow access?` dialog whose message names the launcher (`DotWel Launcher`) and
-  the selected widget, exposes the `android:id/button1` `Create` control and the
-  `android:id/alwaysUse` checkbox. It captures `widgets-bind-consent.xml`/`.png`, refuses to
-  continue if `Always allow` is already checked, and taps Create by its measured `android:id/button1`
-  bounds. A generic dialog with a Create button, a missing launcher/widget identity, or a missing
-  button1 is rejected; dismissing the dialog is never treated as success. There is no ordinary
+  `Create widget and allow access?` dialog owned by `com.android.settings`, whose `android:id/message`
+  names the launcher (`DotWel Launcher`) and the selected widget, and which exposes an enabled,
+  clickable `android:id/button1` control whose label is `Create` or the platform-rendered `CREATE`,
+  plus the `android:id/alwaysUse` checkbox. The title and launcher/widget identity must be in the
+  dialog's own nodes; matching text elsewhere in the tree is rejected. It captures
+  `widgets-bind-consent.xml`/`.png`, refuses to continue if `Always allow` is already checked, and
+  taps Create by its measured `android:id/button1` bounds. A generic dialog with a Create button, a
+  wrong package, a missing launcher/widget identity, or a missing/disabled button1 is rejected;
+  dismissing the dialog is never treated as success. There is no ordinary
   workspace swipe fallback; if Add is not exposed it saves `widgets-add-last.xml`/`.png` and fails
   instead of faking the picker's long-press drag. It then polls for a new `AppWidgetHostView`-suffixed
   node in the workspace and, with bounded retries, a new `AppWidgetId` whose host package is this

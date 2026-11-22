@@ -1150,10 +1150,12 @@ widget_picker_add_button_bounds() (
 )
 
 # Succeed only for the real Android widget-bind consent dialog
-# (AllowBindAppWidgetActivity). The dialog must name the launcher and the widget
-# being bound, expose the android:id/button1 Create control and the
-# android:id/alwaysUse checkbox. A generic dialog with a Create button is not
-# accepted.
+# (AllowBindAppWidgetActivity). The alertTitle must be the exact title, the
+# android:id/message must name this launcher and the selected widget, and the
+# android:id/button1 control must be an enabled, clickable Create button owned by
+# com.android.settings. Button labels are matched case-insensitively because the
+# platform renders them as CREATE/CANCEL. A generic dialog with a Create button
+# or unrelated text elsewhere in the tree is not accepted.
 widget_bind_consent_is_ready() (
     xml=$1
     launcher=$2
@@ -1161,26 +1163,52 @@ widget_bind_consent_is_ready() (
     [ -s "$xml" ] || return 1
     [ -n "$launcher" ] || return 1
     [ -n "$widget" ] || return 1
-    grep -Fq 'Create widget and allow access?' "$xml" || return 1
-    grep -Fq 'Application:' "$xml" || return 1
-    grep -Fq 'Widget:' "$xml" || return 1
-    grep -Fq "$launcher" "$xml" || return 1
-    grep -Fq "$widget" "$xml" || return 1
-    grep -Fq 'resource-id="android:id/button1"' "$xml" || return 1
-    grep -Fq 'text="Create"' "$xml" || return 1
-    grep -Fq 'resource-id="android:id/alwaysUse"' "$xml" || return 1
-    return 0
+    tr '>' '\n' < "$xml" |
+        awk -v launcher="$launcher" -v widget="$widget" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "package") != "com.android.settings") next
+                rid = attr($0, "resource-id")
+                if (rid == "android:id/alertTitle") {
+                    if (tolower(attr($0, "text")) == "create widget and allow access?") title = 1
+                } else if (rid == "android:id/message") {
+                    msg = tolower(attr($0, "text"))
+                    if (index(msg, "application: " tolower(launcher)) > 0 &&
+                        index(msg, "widget: " tolower(widget)) > 0) message = 1
+                } else if (rid == "android:id/button1") {
+                    if (attr($0, "clickable") == "true" &&
+                        attr($0, "enabled") == "true" &&
+                        tolower(attr($0, "text")) == "create") button = 1
+                } else if (rid == "android:id/alwaysUse") {
+                    always = 1
+                }
+            }
+            END { exit !(title && message && button && always) }
+        '
 )
 
 # Print the measured bounds of the consent dialog's Create control by its
-# android:id/button1 resource id. The dialog title is required so an unrelated
-# dialog with a button1 cannot be targeted. Handles compact single-line dumps.
+# android:id/button1 resource id. The dialog must still carry the exact title,
+# the com.android.settings package, the launcher/widget message identity and an
+# enabled, clickable button whose label may be CREATE or Create. Handles compact
+# single-line dumps.
 widget_bind_create_button_bounds() (
     xml=$1
+    launcher=${2:-}
+    widget=${3:-}
     [ -s "$xml" ] || return 0
-    grep -Fq 'Create widget and allow access?' "$xml" || return 0
+    [ -n "$launcher" ] || return 0
+    [ -n "$widget" ] || return 0
     tr '>' '\n' < "$xml" |
-        awk '
+        awk -v launcher="$launcher" -v widget="$widget" '
             function attr(s, name,    pat, v) {
                 pat = "[[:space:]]" name "=\"[^\"]*\""
                 if (!match(s, pat)) return ""
@@ -1202,11 +1230,23 @@ widget_bind_create_button_bounds() (
             }
             {
                 if ($0 !~ /<node[[:space:]]/) next
-                if (attr($0, "resource-id") != "android:id/button1") next
-                if (attr($0, "clickable") != "true") next
-                if (attr($0, "text") != "Create") next
-                emit(attr($0, "bounds"))
-                exit
+                if (attr($0, "package") != "com.android.settings") next
+                rid = attr($0, "resource-id")
+                if (rid == "android:id/alertTitle") {
+                    if (tolower(attr($0, "text")) == "create widget and allow access?") title = 1
+                } else if (rid == "android:id/message") {
+                    msg = tolower(attr($0, "text"))
+                    if (index(msg, "application: " tolower(launcher)) > 0 &&
+                        index(msg, "widget: " tolower(widget)) > 0) message = 1
+                } else if (rid == "android:id/button1") {
+                    if (attr($0, "clickable") == "true" &&
+                        attr($0, "enabled") == "true" &&
+                        tolower(attr($0, "text")) == "create") bounds = attr($0, "bounds")
+                }
+            }
+            END {
+                if (!(title && message)) exit 1
+                emit(bounds)
             }
         '
 )
