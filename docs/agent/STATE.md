@@ -3,25 +3,66 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 stale native-theme refresh and AMOLED foundation**.
+- current_phase: **P5 home-widget-composition-v1 — Play polish checkpoint: opaque unset drawer,
+  discoverable settings entry and default-home status**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `a3afe72` (`fix(theme): keep amoled surfaces on the play path`); this STATE commit
-  follows. Theme-run commits: `5842557`, `a869292`, `ea6eeee`, `9fdf6e1`, `7842419`, `a3afe72`.
-  Previous head `d52255e`; start `010d928`.
+- head: `5e5f071` (`feat(settings): surface Play settings and default-home status`); this STATE
+  commit follows. This run's code commits: `79e8080`, `5e5f071`. Start `ca472427`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI167 green before this theme run** (coordinator-reported, not reproduced locally) — build,
-  style, **69 JUnit tests** and the API 37 smoke. This run adds the native-theme resume refresh,
-  debug theme evidence, smoke readiness polling and the first AMOLED foundation, so a fresh CI at
-  `9fdf6e1` is required. No runtime/APK/pixel success is claimed locally.
-- next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. Confirm the new
-  `theme-refresh night=... resolvedDark=...` readiness line appears before each native capture and
-  inspect `native-popup-dark/light.png`, `native-drawer-dark/light.png`,
-  `clean-home-dark/light.png`, `settings-theme-dark/light.png` for pure-black large surfaces and
-  charcoal cards/popups while light stays unchanged. Do not merge until the API 37 smoke is green.
-  Release and hosting stay paused.
+- ci: **CI174** (coordinator-reported, not reproduced locally): assembly, style and **70 unit
+  tests** passed, but the API 37 **native dark readiness check failed**. Native theme switching is
+  therefore still NOT fixed. `ca472427` is the Run66 checkpoint that saved diagnostics only; its
+  earlier stale-theme refresh hypothesis is unproven. This run makes no runtime/APK/pixel claim and
+  needs a fresh CI at `5e5f071`.
+- next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, the
+  expanded unit tests (72+ with the new drawer-default JUnit), Verify Play manifest and identity
+  including the new polish guard, and the API 37 smoke. Confirm the merged manifest has exactly one
+  `PreferenceActivity` MAIN/LAUNCHER entry labelled **DotWel Settings**, no HOME on that activity,
+  HOME still on `LawnchairLauncher`, and that the dashboard shows the refreshed default/not-default
+  state after role consent or cancel. Confirm unset Play drawer opacity is 1.0 and github/nightly
+  0.5 while saved values are untouched. Native dark/light pixels still have to be observed; do not
+  merge until the API 37 smoke is green. Release and hosting stay paused.
 
-## done (this run — stale native theme refresh and AMOLED foundation)
+## done (this run — Play polish: opaque drawer default, settings entry, default-home status)
+
+- **Drawer opacity (unset only):** `PreferenceManager` keeps the same `pref_drawerOpacity` key and
+  now passes `DrawerOpacityDefaults.forPlayFlavor(isPlayStoreFlavor())`. The pure helper returns
+  `1.0f` on Play and `0.5f` on github/nightly. `FloatPref.get()` still reads
+  `sp.getFloat(key, defaultValue)`, so every explicitly saved value (including `0.5`, `0`, or a
+  custom one) wins and nothing migrates or resets the preference. Slider, text/background colour,
+  scrim and all-apps header consumers all keep reading the same `drawerOpacity` preference.
+- **Play settings entry:** `play/AndroidManifest.xml` adds only a MAIN/LAUNCHER intent-filter (and a
+  clear `DotWel Settings` label via `play_settings_label`) to the existing
+  `app.lawnchair.ui.preferences.PreferenceActivity`. It does not add HOME, does not add an
+  activity-alias or a second app/package, and leaves `APPLICATION_PREFERENCES` and the
+  `lawnchair://settings` deep link in `lawnchair/AndroidManifest.xml`. `LawnchairLauncher` keeps HOME
+  and remains the launcher activity.
+- **Default-home status:** the dashboard now remembers `isDefaultLauncher()` and re-checks it in
+  `LifecycleResumeEffect`, so the card is correct after returning from the platform role dialog or
+  cancelling. The not-default card still uses `DefaultHomeRoleConsent` only on the user tap, is
+  Play-gated, and has a `runCatching`-guarded `Settings.ACTION_HOME_SETTINGS` fallback. When the
+  app is default, Play shows a small matching `X is your default home` status card. No automatic
+  role request, no silent default change.
+- **Insets:** inspected `BottomSpacer`/`PreferenceLayout`; the Box takes the max of the nav-bar and
+  IME spacer rather than summing them, so there is no clear duplicate-padding defect. Nothing was
+  changed.
+- **Regression checks:** new `DrawerOpacityDefaultsTest` (Play 1.0, inherited 0.5, distinct
+  constants) and new `scripts/nothingui-polish-guard.sh`/`-test.sh` (unset-vs-saved fallback,
+  Play gating, one MAIN/LAUNCHER settings entry with no HOME, preserved base filters, resume
+  refresh, guarded fallback, no startup role request, duplicate-entry and negatives). The suite is
+  wired into `verify-play-build.sh`; no workflow was edited.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-polish-guard.sh` OK and its suite **9/9**; `nothingui-home-role-guard.sh` OK and suite
+  **7/7**; `play-brand-guard.sh` OK and suite **22/22**; `verify-play-build-test.sh` **11/11**;
+  `sh -n` clean on all three edited/new shell scripts; `git diff --check` clean.
+- **Blocked/unknown:** no local JUnit, APK, merged-manifest or pixel result. CI174's native dark
+  readiness failure is not addressed here; this run deliberately does not claim a native theme fix.
+  PR19 is not merged.
+
+## previous run — stale native theme refresh and AMOLED foundation (runtime unverified)
+
+> Correction: CI174 later failed the API 37 native dark readiness check. Treat the native-refresh
+> claims below as unproven, not as a fixed theme. `ca472427` only preserved diagnostics.
 
 - **Diagnosed from the reported screenshots, not guessed:** the Compose settings screen changed with
   system night mode, but the native HOME long-press popup and app drawer, including the own widgets,
