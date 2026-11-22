@@ -3,24 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **A2 native popup/drawer — corrective checkpoint; PR18 awaiting corrected CI**.
-  A1 is merged (PR #17, CI130 green). A2 neutralizes the Play native HOME popup and app-drawer
-  surfaces and passed CI132's Android build, unit tests and API 37 emulator smoke; the actual
-  popup/drawer dark/light captures were reviewed and accepted. This run fixes only the two
-  diagnosed checks: `spotlessKotlinCheck` expression-body wrapping in
-  `NothingUiNativeSurfaces.kt`, and the sRGB 8-bit alpha expectation in
-  `NothingUiNativeSurfacesTest`. No functional behavior changed.
-- branch: `agent/a2-native-popup-drawer-small-s`
-- head: test fix `776d666` (`fix(theme): assert quantized native surface alpha in test`); the
-  formatting fix is `308b6b0`. This STATE commit follows. A2 feature commits are
-  `29988a5`/`2dda44b`/`ec4050c`.
-- pr: #18 (https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/18). CI132 was green on
-  build/unit/style/emulator and its actual native captures were accepted; this checkpoint only
-  corrects the style and alpha-assertion checks for the next CI run. Source/fixtures only — no
-  Gradle build or emulator run here.
-- next: after PR18 is green, picker A3 (widget-picker scrim stays on the inherited path in A2).
+- current_phase: **P5 home-widget-composition-v1 — corrective checkpoint (theme, runtime surfaces,
+  sticky power fallback, both-widget refresh)**.
+- branch: `agent/home-widget-composition-v1-new`
+- head: `df49fec` (`test(widgets): cover explicit widget surface and content pair`); the app fix is
+  `78d0287`. This STATE commit follows.
+- pr: none opened this run (branch push only; no PR, build or visual claim).
+- next: rerun CI for this branch (Play debug build, `spotlessKotlinCheck`, unit tests, API 37
+  emulator smoke); then the separate small follow-up that proves the hosted widget instance in the
+  smoke. Do not alter smoke in this checkpoint.
 
-## done (this run — A2 corrective checkpoint)
+## done (this run — home-widget-composition-v1 corrective checkpoint)
+
+- **Clock import:** `NothingUiClockWidgetProvider` now imports `android.provider.AlarmClock`, not
+  `android.app.AlarmClock`.
+- **Theme resolution:** new `NothingUiWidgetColors` resolves the stored light/dark/system choice with
+  `Utilities.isDarkTheme(context)` (never `Themes.getAttrBoolean`/`isMainColorDark`) and supplies an
+  explicit surface/content pair from the NothingUI tokens. Both widgets use it; non-Play and
+  `NothingUiHomeChrome` are unchanged.
+- **Runtime surfaces:** the clock layout has a `nothingui_clock_surface` view and the provider sets
+  the rounded tile drawable at runtime (`nothingui_widget_tile_dark/light`, 4dp inset, 20dp
+  corners). `NothingUiBatteryArt` draws a circular charcoal/paper face behind the ring with the same
+  content colour; the ring label shows the true value with a `%` unit. Native `TextClock` remains
+  live, autosized, 12/24h and timezone-aware; no date was added to the widget.
+- **Both-widget refresh:** `NothingUiBatteryMonitor` became `NothingUiWidgetMonitor`. Resume and
+  `ACTION_CONFIGURATION_CHANGED` refresh both clock and battery once; theme changes arrive through
+  recreation/resume. No service, permission, alarm or wake lock was added.
+- **Sticky power fallback:** both the battery provider's `onReceive` and the monitor re-read the
+  sticky `ACTION_BATTERY_CHANGED` for `ACTION_POWER_CONNECTED`/`DISCONNECTED` instead of passing the
+  extras-less power intent into `BatteryState.from`; `--` remains only for genuinely missing/invalid
+  sticky data.
+- **Preserved:** Play-only resource mapping in `build.gradle`, 0.76 home icon factor, 48dp QSB,
+  fresh-install seeds, one-row strip, `AutoInstallsLayout` package resolution, the MIT DotText
+  notice and the smoke script are untouched. No workflow, Gradle, SDK, manifest, permission,
+  applicationId, signing or paid-service change.
+- **Verification actually run (no Gradle/emulator):** `nothingui-widget-guard.sh` OK;
+  `nothingui-widget-guard-test.sh` 23/23; `nothingui-home-guard-test.sh` 18/18;
+  `nothingui-theme-guard-test.sh` 12/12; `manifest-guard-test.sh` 31/31;
+  `nothingui-home-guard.sh`/`nothingui-theme-guard.sh` OK on the repo; `sh -n` clean on both edited
+  scripts; `git diff --check` clean. The new JUnit colour test and the Android build/spotless/API 37
+  smoke are left to CI.
+- **Remaining:** (1) CI must rerun the Play debug build, `spotlessKotlinCheck`, unit tests and the
+  API 37 emulator smoke; (2) the separate small follow-up must prove the hosted widget instance in
+  the smoke; (3) no visual, PR or merge claim until those are green.
+
+## done (previous run — A2 corrective checkpoint)
 
 - **Root cause 1 (formatting):** `spotlessKotlinCheck` rejected short expression-body functions in
   `NothingUiNativeSurfaces.kt` because the `=` and expression were split across lines. The simple
