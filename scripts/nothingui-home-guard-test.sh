@@ -206,6 +206,68 @@ class Workspace {
 }
 EOF
 
+    write_file "$root/src/com/android/launcher3/preview/LauncherPreviewRenderer.java" <<'EOF'
+package com.android.launcher3.preview;
+
+import app.lawnchair.preferences2.PreferenceManager2;
+import app.lawnchair.smartspace.model.LawnchairSmartspace;
+import app.lawnchair.smartspace.model.SmartspaceMode;
+
+class LauncherPreviewRenderer {
+    private int mWorkspaceSearchContainer;
+
+    LauncherPreviewRenderer(
+            PreferenceManager2 preferenceManager,
+            int workspaceSearchContainerResId) {
+        mWorkspaceSearchContainer = workspaceSearchContainerResId != 0
+                ? workspaceSearchContainerResId
+                : getDefaultSmartspaceLayout(preferenceManager);
+    }
+
+    int getDefaultSmartspaceLayout(PreferenceManager2 preferenceManager) {
+        SmartspaceMode mode = PreferenceCacheExtensionsKt.firstCached(
+                preferenceManager.getSmartspaceMode());
+        if (mode == null) {
+            mode = LawnchairSmartspace.INSTANCE;
+        }
+        return mode.getLayoutResourceId();
+    }
+
+    void bindCompleteModel() {
+        if (getEnableSmartspace()) {
+            inflate(mWorkspaceSearchContainer);
+        }
+    }
+
+    boolean getEnableSmartspace() {
+        return true;
+    }
+
+    void setWorkspaceSearchContainer(int resId) {
+        mWorkspaceSearchContainer = resId;
+    }
+}
+EOF
+
+    write_file "$root/lawnchair/src/app/lawnchair/views/LauncherPreviewView.kt" <<'EOF'
+package app.lawnchair.views
+
+import com.android.launcher3.R
+
+class LauncherPreviewView(private val dummySmartspace: Boolean = false) {
+    fun load() {
+        LauncherPreviewRenderer(
+            preferenceManager = null,
+            workspaceSearchContainerResId = if (dummySmartspace) {
+                R.layout.smartspace_widget_placeholder
+            } else {
+                0
+            },
+        )
+    }
+}
+EOF
+
     write_file "$root/lawnchair/src/app/lawnchair/smartspace/SmartspaceViewContainer.kt" <<'EOF'
 package app.lawnchair.smartspace
 
@@ -441,6 +503,65 @@ object NothingUiHomeChrome {
 EOF
 expect_fail_contains 'chrome pairing inherited floating/wallpaper colors fails' \
     "$chrome_inherited" 'white-on-white risk'
+
+preview_hardcoded="$TMP_DIR/preview-hardcoded"
+cp -R "$clean" "$preview_hardcoded"
+write_file "$preview_hardcoded/src/com/android/launcher3/preview/LauncherPreviewRenderer.java" <<'EOF'
+package com.android.launcher3.preview;
+
+import app.lawnchair.smartspace.model.SmartspaceMode;
+
+class LauncherPreviewRenderer {
+    private int mWorkspaceSearchContainer = R.layout.smartspace_container;
+
+    int getDefaultSmartspaceLayout() {
+        SmartspaceMode mode = PreferenceCacheExtensionsKt.firstCached(
+                preferenceManager.getSmartspaceMode());
+        return mode.getLayoutResourceId();
+    }
+}
+EOF
+expect_fail_contains 'preview hardcoding the inherited smartspace fails' \
+    "$preview_hardcoded" 'still hardcodes the inherited smartspace container'
+
+preview_no_mode="$TMP_DIR/preview-no-mode"
+cp -R "$clean" "$preview_no_mode"
+write_file "$preview_no_mode/src/com/android/launcher3/preview/LauncherPreviewRenderer.java" <<'EOF'
+package com.android.launcher3.preview;
+
+class LauncherPreviewRenderer {
+    private int mWorkspaceSearchContainer = R.layout.nothingui_home_header;
+
+    int getDefaultSmartspaceLayout() {
+        return mWorkspaceSearchContainer;
+    }
+
+    boolean getEnableSmartspace() {
+        return true;
+    }
+}
+EOF
+expect_fail_contains 'preview ignoring the selected smartspace mode fails' \
+    "$preview_no_mode" 'does not read the selected smartspace mode'
+
+preview_dummy_after_bind="$TMP_DIR/preview-dummy-after-bind"
+cp -R "$clean" "$preview_dummy_after_bind"
+write_file "$preview_dummy_after_bind/lawnchair/src/app/lawnchair/views/LauncherPreviewView.kt" <<'EOF'
+package app.lawnchair.views
+
+import com.android.launcher3.R
+
+class LauncherPreviewView(private val dummySmartspace: Boolean = false) {
+    fun load() {
+        val renderer = LauncherPreviewRenderer()
+        if (dummySmartspace) {
+            renderer.setWorkspaceSearchContainer(R.layout.smartspace_widget_placeholder)
+        }
+    }
+}
+EOF
+expect_fail_contains 'preview applying the dummy placeholder after construction fails' \
+    "$preview_dummy_after_bind" 'sync-bind race'
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

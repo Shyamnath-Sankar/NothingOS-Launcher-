@@ -10,6 +10,9 @@
 # - monochrome icon treatment is enabled for fresh Play installs through the
 #   inherited icon provider, with the legacy icon-pack migration gated off;
 # - the search chrome and page indicator recolor hooks are Play-gated;
+# - the launcher/grid preview resolves its first-page smartspace from the same
+#   selected SmartspaceMode layout as the live workspace, before model binding;
+# - the explicit dummy preview placeholder override survives a synchronous bind;
 # - the inherited Workspace is not modified to reference the header directly.
 #
 # Usage: scripts/nothingui-home-guard.sh [repo-root]
@@ -48,6 +51,8 @@ QSB_FILE="$ROOT/lawnchair/src/app/lawnchair/qsb/LawnQsbLayout.kt"
 PAGE_INDICATOR="$ROOT/src/com/android/launcher3/pageindicators/PageIndicatorDots.java"
 WORKSPACE_FILE="$ROOT/src/com/android/launcher3/Workspace.java"
 INHERITED_SMARTSPACE="$ROOT/lawnchair/src/app/lawnchair/smartspace/SmartspaceViewContainer.kt"
+PREVIEW_RENDERER="$ROOT/src/com/android/launcher3/preview/LauncherPreviewRenderer.java"
+PREVIEW_VIEW="$ROOT/lawnchair/src/app/lawnchair/views/LauncherPreviewView.kt"
 
 for file in \
     "$BUILD_FILE" \
@@ -62,7 +67,9 @@ for file in \
     "$QSB_FILE" \
     "$PAGE_INDICATOR" \
     "$WORKSPACE_FILE" \
-    "$INHERITED_SMARTSPACE"; do
+    "$INHERITED_SMARTSPACE" \
+    "$PREVIEW_RENDERER" \
+    "$PREVIEW_VIEW"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -112,6 +119,27 @@ grep -Fq 'R.layout.nothingui_home_header' "$SMARTSPACE_MODE" ||
     fail "LawnchairSmartspace does not use the NothingUI header layout"
 grep -Fq 'R.layout.smartspace_container' "$SMARTSPACE_MODE" ||
     fail "LawnchairSmartspace no longer keeps the inherited smartspace fallback"
+
+# The preview must use the same selected smartspace-mode layout as the live workspace.
+# The old hardcoded smartspace_container default is exactly what kept the Play preview on
+# the inherited welcome card while the real HOME rendered the NothingUI header.
+grep -Fq 'getSmartspaceMode' "$PREVIEW_RENDERER" ||
+    fail "the preview renderer does not read the selected smartspace mode"
+grep -Fq 'getLayoutResourceId' "$PREVIEW_RENDERER" ||
+    fail "the preview renderer does not follow the selected smartspace layout"
+if grep -Eq 'mWorkspaceSearchContainer[[:space:]]*=[[:space:]]*R\.layout\.smartspace_container' \
+    "$PREVIEW_RENDERER"; then
+    fail "the preview renderer still hardcodes the inherited smartspace container"
+fi
+grep -Fq 'getEnableSmartspace' "$PREVIEW_RENDERER" ||
+    fail "the preview renderer no longer respects disabled smartspace"
+grep -Fq 'workspaceSearchContainerResId' "$PREVIEW_RENDERER" ||
+    fail "the preview renderer has no pre-bind smartspace override"
+grep -Fq 'R.layout.smartspace_widget_placeholder' "$PREVIEW_VIEW" ||
+    fail "the preview dummy smartspace placeholder override is missing"
+if grep -Fq 'setWorkspaceSearchContainer' "$PREVIEW_VIEW"; then
+    fail "the preview applies the dummy placeholder after construction (sync-bind race)"
+fi
 
 grep -Fq 'app.nothingui.home.NothingUiHomeHeaderView' "$HEADER_LAYOUT" ||
     fail "the NothingUI header layout does not inflate NothingUiHomeHeaderView"
