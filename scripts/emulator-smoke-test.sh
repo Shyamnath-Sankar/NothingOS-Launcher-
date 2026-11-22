@@ -903,6 +903,99 @@ EOF
 assert_eq 'two pre-existing own hosts before a nested Calendar still yield the new Calendar bounds' \
     '38 770 524 1401' \
     "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml")"
+assert_eq 'the same new Calendar is found by its selected provider label' \
+    '38 770 524 1401' \
+    "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml" Calendar)"
+
+# The denser factory HOME can reuse the same geometry on another page. A new
+# Calendar on page 2 must not be suppressed by the own Clock at those bounds on
+# page 1, and a wrong provider at those bounds must not be accepted.
+provider_page_ref_xml="$TMP_DIR/provider-page-ref.xml"
+cat > "$provider_page_ref_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Clock" bounds="[38,770][524,1401]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+provider_page_calendar_xml="$TMP_DIR/provider-page-calendar.xml"
+cat > "$provider_page_calendar_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,770][524,1401]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a new Calendar on another page is not suppressed by the own Clock geometry' \
+    '38 770 524 1401' \
+    "$(home_widget_bounds "$provider_page_calendar_xml" "$provider_page_ref_xml" Calendar)"
+assert_eq 'the provider-label mode rejects a wrong provider at the same bounds' \
+    '' \
+    "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml" Weather)"
+provider_wrong_xml="$TMP_DIR/provider-page-wrong.xml"
+cat > "$provider_wrong_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Battery" bounds="[38,770][524,1401]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Battery host at the Calendar geometry is not a new Calendar' \
+    '' \
+    "$(home_widget_bounds "$provider_wrong_xml" "$provider_page_ref_xml" Calendar)"
+provider_preview_xml="$TMP_DIR/provider-page-preview.xml"
+cat > "$provider_preview_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" bounds="[38,770][524,1401]">
+      <node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,770][524,1401]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Calendar preview host is not a placed Calendar' \
+    '' \
+    "$(home_widget_bounds "$provider_preview_xml" "$provider_page_ref_xml" Calendar)"
+provider_outside_xml="$TMP_DIR/provider-page-outside.xml"
+cat > "$provider_outside_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]" />
+    <node index="1" text="" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="Calendar" bounds="[38,770][524,1401]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Calendar host outside a present workspace is not placed' \
+    '' \
+    "$(home_widget_bounds "$provider_outside_xml" "$provider_page_ref_xml" Calendar)"
+provider_pending_xml="$TMP_DIR/provider-page-pending.xml"
+cat > "$provider_pending_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.widget.PendingAppWidgetHostView" content-desc="Calendar" bounds="[38,770][524,1401]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a pending Calendar host is never a completed placement' \
+    '' \
+    "$(home_widget_bounds "$provider_pending_xml" "$provider_page_ref_xml" Calendar)"
+assert_eq 'the provider-label mode still finds a real Calendar after two own hosts' \
+    '38 770 524 1401' \
+    "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml" Calendar)"
 
 # --- pending own-widget fixtures -------------------------------------------
 #

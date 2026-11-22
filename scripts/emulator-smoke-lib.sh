@@ -1462,9 +1462,17 @@ widget_bind_always_allow_is_checked() (
 # line), and explicit R/C markers keep the reference distinct even when it is
 # empty. A host inside a widget-picker preview or sheet is never accepted; when
 # the hierarchy exposes a workspace, only a host inside that workspace counts.
+#
+# $3 is an optional expected provider label (the picker-selected app title). It
+# is matched against the host content-desc so a new Calendar is not confused
+# with an existing own Clock at the same geometry: reference hosts with another
+# label are ignored, pending hosts are never accepted, and the result must be a
+# real host inside a visible workspace. Without $3 the previous first-unseen
+# behaviour is preserved.
 home_widget_bounds() (
     xml=$1
     reference=${2:-}
+    expected=${3:-}
     [ -s "$xml" ] || return 0
     {
         if [ -n "$reference" ] && [ -s "$reference" ]; then
@@ -1474,7 +1482,7 @@ home_widget_bounds() (
         tr '>' '\n' < "$xml" |
             awk '{ print "C\t" $0 }'
     } |
-        awk -F '\t' '
+        awk -F '\t' -v expected="$expected" '
             function attr(s, name,    pat, v) {
                 pat = "[[:space:]]" name "=\"[^\"]*\""
                 if (!match(s, pat)) return ""
@@ -1501,6 +1509,9 @@ home_widget_bounds() (
                 return rid ~ /(^|\/)(widget_preview_container|widgets_list_header|widgets_catalog|widgets_search_bar|primary_widgets_list_view)$/ ||
                     cls ~ /(WidgetCell|WidgetCellPreview|WidgetsListHeader|WidgetsBottomSheet|BaseWidgetSheet|AddItemWidgetsBottomSheet)/
             }
+            function is_pending(cls) {
+                return cls ~ /PendingAppWidgetHostView/
+            }
             {
                 kind = $1
                 rec = substr($0, index($0, "\t") + 1)
@@ -1516,6 +1527,7 @@ home_widget_bounds() (
                 rid = attr(rec, "resource-id")
                 cls = attr(rec, "class")
                 bounds = attr(rec, "bounds")
+                label = attr(rec, "content-desc")
                 selfclose = (rec ~ /\/[[:space:]]*$/)
                 parent_ws = (sp > 0 ? stack_ws[sp] : 0)
                 parent_preview = (sp > 0 ? stack_preview[sp] : 0)
@@ -1524,16 +1536,24 @@ home_widget_bounds() (
                 if (kind == "C" && ws) cur_saw_ws = 1
                 if (cls ~ /AppWidgetHostView/ &&
                     bounds ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) {
+                    label_ok = (expected == "" || label == expected)
                     if (kind == "R") {
-                        if (!preview) seen[bounds] = 1
-                    } else if (!preview) {
+                        if (!preview && !is_pending(cls) && label_ok) seen[bounds] = 1
+                    } else if (!preview && !is_pending(cls) && label_ok) {
                         # Select the first eligible unseen host while scanning.
                         # The reference is fully processed before the current
                         # tree, so `seen` is complete here. Previously the first
                         # current workspace host was recorded and then rejected
                         # if it was pre-existing, so a later new host (the added
                         # Calendar) was never examined.
-                        if (ws) {
+                        if (expected != "") {
+                            # Identity mode: only a real host inside a visible
+                            # workspace counts. There is no outside-workspace
+                            # fallback here.
+                            if (ws && !(bounds in seen) && chosen_ws == "") {
+                                chosen_ws = bounds
+                            }
+                        } else if (ws) {
                             if (!(bounds in seen) && chosen_ws == "") chosen_ws = bounds
                         } else if (!(bounds in seen) && chosen_nonws == "") {
                             chosen_nonws = bounds
@@ -1548,25 +1568,10 @@ home_widget_bounds() (
             }
             END {
                 if (chosen_ws != "") emit(chosen_ws)
-                else if (!cur_saw_ws && chosen_nonws != "") emit(chosen_nonws)
+                else if (expected == "" && !cur_saw_ws && chosen_nonws != "") {
+                    emit(chosen_nonws)
+                }
             }
-        '
-)
-
-# Succeed when the hierarchy contains an AppWidgetHostView at exactly the given
-# "x1 y1 x2 y2" bounds. Used to find the placed third-party widget on whichever
-# HOME page it landed on, without assuming the first page.
-home_has_widget_bounds() (
-    xml=$1
-    target=$2
-    [ -s "$xml" ] || return 1
-    [ -n "$target" ] || return 1
-    set -- $target
-    [ $# -eq 4 ] || return 1
-    tr '>' '\n' < "$xml" |
-        awk -v b="[$1,$2][$3,$4]" '
-            /<node[[:space:]]/ && /AppWidgetHostView/ && index($0, b) { found = 1 }
-            END { exit !found }
         '
 )
 
