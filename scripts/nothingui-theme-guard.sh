@@ -38,6 +38,7 @@ ATTRIBUTION_FILE="$ROOT/licenses/fonts/doto.md"
 BUILD_FILE="$ROOT/build.gradle"
 PREFS_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/PreferenceActivity.kt"
 THEME_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
+THEME_MANAGER="$ROOT/src/com/android/launcher3/util/WallpaperThemeManager.kt"
 
 [ -d "$FONT_DIR" ] || fail "missing $FONT_DIR"
 [ -d "$THEME_DIR" ] || fail "missing $THEME_DIR"
@@ -46,6 +47,7 @@ THEME_FILE="$ROOT/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
 [ -f "$BUILD_FILE" ] || fail "missing $BUILD_FILE"
 [ -f "$PREFS_FILE" ] || fail "missing $PREFS_FILE"
 [ -f "$THEME_FILE" ] || fail "missing $THEME_FILE"
+[ -f "$THEME_MANAGER" ] || fail "missing $THEME_MANAGER"
 
 for font in doto_regular.ttf doto_bold.ttf; do
     path="$FONT_DIR/$font"
@@ -205,6 +207,31 @@ grep -Fq 'EdgeToEdge(darkTheme = themeSampleDark)' "$PREFS_FILE" ||
     fail "the theme sample does not pass its sample mode to EdgeToEdge"
 grep -Fq 'EdgeToEdge()' "$PREFS_FILE" ||
     fail "the normal settings path no longer uses the inherited EdgeToEdge"
+
+# The native activity theme is resolved from the launcher theme choice and the current
+# configuration. A resume after Settings must re-check it, and the old activity's callbacks must
+# be unregistered. Updating themeRes before recreation is the loop guard: a resume that cannot
+# recreate immediately cannot request the same recreation forever.
+grep -Fq 'override fun onActivityResumed(' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager has no resume theme check"
+grep -Fq 'if (resumedActivity === activity)' "$THEME_MANAGER" ||
+    fail "the resume theme check is not scoped to the launcher activity"
+grep -Fq 'if (themeRes == expectedTheme) return' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager lost the no-change theme guard"
+grep -Fq 'themeRes = expectedTheme' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not remember the applied theme before recreation"
+grep -Fq 'activity.setTheme(expectedTheme)' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not apply the expected activity theme"
+grep -Fq 'unregisterComponentCallbacks(this)' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not unregister its component callbacks"
+grep -Fq 'unregisterActivityLifecycleCallbacks(this)' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not unregister its lifecycle callbacks"
+grep -Fq 'private const val TAG = "DotWelTheme"' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager lost its debug theme-state tag"
+grep -Fq 'if (!BuildConfig.DEBUG) return' "$THEME_MANAGER" ||
+    fail "the native theme-state evidence is not debug-only"
+grep -Fq 'theme-refresh night=$night resolvedDark=$resolvedDark' "$THEME_MANAGER" ||
+    fail "WallpaperThemeManager does not record the real night/resolved dark state"
 
 # Inspect basenames only. The repository parent directory may legitimately contain
 # a brand token (for example .../NothingOS-Launcher-...), which must not be read as

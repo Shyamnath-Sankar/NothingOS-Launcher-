@@ -60,9 +60,28 @@ class WallpaperThemeManager(private val activity: Activity) :
     override fun onActivitySaveInstanceState(activity: Activity, bundle: Bundle) =
         bundle.putBoolean(RUNTIME_STATE_RECREATE_TO_UPDATE_THEME, recreateToUpdateTheme)
 
-    override fun onActivityDestroyed(unused: Activity) {
+    /**
+     * A stopped activity can receive the configuration change before it is resumed, or can be
+     * resumed with resources that were updated while it was not visible. Re-check the resolved
+     * activity theme here so returning from Settings after a night-mode change cannot keep the
+     * previous native popup/drawer theme.
+     */
+    override fun onActivityResumed(resumedActivity: Activity) {
+        if (resumedActivity === activity) {
+            updateTheme()
+        }
+    }
+
+    override fun onActivityDestroyed(destroyedActivity: Activity) {
+        if (destroyedActivity !== activity) return
         WallpaperManagerCompat.INSTANCE.get(activity).removeOnChangeListener(this);
         WallpaperColorHints.get(activity).unregisterOnColorsChangedListener(this)
+        activity.unregisterComponentCallbacks(this)
+        if (Utilities.ATLEAST_Q) {
+            activity.unregisterActivityLifecycleCallbacks(this)
+        } else {
+            activity.application.unregisterActivityLifecycleCallbacks(this)
+        }
     }
 
     override fun onConfigurationChanged(config: Configuration) = updateTheme()
@@ -74,9 +93,14 @@ class WallpaperThemeManager(private val activity: Activity) :
     fun updateTheme() {
         val expectedTheme = Themes.getActivityThemeRes(activity)
         logThemeState(expectedTheme)
-        if (themeRes != expectedTheme) {
-            recreateToUpdateTheme()
-        }
+        if (themeRes == expectedTheme) return
+
+        // Remember the theme before requesting recreation. The next instance applies it in init,
+        // and a resume that cannot recreate immediately must not request the same recreation
+        // again forever.
+        themeRes = expectedTheme
+        activity.setTheme(expectedTheme)
+        recreateToUpdateTheme()
     }
 
     fun recreateToUpdateTheme() {
