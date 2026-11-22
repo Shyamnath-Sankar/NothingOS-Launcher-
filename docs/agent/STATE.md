@@ -3,21 +3,58 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P10b — real widget placement and HOME survival verification**.
-  The smoke now selects a real Clock/Calendar provider header with a positive widget count, expands
-  it if needed, measures the preview below that header, taps the preview and the real
-  `widget_add_button`, and verifies a new workspace `AppWidgetHostView` plus a new
-  `dumpsys appwidget` provider. It captures each transition, keeps the widget between the measured
-  header/dock bands, presses HOME and requires the same bounds to remain. Shortcut-only headers are
-  rejected. Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle,
-  manifest, permission, applicationId, paid, signing or YouTube change.
+- current_phase: **P10b — widget placement review correction (compact hierarchy, bound instance,
+  expanded provider association)**. The smoke now parses both HOME hierarchies as node records before
+  comparing them, so a compact single-line UIAutomator dump is handled and an empty reference cannot
+  be mistaken for the current file. It ignores hosts inside picker/sheet previews and requires a
+  workspace host when the hierarchy exposes a workspace. Placement proof now requires a newly bound
+  `AppWidgetId`/provider pair, not merely a provider mentioned in `dumpsys appwidget`. After a
+  provider expansion, the selected header is re-resolved by its title before measuring the preview.
+  Harness-only: no app source, preference/DB/widget binding, SDK, workflow, Gradle, manifest,
+  permission, applicationId, paid, signing or asset change.
 - branch: `agent/p10b-widget-placement`
-- head: `1016579` (`feat(smoke): add a real widget and prove it survives HOME`) on base `main`
-  `6cf242c`.
-- pr: **none yet**; main must open/approve the PR. APK110 is frozen and independent of this branch.
-  P10a PR14 is merged at `main` `6cf242c`.
+- head: `cc66774` (`fix(smoke): parse compact widget hosts and bound instances`) on base `main`
+  `6cf242c`; prior head `08ecc0f`.
+- pr: **none recorded locally**; main/supervisor must open/approve the PR. APK110 is frozen and
+  independent of this branch. P10a PR14 is merged at `main` `6cf242c`.
 
-## done (this run — P10b widget placement and HOME survival)
+## done (this run — P10b widget placement review correction)
+
+- **Compact hierarchy, not a line guess:** `home_widget_bounds` previously read attributes from the
+  first `<node` on each physical line. A CI110-style UIAutomator dump is one line, so it could see
+  only the root/first node and miss a nested workspace host. Both reference and current files are now
+  split into node records (`tr '>' '\n'`) and tagged `R`/`C`; explicit markers preserve the
+  reference/current distinction even when the reference is empty. A missing reference still means
+  "no previous hosts", not "treat the current tree as the reference".
+- **Workspace vs sheet preview:** the comparison tracks node nesting. A host inside
+  `widget_preview_container`, `widgets_list_header`, `widgets_catalog`, a picker list, `WidgetCell`,
+  `WidgetsListHeader`, a bottom sheet or an add-widget sheet is rejected. When the current hierarchy
+  exposes a `workspace`/`Workspace` ancestor, only a host inside it is accepted; a workspace host is
+  preferred over any non-workspace host.
+- **New bound instance, not just a provider:** `appwidget_new_providers` now associates each
+  `provider=ComponentInfo{...}` with its enclosing `AppWidgetId=N` block and reports only providers
+  for AppWidgetIds absent from the before dump. An installed-provider list or a provider name that
+  was already present cannot satisfy placement; a new AppWidgetId for an already-installed provider
+  still can.
+- **Expanded provider association:** after tapping a provider header, the smoke re-runs
+  `widget_picker_provider_bounds` on the expanded capture by the selected `Clock`/`Calendar` title,
+  then passes that fresh header to `widget_picker_preview_bounds`. A stale collapsed header cannot
+  skip the real preview and select a later provider's preview. The next-header boundary still comes
+  from the same expanded capture.
+- **Add route preserved:** `widget_add_button` was verified in the inherited source
+  (`res/layout/widget_cell_content.xml` and `src/com/android/launcher3/widget/WidgetCell.java`) and
+  is unchanged.
+- **Fixtures:** compact single-line positive host, pretty reference, unchanged compact reference,
+  empty reference, no-host compact HOME, compact preview-only host, compact mixed preview/workspace
+  host, host outside a present workspace, new AppWidgetId for an already-installed provider,
+  installed-provider-only list and empty before dump; expanded-header stale/updated preview cases.
+- **Limitation recorded:** if the actual hierarchy exposes no workspace node at all, the helper can
+  only reject known picker/sheet preview containers, not prove workspace membership. The CI110
+  `widgets-home-placed*.xml` / `widgets-home-after-home.xml` artifacts must be inspected; if the real
+  `dumpsys appwidget` uses a different bound-instance shape, the helper fails closed and the
+  captured dump must drive the update.
+
+## done (previous run — P10b widget placement and HOME survival)
 
 - **Evidence read, not guessed:** CI110's picker hierarchy (as reported in the task) has a clickable
   `widgets_list_header` with `app_title` Calendar and subtitle `1 widget`, Clock next, a
@@ -588,37 +625,38 @@ when no task input is given, and continues from "next".
 
 ## verification actually run (no Gradle, no emulator, no CI)
 
-- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the actual-shape workspace
-  preview positive, the missing-preview / preview-not-above-controls / preview-without-hotseat
-  negatives, the non-clickable Apply positive, the clickable-Apply and missing-containing-Button
-  negatives, and the fully-occupied long-press band failure.
+- This run: `sh scripts/emulator-smoke-test.sh` -> all pass, including the compact single-line
+  workspace host, unchanged/empty reference, no-host, preview-only, mixed preview/workspace,
+  outside-workspace, new-AppWidgetId and expanded-header stale/updated fixtures.
 - This run: `sh scripts/emulator-smoke-drawer-test.sh` -> all pass; the genuine 1500 ms / 4-attempt
   drawer assertions are unchanged.
 - This run: `sh scripts/verify-play-build-test.sh` -> all pass.
+- This run: `sh scripts/verify-play-build.sh` ran every guard/fixture suite and stopped only at the
+  expected missing `build/intermediates` because no Gradle/APK run happens here.
 - This run: `sh -n` clean on every edited script; `git diff --check` clean.
-- Prior run: both smoke suites, `verify-play-build-test.sh` and the repo-level identity, brand,
-  theme, home, home-role, icon and drawer-trace guards passed; `verify-play-build.sh` stopped only at
-  the expected missing `build/intermediates` because no Gradle/APK run happens here.
 - Not run here: `spotlessCheck`, any Gradle build/test, the API 37 emulator smoke, or PR CI. This is
   source/fixture verification only; it is not a runtime or pixel claim.
 
 ## next
 
-- Main owns PR creation/CI approval for `agent/p10b-widget-placement` at head `1016579`. APK110 is
-  frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
+- Main/supervisor owns PR creation/CI approval for `agent/p10b-widget-placement` at head `cc66774`.
+  APK110 is frozen and does not depend on this branch. P10a PR14 is merged at `main` `6cf242c`.
 - CI must be green on this head: `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug`, the Play
   unit tests, `verify-play-build.sh`, both smoke suites and the API 37 emulator smoke.
 - Inspect the new runtime artifacts after the run:
-  - `widgets-provider.xml` / `.png`: the selected Clock/Calendar header expanded, with the
-    `widget_preview_container` below it. If the provider order or ids differ, update from the
-    captured XML; never invent a class name.
+  - `widgets-provider.xml` / `.png`: the selected Clock/Calendar header re-resolved by title after
+    expansion, with the `widget_preview_container` below it and above the next header. If the
+    provider order or ids differ, update from the captured XML; never invent a class name.
   - `widgets-add.xml` / `.png`: the exposed `widget_add_button`. If Add is absent, the flow uses a
     measured drag and writes `widgets-drag.txt`.
-  - `widgets-home-placed.xml` / `.png`: a new `AppWidgetHostView`-suffixed workspace node, its
-    bounds between the measured header bottom and dock top.
+  - `widgets-home-placed.xml` / `.png` and `widgets-home-after-home.xml` / `.png`: a new
+    `AppWidgetHostView`-suffixed node inside the real workspace, its bounds between the measured
+    header bottom and dock top, unchanged after KEYCODE_HOME. If these dumps are compact single-line
+    XML, the node-record parser must find the nested host; if they expose no workspace node, record
+    that limitation from the actual XML rather than weakening the check.
   - `widgets-appwidget-before.txt` / `widgets-appwidget-after.txt` /
-    `widgets-appwidget-providers.txt`: a new bound `provider=ComponentInfo{...}` entry.
-  - `widgets-home-after-home.xml` / `.png`: the same widget bounds after KEYCODE_HOME.
+    `widgets-appwidget-providers.txt`: a new `AppWidgetId=N` with its `provider=ComponentInfo{...}`,
+    not just a provider name already present in the installed-provider list.
   - `widgets-add-last.xml` / `.png` and `activities-widget-placed-N.txt`: failure evidence when a
     widget configuration activity or an unbound provider blocks placement.
   - Existing grid/popup/drawer artifacts remain unchanged and must still pass.
@@ -630,8 +668,8 @@ when no task input is given, and continues from "next".
 ## blockers
 
 - No local Gradle build or emulator run is allowed here, so the Android compile, unit test and the
-  API 37 emulator run are unverified until CI runs on `1016579`.
-- No PR exists yet for `agent/p10b-widget-placement`; a maintainer must create/approve it.
+  API 37 emulator run are unverified until CI runs on `cc66774`.
+- No PR is recorded locally for `agent/p10b-widget-placement`; main/supervisor must open/approve it.
 - The smoke's consent phase assumes the platform HOME role dialog exposes a Cancel control. The
   script fails closed if it does not; the captured XML will name the exact label to add.
 - The picker readiness assumes one of the two known native picker markers. If the API 37 image
@@ -642,6 +680,13 @@ when no task input is given, and continues from "next".
   `widgets-add-last.xml`/`.png` rather than selecting a shortcut. If Add auto-places the widget
   outside the measured header/dock band, the captured `widgets-home-placed.xml` drives a later
   placement change; do not relax the band assertion.
+- The compact HOME parser rejects known picker/sheet preview ancestors and, when a workspace node is
+  present, requires the host inside that workspace. If the actual HOME dump exposes no workspace
+  node, workspace membership cannot be proven from the hierarchy alone; inspect the captured CI110
+  XML instead of treating a non-preview host as workspace evidence.
+- The bound-instance proof assumes `dumpsys appwidget` emits `AppWidgetId=N` blocks containing a
+  `provider=ComponentInfo{...}` line. If the real dump shape differs, the helper fails closed; the
+  captured before/after dumps must drive the update, not an installed-provider list.
 - The local branch `agent/p10b-widget-placement-verifica` was a stale pre-existing branch with no
   commits; the work is on the correctly named `agent/p10b-widget-placement`.
 
@@ -654,6 +699,17 @@ when no task input is given, and continues from "next".
 
 ## rulings (this run and prior P3a)
 
+- P10b review correction: both HOME hierarchies are normalised to node records with explicit R/C
+  markers before comparison, and the helper rejects known picker/sheet preview ancestors. When a
+  workspace node exists, the host must be inside it. Cost if wrong: a real widget host that the
+  hierarchy does not nest under a workspace fails closed, and the captured CI110 XML must drive the
+  next change; a picker preview can never be counted as placement.
+- P10b review correction: placement proof requires a new `AppWidgetId` with a provider, not just a
+  provider name in the installed-provider list. Cost if wrong: an unusual `dumpsys appwidget` shape
+  fails closed rather than accepting an already-installed provider as a newly bound widget.
+- P10b review correction: after expansion the provider header is re-resolved by its `app_title`
+  before measuring the preview. Cost if wrong: a provider whose title disappears after expansion
+  fails closed instead of associating a later provider's preview with the selected one.
 - P10a harness correction: the grid preview is accepted from a `/workspace` ViewGroup whose bounds
   are above every slider, inside the root and smaller than it, with a `hotseat`/`search_container_workspace`
   child. Cost if wrong: a future preview without that resource-id fails closed; the captured XML
