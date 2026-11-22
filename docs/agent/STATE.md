@@ -3,22 +3,59 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19/CI136 DotWel provider-package correction**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 pending-widget smoke harness recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `18c8ac4` (`fix(widgets): move providers into DotWel widget package`); previous head
-  `80cc479`, base `452ffb4`. This STATE commit follows.
+- head: `c39199a` (`chore(widgets): match google-java-format AOSP for provider policy constants`);
+  previous head `740b2cb`, base `452ffb4`. This STATE commit follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI136** — Android `assemble` and all unit tests passed, but `Verify Play manifest and
-  identity` failed the existing `play-brand-guard` on `play/res/xml/default_workspace_4x5.xml`.
-  Its broad scan found the new `NothingUI` comment and the two fully qualified
-  `app.nothingui.widgets.NothingUi*WidgetProvider` names there. The earlier
-  `spotlessKotlinCheck` failure on `DotText.kt:122` was already fixed by `e9df3ab`. The guard was
-  not weakened; this correction push re-triggers CI.
-- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, unit tests, Verify Play manifest
-  and identity, API 37 smoke) and inspect the clean dark/light home screenshots. No further app
-  change planned. Do not merge from here.
+- ci: **CI136** — `assemble`/unit passed; the `play-brand-guard` failure was corrected by `18c8ac4`
+  and has not been re-run since. The harness recovery below still needs a fresh PR19 CI run.
+- next: let PR19 CI rerun (Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit tests,
+  Verify Play manifest and identity, API 37 smoke). Inspect the own-widget before/consent/after
+  XML+PNG and the clean dark/light home screenshots. No further app change planned. Do not merge.
 
-## done (this run — PR19 CI136 DotWel provider-package correction)
+## done (this run — PR19 pending-widget smoke harness recovery)
+
+- **Reported failure reproduced:** at `740b2cb` the smoke fixture suite had exactly one failure:
+  `a pending host outside a present workspace is rejected` returned `40 900 500 1200`.
+- **Root cause:** `home_pending_widget_bounds` set `saw_ws` only inside the pending-host branch, so
+  a workspace with no pending host was invisible and the no-workspace fallback returned an outside
+  host. `saw_ws` is now set for any workspace node, so the fallback applies only when no workspace
+  is exposed. Fixtures keep the no-workspace fallback positive and the outside-host negative.
+- **Exact own-provider acceptance:** new `own_widget_new_binding` accepts exactly one newly bound
+  record with a numeric id, the running `$PKG` as both host and provider package, and exactly
+  `app.dotwel.widgets.DotWelClockWidgetProvider` or
+  `...DotWelBatteryWidgetProvider`. The old substring `case` is gone. Fixtures cover one clock,
+  one battery, unchanged, foreign provider package, class prefix/suffix lookalikes, short class,
+  wrong provider, two records, mixed own/foreign multiline, foreign host and non-numeric id.
+- **Exact consent activity:** new `foreground_is_component` matches the resumed component exactly.
+  The own-widget consent now requires `com.android.settings/.AllowBindAppWidgetActivity` (or its
+  fully qualified form), grounded in the CI134 `activities-widget-placed-1.txt` evidence. Fixtures
+  cover the CI134 shape, the fully qualified form, another Settings activity, a foreign package, a
+  class suffix lookalike and the exact package requirement.
+- **Per-round completion:** after Create the flow now requires the real launcher HOME
+  (`$PKG/$LAUNCHER_ACTIVITY`) and finishes a round only when exactly one new own provider is bound
+  and the pending count decreases by exactly one. A missing decrease, a still-open dialog or a
+  wrong provider fails closed. Max two rounds, 12 bounded polls, unexpected-dialog failure, Always
+  allow unchecked and ordinary measured taps are unchanged; before/consent/after XML+PNG retained.
+- **Unchanged proofs:** `verify_home_widgets` still proves distinct launcher-owned ids, the live
+  `TextClock` value and a real battery percentage/`--`; `capture_clean_home_theme` and the
+  third-party picker/consent/placement/Settings-survival flow are untouched.
+- **Formatting:** the Java policy constants were joined to one line (94/98 columns) to match
+  google-java-format AOSP, since every existing split constant in `src/com/android/launcher3` is
+  >100 columns. The Kotlin policy test matches the existing `tests/unit` style (header, imports,
+  4-space indent, trailing commas); no Gradle was run here.
+- **Verification actually run (no Gradle, no emulator):** `emulator-smoke-test.sh` 389/389;
+  `emulator-smoke-drawer-test.sh` 38/38; `nothingui-widget-guard-test.sh` 31/31;
+  `nothingui-home-guard-test.sh` 18/18; `play-brand-guard-test.sh` 22/22;
+  `play-identity-guard-test.sh` 8/8; `nothingui-theme-guard-test.sh` 12/12;
+  `manifest-guard-test.sh` 31/31; `nothingui-home-role-guard-test.sh` 7/7;
+  `verify-play-build-test.sh` all pass. Source guards widget/home/brand/theme/identity/role OK.
+  `sh -n` clean on the three edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** no runtime, APK, pixel or CI claim. `manifest-guard.sh` needs a built merged
+  manifest and was not run directly; its fixture suite passed. PR19 is not merged.
+
+## done (previous run — PR19 CI136 DotWel provider-package correction)
 
 - **CI136 failure diagnosed, not guessed:** Android `assemble` and all unit tests passed, but
   `Verify Play manifest and identity` failed the existing `play-brand-guard`. Its broad
@@ -1158,6 +1195,16 @@ when no task input is given, and continues from "next".
 
 ## log
 
+- 2026-11-22: P5 PR19 pending-widget smoke harness recovery on
+  `agent/home-widget-composition-v1-new` (`089ca86`, `27c6baa`, `c39199a`), from `740b2cb`. The one
+  reported fixture failure was reproduced: `home_pending_widget_bounds` set `saw_ws` only when a
+  pending host was already inside a workspace, so the fallback returned a host outside a present
+  workspace. `saw_ws` now tracks any workspace node. Added `own_widget_new_binding` (exactly one new
+  numeric record, exact `$PKG` host/provider package, exact full DotWel class) and
+  `foreground_is_component` (exact `.AllowBindAppWidgetActivity`). The own-widget round now requires
+  real launcher HOME after Create and a one-pending decrease, failing closed otherwise. Added
+  positive/negative fixtures and static flow gates. Java policy constants joined to one line for
+  GJF AOSP. Local shell suites/guards pass; no Gradle/emulator/CI claim. PR19 not merged.
 - 2026-11-22: P11 grid-preview header parity on `agent/p11-preview-header` (`31d0963`, `df2bfbc`),
   from `main` `e7c9240d` (P10b PR15 merged). `LauncherPreviewRenderer` no longer hardcodes
   `R.layout.smartspace_container`; it resolves the selected `SmartspaceMode.layoutResourceId` in the
