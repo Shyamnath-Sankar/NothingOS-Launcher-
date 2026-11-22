@@ -121,7 +121,7 @@ PY
 # When the real Play debug APK is present, inspect the packaged Torus resource
 # for AAPT's STRING_TOO_LARGE sentinel in ASCII or UTF-16. Source-only and
 # minimal-fixture checkouts without build output keep working.
-APK_DIR="$ROOT/build/outputs/apk/lawnWithQuickstepPlayDebug"
+APK_DIR="$ROOT/build/outputs/apk/lawnWithQuickstepPlay/debug"
 if [ -d "$APK_DIR" ]; then
     "$PYTHON" - "$APK_DIR" <<'PY' || fail "the compiled Torus XML contains STRING_TOO_LARGE"
 import os
