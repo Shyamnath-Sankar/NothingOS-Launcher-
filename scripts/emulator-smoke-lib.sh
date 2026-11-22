@@ -1761,30 +1761,65 @@ placed_widget_page_is_safe() (
 )
 
 # Print "<x1> <y> <x2> <y>" for a bounded horizontal workspace page swipe in the
-# safe band between the measured header and dock. $2 is "next" or "prev".
+# safe band between the actual workspace/header top and the actual hotseat. $2 is
+# "next" or "prev". A genuine later page may expose no launcher
+# search_container_workspace header, so its measured workspace upper bound is
+# used; a real header is still protected. Missing, malformed or degenerate
+# workspace/hotseat geometry and an impossible band fail closed. The labelled-row
+# ui_dock_top is deliberately not used: ordinary app icons on a later page can
+# report a row above the real hotseat.
 workspace_page_swipe() (
     xml=$1
     direction=$2
+    case "$direction" in
+        next | prev) ;;
+        *) return 1 ;;
+    esac
     [ -s "$xml" ] || return 0
-    root=$(ui_root_bounds "$xml")
-    [ -n "$root" ] || return 0
-    set -- $root
-    origin_x=$1
-    origin_y=$2
-    width=$(($3 - $1))
-    dock_top=$(ui_dock_top "$xml" "$root")
-    header_bottom=$(ui_header_bottom "$xml" "$dock_top")
-    [ -n "$dock_top" ] || return 0
-    [ -n "$header_bottom" ] || return 0
-    y=$((origin_y + (header_bottom + dock_top) / 2))
-    margin=$((width / 5))
+
+    ws_bounds=$(ui_node_attribute "$xml" workspace bounds)
+    [ -n "$ws_bounds" ] || ws_bounds=$(ui_node_attribute "$xml" workspace_right bounds)
+    [ -n "$ws_bounds" ] || ws_bounds=$(ui_node_attribute "$xml" workspace_grid bounds)
+    ws=$(ui_bounds_values "$ws_bounds")
+    [ -n "$ws" ] || return 0
+    set -- $ws
+    ws_x1=$1
+    ws_y1=$2
+    ws_x2=$3
+    ws_y2=$4
+    [ "$ws_x1" -lt "$ws_x2" ] && [ "$ws_y1" -lt "$ws_y2" ] || return 0
+
+    dock=$(ui_bounds_values "$(ui_node_attribute "$xml" hotseat bounds)")
+    [ -n "$dock" ] || return 0
+    set -- $dock
+    dock_x1=$1
+    dock_y1=$2
+    dock_x2=$3
+    dock_y2=$4
+    [ "$dock_x1" -lt "$dock_x2" ] && [ "$dock_y1" -lt "$dock_y2" ] || return 0
+    [ "$dock_y1" -gt "$ws_y1" ] || return 0
+
+    band_top=$ws_y1
+    header_bottom=$(ui_header_bottom "$xml" "$dock_y1")
+    if [ -n "$header_bottom" ]; then
+        case "$header_bottom" in '' | *[!0-9]*) return 0 ;; esac
+        [ "$header_bottom" -gt "$band_top" ] && band_top=$header_bottom
+    fi
+    [ "$band_top" -lt "$dock_y1" ] || return 0
+    y=$((band_top + (dock_y1 - band_top) / 2))
+    [ "$y" -ge "$ws_y1" ] && [ "$y" -le "$ws_y2" ] || return 0
+
+    ws_width=$((ws_x2 - ws_x1))
+    margin=$((ws_width / 5))
     [ "$margin" -ge 40 ] || margin=40
-    left=$((origin_x + margin))
-    right=$((origin_x + width - margin))
+    left=$((ws_x1 + margin))
+    right=$((ws_x2 - margin))
+    [ "$left" -lt "$right" ] || return 0
+    [ "$left" -gt "$ws_x1" ] && [ "$right" -lt "$ws_x2" ] || return 0
+
     case "$direction" in
         next) printf '%s %s %s %s\n' "$right" "$y" "$left" "$y" ;;
         prev) printf '%s %s %s %s\n' "$left" "$y" "$right" "$y" ;;
-        *) return 1 ;;
     esac
 )
 

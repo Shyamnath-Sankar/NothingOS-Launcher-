@@ -178,8 +178,18 @@ a view.
   never inherited. Missing or malformed workspace/dock geometry fails closed, and the labelled-row
   `ui_dock_top` is not used because later-page app icons can make it report a row above the real
   dock. The check also re-proves the exact selected-provider workspace host, so absent, foreign and
-  picker-preview hosts cannot pass. This keeps the widget off the later drawer swipe start. It then
-  launches Settings with
+  picker-preview hosts cannot pass. This keeps the widget off the later drawer swipe start. The same
+  page-local rule governs the horizontal page swipes used by the bounded search, the return to the
+  original page and the forward recheck. Each swipe is derived from the workspace and `hotseat`
+  bounds actually exposed on the current page, never the labelled-row `ui_dock_top` and never the
+  first page's header. When a real `search_container_workspace` header is present the safe band
+  starts below it; on a genuine no-header later page the band starts at the measured workspace top.
+  The y is the midpoint above the actual hotseat top, and the x endpoints stay inside the actual
+  workspace, including nonzero origins. Missing, malformed or degenerate workspace/hotseat geometry,
+  an impossible band, or an unknown direction fails closed instead of inventing a fraction. Fixtures
+  pin the CI159 first page (header bottom 312, hotseat 1481) and the no-header later page (ordinary
+  icon row 1196, hotseat 1481), so the later swipe uses the real hotseat and ignores the icon row. It
+  then launches Settings with
   `am start -a android.settings.SETTINGS`, waits for the exact `com.android.settings` foreground,
   captures `widgets-settings-launched.xml`/`.png`, presses HOME, and searches the same bounded pages
   by provider label plus the exact placed bounds. It captures `widgets-home-after-home.xml`/`.png`

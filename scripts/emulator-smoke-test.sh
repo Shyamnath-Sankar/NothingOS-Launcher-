@@ -1251,6 +1251,138 @@ assert_false 'a mismatched placed bounds value is not a safe placed widget' \
     placed_widget_page_is_safe "$placed_ci159_later_xml" "$multi_host_ref_xml" \
     Calendar '38 200 524 738'
 
+# CI165: bounded horizontal page swipes must use the actual workspace and
+# hotseat on the page being swiped. The CI159 later page has no launcher header
+# and its ordinary Gallery/Settings icon row makes ui_dock_top report 1196, so a
+# swipe that still required the header or the labelled row returned nothing.
+assert_eq 'a first-page next swipe stays below the real header and above the hotseat' \
+    '864 896 216 896' \
+    "$(workspace_page_swipe "$placed_ci159_first_xml" next)"
+assert_eq 'a first-page prev swipe uses the same bounded band' \
+    '216 896 864 896' \
+    "$(workspace_page_swipe "$placed_ci159_first_xml" prev)"
+assert_eq 'a no-header later-page next swipe uses the actual hotseat, not icon row 1196' \
+    '864 740 216 740' \
+    "$(workspace_page_swipe "$placed_ci159_later_xml" next)"
+assert_eq 'a no-header later-page prev swipe uses the same bounded band' \
+    '216 740 864 740' \
+    "$(workspace_page_swipe "$placed_ci159_later_xml" prev)"
+assert_eq 'the later-page swipe y is below the hotseat-1196 midpoint and matches hotseat 1481' \
+    '740' \
+    "$(workspace_page_swipe "$placed_ci159_later_xml" next | awk '{print $2}')"
+
+placed_ci165_offset_xml="$TMP_DIR/placed-ci165-offset.xml"
+cat > "$placed_ci165_offset_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[40,120][1040,1800]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[40,1500][1040,1900]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a nonzero-origin workspace produces absolute swipe coordinates inside it' \
+    '840 810 240 810' \
+    "$(workspace_page_swipe "$placed_ci165_offset_xml" next)"
+assert_eq 'a nonzero-origin prev swipe keeps the same absolute endpoints' \
+    '240 810 840 810' \
+    "$(workspace_page_swipe "$placed_ci165_offset_xml" prev)"
+
+assert_eq 'a page swipe without a real workspace fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci159_no_workspace_xml" next)"
+assert_eq 'a page swipe without a real hotseat fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci159_no_hotseat_xml" next)"
+
+placed_ci165_bad_ws_xml="$TMP_DIR/placed-ci165-bad-workspace.xml"
+cat > "$placed_ci165_bad_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a malformed workspace fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_bad_ws_xml" next)"
+
+placed_ci165_degenerate_ws_xml="$TMP_DIR/placed-ci165-degenerate-workspace.xml"
+cat > "$placed_ci165_degenerate_ws_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,900][1080,900]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a degenerate workspace fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_degenerate_ws_xml" next)"
+
+placed_ci165_bad_dock_xml="$TMP_DIR/placed-ci165-bad-hotseat.xml"
+cat > "$placed_ci165_bad_dock_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,abc][1080,1920]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a malformed hotseat fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_bad_dock_xml" next)"
+
+placed_ci165_degenerate_dock_xml="$TMP_DIR/placed-ci165-degenerate-hotseat.xml"
+cat > "$placed_ci165_degenerate_dock_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1481]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a degenerate hotseat fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_degenerate_dock_xml" next)"
+
+placed_ci165_impossible_xml="$TMP_DIR/placed-ci165-impossible-band.xml"
+cat > "$placed_ci165_impossible_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,800][1080,1800]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,400][1080,800]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a hotseat above the workspace start is an impossible band' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_impossible_xml" next)"
+
+placed_ci165_header_past_dock_xml="$TMP_DIR/placed-ci165-header-past-dock.xml"
+cat > "$placed_ci165_header_past_dock_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="Search" resource-id="com.launchernos.dotwellabs.debug:id/search_container_workspace" class="android.widget.EditText" content-desc="Search" clickable="true" bounds="[22,91][1058,1600]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/hotseat" class="android.widget.FrameLayout" bounds="[0,1481][1080,1920]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a real header that reaches past the hotseat is an impossible band' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci165_header_past_dock_xml" next)"
+assert_eq 'an unknown swipe direction fails closed' \
+    '' \
+    "$(workspace_page_swipe "$placed_ci159_later_xml" sideways)"
+
 # --- pending own-widget fixtures -------------------------------------------
 #
 # After a denied automatic bind, the fresh layout keeps each own slot as a
