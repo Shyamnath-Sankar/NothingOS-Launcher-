@@ -3,23 +3,74 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 CI159 placed-widget page-geometry smoke recovery**.
+- current_phase: **P5 home-widget-composition-v1 — PR19 CI161 selected-preview caption and primary-HOME restore recovery**.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `80550c1` (`fix(smoke): validate placed widgets on actual page geometry`); this STATE
-  commit follows. Previous commits: `ccf424c`, `3c00ebc`, `62e1afd`, `1f3dc34`, `d3c6830`, `6262c21`,
-  `81afb5e`, `56bb219`, `a46a487`, `709795a`; start `010d928`.
+- head: `1557650` (`fix(smoke): use selected widget caption for bind consent`); this STATE
+  commit follows. Previous commits: `e289362`, `80550c1`, `ccf424c`, `3c00ebc`, `62e1afd`,
+  `1f3dc34`, `d3c6830`, `6262c21`, `81afb5e`, `56bb219`, `a46a487`, `709795a`; start `010d928`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI159** (coordinator-reported, not reproduced locally) — compiled, style passed and **69
-  JUnit tests passed**; all own widgets and the measured Settings shortcuts passed again. It then
-  failed at the placed-widget header/dock check: the Calendar bounds `38 107 524 738` were compared
-  with the pre-widget first-page header bottom `312` and dock `1481`, but the later placed page has
-  no launcher `search_container_workspace` header. A fresh PR19 run is required at this head.
+- ci: **CI161** (coordinator-reported, not reproduced locally) — compiled, style passed and **69
+  JUnit tests passed**. The runtime smoke then selected the Clock provider and its `Analog clock`
+  widget. The real `com.android.settings` `AllowBindAppWidgetActivity` showed
+  `Application: DotWel Launcher`, `Widget: Analog clock`, Create enabled and Always allow
+  unchecked. The harness had passed the provider header `Clock` to the consent helpers, so it
+  correctly refused the mismatched consent and timed out. The app build itself was green; this is a
+  harness identity bug. A fresh CI is required at this head after coordinator review.
 - next: let PR19 CI rerun the Play debug build, `spotlessKotlinCheck`, `spotlessJavaCheck`, unit
-  tests, Verify Play manifest and identity, and the API 37 smoke. The new check uses the actual
-  placed-page workspace/`hotseat` geometry and enforces a header band only when the launcher header
-  is really visible on that page. Do not merge until the API 37 smoke is green.
+  tests, Verify Play manifest and identity, and the API 37 smoke. The new harness keeps the provider
+  header for HOME host/page identity and the measured preview `WidgetCell` caption for both consent
+  calls; it restores the default HOME after third-party proof before `verify_nothing_home`. Do not
+  merge until the API 37 smoke is green.
 
-## done (this run — CI159 placed-widget page-geometry recovery)
+## done (this run — CI161 selected-preview caption and primary-HOME restore)
+
+- **Root cause from CI161, not guessed:** the picker's Clock provider exposed both `Analog clock`
+  and `Digital clock` `WidgetCell`s at the same vertical position. The smoke passed the provider
+  header `Clock` to `widget_bind_consent_is_ready` and `widget_bind_create_button_bounds`, so the
+  exact platform dialog (`Widget: Analog clock`) was rejected and the run timed out. The app,
+  workflow, SDK, permissions, signing and release configuration were untouched.
+- **Two separate identities:** the selected provider/app title `Clock` remains only the HOME host
+  and page-search identity. The new pure `widget_picker_selected_caption` reads the `widget_name`
+  from the same actual `WidgetCell` (nearest ancestor class) that owns the measured
+  `widget_preview_container` bounds in the saved pre-Add XML. It never uses the first global
+  `widget_name` or the provider header. It prints a caption only when exactly one `WidgetCell` owns
+  the selected preview and that cell exposes exactly one non-empty `widget_name`; missing, foreign,
+  duplicate or ambiguous captions print nothing and the smoke fails closed.
+- **Consent wiring:** both `widget_bind_consent_is_ready` and `widget_bind_create_button_bounds`
+  now receive `_cwp_widget_caption`; the provider title still feeds `home_widget_bounds`,
+  `placed_widget_page_is_safe` and the bounded page search. The log records both values.
+- **Primary HOME restore:** after the exact placed host/new launcher-owned id, Settings/HOME
+  survival and bounded page recheck pass, new `restore_primary_home` sends one ordinary HOME key
+  (the existing `Launcher.onNewIntent` default-page behavior), then polls `primary_home_is_ready`
+  for up to 10 attempts. That readiness requires the date pill, live clock text and the clock,
+  battery, device-storage value and device-progress child ids. Only then does `verify_nothing_home`
+  run. No workspace item is reset, moved or deleted, and the primary-page assertions are unchanged.
+- **Fixtures:** new Clock cells model `Analog clock`/`Digital clock` at the same vertical position
+  with left/right preview selection; Calendar with the same provider/widget name; the own DotWel
+  group with distinct captions; missing, ambiguous, unrelated and provider-header negatives. The
+  CI161 platform consent fixture now expects `Analog clock`; `Clock` and `Digital clock` expectations
+  fail to find a Create target, and Always allow stays unchecked. Existing wrong
+  widget/launcher/dialog/package/disabled-button/checkbox negatives are retained.
+- **Source regression guard:** the smoke test asserts the recheck line precedes the
+  `restore_primary_home` call, which precedes `verify_nothing_home`; it also asserts the restore uses
+  `KEYCODE_HOME` and never clears/moves/deletes workspace items.
+- **Docs:** `docs/agent/emulator-verification.md` records the two identities, the same-`WidgetCell`
+  caption rule, fail-closed ambiguity, primary-HOME restore and the new evidence files.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **495/495**; `emulator-smoke-drawer-test.sh` 38/38;
+  `nothingui-widget-guard.sh` OK and suite 31/31; `nothingui-home-guard.sh` OK and suite 19/19;
+  `play-brand-guard-test.sh` 22/22; `play-identity-guard-test.sh` 8/8;
+  `nothingui-home-role-guard-test.sh` 7/7; `manifest-guard-test.sh` 31/31;
+  `nothingui-theme-guard-test.sh` 12/12; `nothingui-icon-render-guard-test.sh` 15/15;
+  `nothingui-native-surfaces-guard-test.sh` 14/14; `nothingui-drawer-trace-guard-test.sh` 8/8;
+  `verify-play-build-test.sh` 11/11; the widget/home/role/theme/icon/native/drawer-trace/brand/
+  identity source guards all OK; `sh -n` clean on the edited scripts; `git diff --check` clean.
+- **Blocked/unknown:** CI has not yet rerun the API 37 runtime smoke at this head. No runtime, APK
+  or pixel success is claimed from fixtures; the Analog clock consent must be observed to pass in
+  the next CI, and the primary/default HOME restore must be observed before `verify_nothing_home`.
+  PR19 is not merged.
+
+## done (previous run — CI159 placed-widget page-geometry recovery)
 
 - **Diagnosed from the reported evidence, not guessed:** the old check measured
   `_cwp_ref_dock_top` and `_cwp_ref_header_bottom` from the pre-widget first page and applied them to
