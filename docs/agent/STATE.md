@@ -3,27 +3,85 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **PR19 routine weather transport/cache pre-CI correction on `b0250b4`: a persisted
-  global attempt floor (independent of location and response outcome), a cancellable async OkHttp
-  bridge, injected-clock `Retry-After` parsing without down-clamping, bounded/atomic file cache I/O,
-  and retrieval/revalidation evidence separated from fresh/stale. PLAY SLIDER CORRECTION FROM
-  `b5a9918` IS PRESERVED. PENDING CI.**
+- current_phase: **PR19 routine weather cancellation/throttle-store pre-CI correction on `f90a68e`:
+  the OkHttp body read now runs entirely on the callback worker with cancellation active for the
+  whole body lifetime, `WeatherThrottleStore` is a required injection, the file store fails closed
+  on a corrupt gate and serializes same-process instances, an unpersisted provider `Retry-After`
+  boundary is kept in memory and reported via `retryPersisted`, and cache writes validate the same
+  key/header limits as reads. PLAY SLIDER CORRECTION FROM `b5a9918` IS PRESERVED. PENDING CI.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `b0250b4` (`fix(weather): persist global throttle and cancellable transport`) on top of
-  `b5a9918`.
+- head: `f90a68e` (`fix(weather): cancel stalled bodies and harden throttle store`) on top of
+  `c9a30c6` docs / `b0250b4` source, which are on top of `b5a9918`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI has run on `b0250b4` yet.** CI222 on the fixed `b5a9918` is retrying the drawer job
-  independently; it was not interrupted or polled by this run. The previous weather slice was
-  transport-only and was not wired to any UI, worker or production entry point.
-- next: the next actual API 37 CI must compile/style/test the Play variant, run the existing
-  slider/customization gates (76→77→76), and run the weather JVM tests. A future owner must add the
-  real opt-in UI, privacy notice and visible HOME lifecycle gate, inject
-  `FileWeatherCacheStore`/`FileWeatherThrottleStore` instead of the in-memory throttle default, and
-  cancel the load coroutine plus revoke the generation at HOME pause/screen-off. Release, hosting
-  and merge stay paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance
-  audits stay open.
+- ci: **CI222 on `b5a9918` is FULL GREEN in 22m56**, with the actual slider step 76→77→76 and the
+  layout, bindings, wallpaper and drawer checks passing. The newer weather source (`b0250b4` and
+  `f90a68e`) is **unwired and not a user feature**; it has not been through that green CI yet and
+  is PENDING CI.
+- next: the next actual API 37 CI must compile/style/test the Play variant, keep the slider,
+  binding, wallpaper and drawer gates green, and run the 66 weather JVM tests. A future owner still
+  must add the real opt-in UI, privacy notice and visible HOME lifecycle gate, construct
+  `MetWeatherRepository` with a `FileWeatherThrottleStore` (now required) and
+  `FileWeatherCacheStore`, and cancel the load coroutine plus revoke the generation at HOME
+  pause/screen-off. Release, hosting and merge stay paused; PrivateSpace, settings-roundtrip,
+  non-Play, large-screen and performance audits stay open.
 
-## done (this run — weather transport/cache pre-CI correction, PENDING CI)
+## done (this run — stalled-body cancellation and throttle-store safety, PENDING CI)
+
+- **Transport root cause:** `Call.await()` resumed the coroutine when headers arrived, so `get` then
+  called the blocking bounded body read on the caller's context (possibly Main). The
+  `invokeOnCancellation` handler was registered on the already-completed headers suspension, so a
+  cancellation during a stalled `input.read` could not run it and the `finally` could not close the
+  response until the read returned.
+- **Transport fix:** the coroutine is now resumed only after the whole bounded response is read
+  inside the OkHttp callback, on OkHttp's worker thread; no body I/O runs on the caller/Main. The
+  cancellation hook stays live for the entire call and invokes `Call.cancel()`, which closes a
+  stalled response; `response.use` closes it in every path, including when cancellation wins after
+  the response exists but before/after resume. `readBounded` checks `call.isCanceled()` each loop.
+  `maxResponseBytes`, timeouts, `Expires`/`Last-Modified`/`Retry-After` headers and the User-Agent
+  are unchanged.
+- **Real loopback cancellation evidence:** new `StallingBodyServer` sends valid 200 headers with
+  `Content-Length: 4096` and never a body byte. A test-only OkHttp interceptor signals exactly when
+  the caller enters the body read, so the test waits for headers and body phase before cancelling
+  (it cannot accidentally cancel while still waiting for headers). The test then cancels the
+  repository load with a 5 s bound, proves the server sees the socket close and the cache stays
+  empty. The existing no-header cancellation test and the normal/header/oversize tests are kept.
+- **Required throttle injection:** `MetWeatherRepository` no longer defaults to a fresh
+  `InMemoryWeatherThrottleStore`; every unit constructor now passes one explicitly. A production
+  constructor still does not exist.
+- **File store honesty:** `FileWeatherThrottleStore.recordRetryNotBefore` now fails closed on a
+  corrupt/read-failing gate instead of replacing it with an empty gate. Lock/read/write failures are
+  reported as `StorageFailure(false)`/`false`/`null` rather than thrown, and a process-wide monitor
+  serializes same-process instances before the file lock (a JVM `FileLock` alone throws
+  `OverlappingFileLockException`). Corrupt-gate, recreated-instance and 12-thread two-instance claim
+  tests were added.
+- **Provider boundary persistence:** the repository keeps the effective `Retry-After` boundary in
+  memory (`localRetryBoundary`) and reports `Unavailable.retryPersisted=false` when the store could
+  not persist it, so a later load cannot shorten a long provider delay within the instance. The
+  persisted store still only moves `retryNotBefore` later, and there is still no automatic retry.
+- **Cache write symmetry:** `FileWeatherCacheStore.write` now rejects the same blank/line-break/
+  oversized key and oversized `Last-Modified` header that `decode` rejects, so a write can no longer
+  return `true` for an entry that reads back as absent.
+- **Untouched:** no Gradle/Android build, live MET request, opt-in/UI/lifecycle hookup, dependency,
+  manifest, permission, SDK, applicationId, signing, release, workflow, hosting, merge or private
+  widget code. Only `lawnchair/src/app/nothingui/weather/` and its unit tests changed; the audited
+  Play slider/customization work from `b5a9918` is preserved byte-for-byte.
+- **Verification actually run (JVM/shell only; no Gradle, no Android build, no emulator):**
+  compiled the weather source and all weather tests with kotlinc 2.4.21 against JUnit 4.13.2,
+  kotlinx-coroutines/serialization, OkHttp 5.5.1 and Okio 3.16.0 (downloaded to `/tmp` for this
+  local check only; no project dependency added). JUnit ran **66 tests, OK (0 failures)** across
+  `MetWeatherRepositoryTest`, `MetLocationForecastParserTest`, `WeatherCachePolicyTest`,
+  `WeatherCoordinatesTest`, `RetryAfterParserTest`, `WeatherThrottleTest`,
+  `FileWeatherCacheStoreTest` and `OkHttpWeatherTransportTest`. The three new regression tests
+  (stalled-body cancellation, corrupt-gate `recordRetryNotBefore`, cache write/decode symmetry) were
+  also run against the old `HEAD` source and failed there for the intended reasons;
+  the concurrent two-instance claim test failed the old store with `OverlappingFileLockException`.
+  `git diff --check` is clean. Source compilation is warning-free.
+- **Missing evidence / not claimed:** no Play/Gradle compile, no Spotless-in-Gradle run, no API 37
+  emulator or UI/lifecycle proof, and no production wiring of the opt-in UI, privacy notice, file
+  stores or HOME pause/screen-off cancellation. The loopback tests are fixtures, not live MET
+  evidence.
+
+## done (previous run — weather transport/cache pre-CI correction, PENDING CI)
 
 - **Global request throttle, no longer per-location-success only:** new
   `lawnchair/src/app/nothingui/weather/WeatherThrottle.kt` defines a persisted `WeatherAttemptGate`
