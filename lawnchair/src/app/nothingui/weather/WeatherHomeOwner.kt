@@ -37,9 +37,11 @@ import kotlinx.coroutines.withContext
  *
  * Every pause, screen-off, user-absent, settings edit/disable and shutdown
  * invalidates the pending read and lets the controller cancel the in-flight
- * job. A late read or a late result therefore cannot re-enable or reach the
- * result sink. A storage read failure fails closed: the session stays disabled
- * and no work starts.
+ * job. A screen-off also clears the user-present gate. A read dropped by a
+ * screen-off is retried once the screen is interactive, HOME is confirmed and
+ * a genuine user-present signal arrives. A late read or a late result therefore
+ * cannot re-enable or reach the result sink. A storage read failure fails
+ * closed: the session stays disabled and no work starts.
  */
 class WeatherHomeOwner(
     private val consentStore: WeatherConsentStore,
@@ -60,12 +62,18 @@ class WeatherHomeOwner(
     )
 
     private var homeVisible = false
+    private var screenInteractive = false
+    private var userPresent = false
     private var closed = false
+    private var needsConsentRead = false
     private var readEpoch = 0L
     private var readJob: Job? = null
     private var lastObservedConsent = WeatherConsentState.DISABLED
 
     fun current(): WeatherSession = controller.current()
+
+    val isClosed: Boolean
+        get() = synchronized(lock) { closed }
 
     /**
      * Marks the resumed, visible HOME surface. Only a false -> true transition
@@ -78,41 +86,81 @@ class WeatherHomeOwner(
             if (closed || homeVisible == visible) return
             homeVisible = visible
             if (visible) {
+                needsConsentRead = true
                 controller.setConsent(WeatherConsentState.DISABLED)
                 controller.setHomeResumed(true)
                 shouldRead = true
             } else {
-                invalidateReadLocked()
+                invalidateReadLocked(reread = false)
                 controller.setHomeResumed(false)
             }
         }
         if (shouldRead) startConsentRead()
     }
 
+    /**
+     * A screen-off event clears both gates and drops any queued or in-flight
+     * consent read before the controller cancels its load. A later screen-on
+     * event cannot inherit a stale unlocked state: `true` only raises the
+     * interactive gate, and the launcher must still supply a fresh keyguard
+     * check before a user-present transition is accepted.
+     */
     fun setScreenInteractive(value: Boolean) {
+        var shouldRead = false
         synchronized(lock) {
             if (closed) return
-            controller.setScreenOn(value)
+            if (value) {
+                if (screenInteractive) return
+                screenInteractive = true
+                controller.setScreenOn(true)
+                shouldRead = shouldRereadLocked()
+            } else {
+                screenInteractive = false
+                userPresent = false
+                invalidateReadLocked(reread = true)
+                controller.setScreenOn(false)
+                controller.setUserPresent(false)
+            }
         }
+        if (shouldRead) startConsentRead()
     }
 
+    /**
+     * A user-present claim is ignored while the screen is not interactive, so
+     * a reordered broadcast cannot resume a disabled screen. A genuine unlock
+     * observed by the launcher becomes true here and may start the owner's
+     * deferred read when a screen-off event dropped it.
+     */
     fun setUserPresent(value: Boolean) {
+        var shouldRead = false
         synchronized(lock) {
             if (closed) return
-            controller.setUserPresent(value)
+            val effective = value && screenInteractive
+            if (effective == userPresent) return
+            userPresent = effective
+            controller.setUserPresent(effective)
+            shouldRead = shouldRereadLocked()
         }
+        if (shouldRead) startConsentRead()
+    }
+
+    /** The screen-off broadcast clears both gates and drops queued work. */
+    fun onScreenOff() {
+        setScreenInteractive(false)
     }
 
     /**
      * The settings screen's consent observer. It is synchronous so enable, edit
      * and disable revoke the visible session immediately, and it invalidates a
      * pending HOME read so an older persisted state cannot undo a newer local
-     * decision.
+     * decision. The observed local state is authoritative, so no deferred read
+     * is queued here.
      */
     fun onConsentChanged(state: WeatherConsentState) {
         synchronized(lock) {
             if (closed) return
-            invalidateReadLocked()
+            invalidateReadLocked(reread = false)
+            needsConsentRead = false
             if (state.generation < lastObservedConsent.generation) return
             lastObservedConsent = state
             controller.setConsent(state)
@@ -124,7 +172,8 @@ class WeatherHomeOwner(
         synchronized(lock) {
             if (closed) return
             closed = true
-            invalidateReadLocked()
+            invalidateReadLocked(reread = false)
+            needsConsentRead = false
         }
         controller.stop()
     }
@@ -132,6 +181,8 @@ class WeatherHomeOwner(
     private fun startConsentRead() {
         val epoch = synchronized(lock) {
             if (closed || !homeVisible) return
+            if (readJob?.isActive == true) return
+            needsConsentRead = false
             readEpoch += 1L
             readEpoch
         }
@@ -161,25 +212,21 @@ class WeatherHomeOwner(
         }
     }
 
-    private fun invalidateReadLocked() {
+    private fun invalidateReadLocked(reread: Boolean) {
         readEpoch += 1L
         readJob?.cancel()
         readJob = null
+        if (reread) needsConsentRead = true
     }
+
+    private fun shouldRereadLocked(): Boolean = needsConsentRead && homeVisible && screenInteractive && userPresent
 
     /**
      * A persisted enable older than the last in-process disable/edit must not
-     * resurrect consent. The safe direction (a persisted disable) is always
-     * trusted.
+     * resurrect consent. A persisted disable is always trusted, and a
+     * same-generation conflict keeps the in-process enable/edit.
      */
-    private fun chooseConsentLocked(loaded: WeatherConsentState): WeatherConsentState {
-        val observed = lastObservedConsent
-        return if (loaded.enabled && !observed.enabled && loaded.generation < observed.generation) {
-            observed
-        } else {
-            loaded
-        }
-    }
+    private fun chooseConsentLocked(loaded: WeatherConsentState): WeatherConsentState = WeatherHomeConsentPolicy.choose(loaded, lastObservedConsent)
 
     private fun failClosedLocked() {
         lastObservedConsent = WeatherConsentState(
@@ -193,16 +240,19 @@ class WeatherHomeOwner(
 
 /**
  * Pure guard for the launcher wiring. Weather may be shown only while the
- * launcher activity is resumed in its NORMAL (HOME) state and is not finishing
- * or destroyed. All Apps, Overview and a different activity therefore hide it.
+ * launcher activity is resumed with a completed NORMAL (HOME) state, no state
+ * transition is in progress, and the activity is not finishing or destroyed.
+ * All Apps, Overview, a different activity and a reversed transition therefore
+ * hide it.
  */
 object WeatherHomeWiring {
     fun isHomeVisible(
         activityResumed: Boolean,
-        homeState: Boolean,
+        homeConfirmed: Boolean,
+        transitionInProgress: Boolean,
         finishing: Boolean,
         destroyed: Boolean,
-    ): Boolean = activityResumed && homeState && !finishing && !destroyed
+    ): Boolean = activityResumed && homeConfirmed && !transitionInProgress && !finishing && !destroyed
 }
 
 /**

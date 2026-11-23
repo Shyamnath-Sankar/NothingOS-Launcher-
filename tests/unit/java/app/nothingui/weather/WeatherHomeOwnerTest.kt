@@ -266,6 +266,23 @@ class WeatherHomeOwnerTest {
     }
 
     @Test
+    fun readQueuedBeforeAnEditCannotRestoreTheOlderCoordinates() {
+        val dispatcher = QueuedDispatcher()
+        val harness = Harness(FakeConsentStore(enabled), dispatcher)
+        harness.owner.setScreenInteractive(true)
+        harness.owner.setUserPresent(true)
+        harness.owner.setHomeVisible(true)
+
+        harness.owner.onConsentChanged(WeatherConsentPolicy.enable(enabled, otherLocation))
+        dispatcher.runAll()
+
+        assertEquals(otherLocation.coordinates, harness.owner.current().location)
+        assertTrue(harness.work.starts.isNotEmpty())
+        assertTrue(harness.work.starts.all { it.location == otherLocation.coordinates })
+        harness.close()
+    }
+
+    @Test
     fun theProductionPlaceholderWorkNeverReturnsAForecast() = runBlocking {
         val result = NoNetworkWeatherWork.load(
             WeatherSession(
@@ -281,11 +298,12 @@ class WeatherHomeOwnerTest {
     }
 
     @Test
-    fun activityWiringGuardRequiresResumedNormalVisibleActivity() {
+    fun activityWiringGuardRequiresResumedConfirmedNormalWithoutATransition() {
         assertTrue(
             WeatherHomeWiring.isHomeVisible(
                 activityResumed = true,
-                homeState = true,
+                homeConfirmed = true,
+                transitionInProgress = false,
                 finishing = false,
                 destroyed = false,
             ),
@@ -293,7 +311,8 @@ class WeatherHomeOwnerTest {
         assertFalse(
             WeatherHomeWiring.isHomeVisible(
                 activityResumed = false,
-                homeState = true,
+                homeConfirmed = true,
+                transitionInProgress = false,
                 finishing = false,
                 destroyed = false,
             ),
@@ -301,7 +320,8 @@ class WeatherHomeOwnerTest {
         assertFalse(
             WeatherHomeWiring.isHomeVisible(
                 activityResumed = true,
-                homeState = false,
+                homeConfirmed = false,
+                transitionInProgress = false,
                 finishing = false,
                 destroyed = false,
             ),
@@ -309,7 +329,17 @@ class WeatherHomeOwnerTest {
         assertFalse(
             WeatherHomeWiring.isHomeVisible(
                 activityResumed = true,
-                homeState = true,
+                homeConfirmed = true,
+                transitionInProgress = true,
+                finishing = false,
+                destroyed = false,
+            ),
+        )
+        assertFalse(
+            WeatherHomeWiring.isHomeVisible(
+                activityResumed = true,
+                homeConfirmed = true,
+                transitionInProgress = false,
                 finishing = true,
                 destroyed = false,
             ),
@@ -317,11 +347,55 @@ class WeatherHomeOwnerTest {
         assertFalse(
             WeatherHomeWiring.isHomeVisible(
                 activityResumed = true,
-                homeState = true,
+                homeConfirmed = true,
+                transitionInProgress = false,
                 finishing = false,
                 destroyed = true,
             ),
         )
+    }
+
+    @Test
+    fun screenOffClearsBothGatesAndDropsAQueuedConsentRead() {
+        val dispatcher = QueuedDispatcher()
+        val harness = Harness(FakeConsentStore(enabled), dispatcher)
+        harness.owner.setScreenInteractive(true)
+        harness.owner.setUserPresent(true)
+        harness.owner.setHomeVisible(true)
+
+        harness.owner.onScreenOff()
+        dispatcher.runAll()
+
+        assertTrue(harness.work.starts.isEmpty())
+        assertFalse(harness.owner.current().visible)
+
+        harness.owner.setScreenInteractive(true)
+        dispatcher.runAll()
+        assertTrue("screen-on must not restore a stale unlock", harness.work.starts.isEmpty())
+        assertFalse(harness.owner.current().visible)
+
+        harness.owner.setUserPresent(true)
+        dispatcher.runAll()
+
+        assertEquals(1, harness.work.starts.size)
+        assertTrue(harness.owner.current().isActive)
+        harness.close()
+    }
+
+    @Test
+    fun pauseAndResumeReuseTheSameOpenOwnerWithoutShutdown() {
+        val harness = Harness(FakeConsentStore(enabled))
+        harness.showHome()
+        assertEquals(1, harness.work.starts.size)
+
+        harness.owner.setHomeVisible(false)
+        assertFalse(harness.owner.isClosed)
+
+        harness.owner.setHomeVisible(true)
+
+        assertEquals(2, harness.work.starts.size)
+        assertFalse(harness.owner.isClosed)
+        harness.close()
     }
 
     private fun validLocation(label: String, latitude: String, longitude: String): WeatherManualLocation = (WeatherConsentPolicy.parseLocation(label, latitude, longitude) as WeatherLocationInput.Valid).location
