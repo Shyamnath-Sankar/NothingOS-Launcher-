@@ -30,7 +30,7 @@ class WeatherSettingsControllerTest {
     private val newKey = "48.8566,2.3522"
 
     @Test
-    fun theInitialStateIsDisabledBlankAndCannotEnable() {
+    fun theInitialStateIsDisabledBlankAndCannotEnable() = runBlocking {
         val controller = controller()
 
         val state = controller.state.value
@@ -227,8 +227,9 @@ class WeatherSettingsControllerTest {
         assertFalse(recreated.state.value.canEnable)
     }
 
-    private fun controller(store: FakeConsentStore = FakeConsentStore()): ControllerHarness {
+    private suspend fun controller(store: FakeConsentStore = FakeConsentStore()): ControllerHarness {
         val harness = ControllerHarness(store)
+        harness.controller.load()
         return harness
     }
 

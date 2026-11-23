@@ -49,16 +49,17 @@ data class WeatherSettingsUiState(
     val validation: WeatherLocationInput = WeatherConsentPolicy.parseLocation("", "", ""),
     val message: WeatherSettingsMessage? = null,
     val busy: Boolean = false,
+    val loading: Boolean = false,
 ) {
     val isEnabled: Boolean
         get() = saved.enabled
 
     val canEnable: Boolean
-        get() = !saved.enabled && !busy && draft.consentChecked &&
+        get() = !loading && !saved.enabled && !busy && draft.consentChecked &&
             validation is WeatherLocationInput.Valid
 
     val canDisable: Boolean
-        get() = saved.enabled && !busy
+        get() = !loading && saved.enabled && !busy
 }
 
 /**
@@ -78,12 +79,23 @@ class WeatherSettingsController(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
     private val mutex = Mutex()
-    private val _state = MutableStateFlow(initialState(store.read()))
+    private val _state = MutableStateFlow(WeatherSettingsUiState(loading = true))
+    private var loaded = false
 
     val state: StateFlow<WeatherSettingsUiState> = _state.asStateFlow()
 
+    /** Reads the persisted consent off the main thread before the screen is editable. */
+    suspend fun load() {
+        mutex.withLock {
+            if (loaded) return@withLock
+            val saved = withContext(ioDispatcher) { store.read() }
+            _state.value = initialState(saved)
+            loaded = true
+        }
+    }
+
     suspend fun onDraftChanged(draft: WeatherSettingsDraft) {
-        if (_state.value.busy) return
+        if (_state.value.loading || _state.value.busy) return
         _state.update {
             it.copy(
                 draft = draft,
@@ -97,7 +109,7 @@ class WeatherSettingsController(
     suspend fun enable() {
         mutex.withLock {
             val snapshot = _state.value
-            if (snapshot.saved.enabled) return@withLock
+            if (snapshot.loading || snapshot.saved.enabled) return@withLock
             when (val validation = snapshot.validation) {
                 is WeatherLocationInput.Invalid -> {
                     _state.update { it.copy(message = WeatherSettingsMessage.INVALID_LOCATION) }
@@ -153,7 +165,9 @@ class WeatherSettingsController(
 
     suspend fun disable() {
         mutex.withLock {
-            val current = _state.value.saved
+            val snapshot = _state.value
+            if (snapshot.loading) return@withLock
+            val current = snapshot.saved
             if (!current.enabled) return@withLock
             val stopped = WeatherConsentPolicy.disable(current)
             consentObserver(stopped)
@@ -281,6 +295,7 @@ class WeatherSettingsController(
             validation = validate(draft),
             message = null,
             busy = false,
+            loading = false,
         )
     }
 
