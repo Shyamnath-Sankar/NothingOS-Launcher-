@@ -370,6 +370,17 @@ renders the vector to a bounded 1080x2340 bitmap on IO, then confirms the positi
 equals the current Home wallpaper ID. Lock is never targeted and protected image data is never
 read.
 
+Before those static applies, `_cwg_preview_live_wallpaper` measures the separate `Preview live
+wallpaper` action with the same bounded settings scroll, clears logcat, and taps it. It accepts only
+a real platform wallpaper-picker hierarchy (`com.android.wallpaper`,
+`com.android.wallpaper.livepicker` or `com.google.android.apps.wallpaper`) with a measured confirm/
+cancel control; the settings gallery, HOME, empty and unknown captures fail closed. It retains
+`live-wallpaper-preview-<n>.xml` and `live-wallpaper-preview.png`, `live-wallpaper-dumpsys.txt` and
+`live-wallpaper-logcat.txt`, and requires a DEBUG-only `DotFieldWallpaper` `visibility=true` or
+`surface=created` transition. Back must leave both Home/Lock IDs unchanged. The system confirmation
+and the post-selection pause/resume draw gate are deliberately not automated here; they remain a
+separate runtime gate.
+
 ## Locked private-space validation
 
 `scripts/private-space-check.sh` is deliberately separate. It detects an

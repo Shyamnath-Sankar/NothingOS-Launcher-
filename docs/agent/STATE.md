@@ -3,28 +3,79 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 home-widget-composition-v1 — PR19 wallpaper-gallery smoke ordering correction done;
-  runtime preview/Cancel/Back/apply/Lock/widget proof still pending**.
+- current_phase: **P6 original dot-field live wallpaper implemented for PR19 — Play-only
+  `WallpaperService`, explicit system-preview action in the AMOLED settings, pure unit-tested
+  lifecycle/geometry policy, focused guards and a preview-only emulator check. Actual system
+  confirmation, HOME dots, destination choice, pause/resume draw gate and Lock/widget proofs remain
+  CI runtime gates.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this commit (`fix(smoke): reveal wallpaper preview controls before asserting`). The packaging
-  repair is `4c0dd58`, the APK sentinel check `026f74b`. CI195 is the withheld candidate: its compiled
-  APK passed the sentinel check, six compiled Torus paths equalled source, the installed APK SHA-256 was
-  `f4f01c8d8aa31b1a16d0465e484ae7a75ea52f6d0829df45dcd3744215d4425a`, style and 87 JUnit passed, and
-  the gallery rendered without a crash, but the runtime stopped in `capture_wallpaper_gallery` because
-  the unscrolled preview XML lacked the below-the-fold CC BY 4.0 credit. CI181 (`6824907`) remains the
-  last verified runtime fallback.
+- head: this commit (`docs(agent): record the dot-field live wallpaper gates`). Feature commit
+  `8bbc25e` (feat/wallpaper), guards `25398e2` (test/wallpaper), smoke `2f225c0` (test/smoke). The
+  known-good fallback remains `2f619da`, CI181 `6824907` the last verified runtime fallback, CI195
+  the withheld candidate.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI195 proves compiled packaging/format, style and unit tests only; its runtime gallery proof is
-  incomplete.** No new CI result exists for this head.
-- next: a fresh CI must assemble the Play debug APK, run the 87 JUnit tests and
-  `spotlessKotlinCheck`, then run the API 37 emulator smoke. It must confirm the gallery opens from
-  both dashboard and Home Screen settings, the Torus preview renders, and the corrected measured
-  scroll reveals the CC BY 4.0 credit, exact licence URL and real Apply/Cancel controls before
-  asserting them in both dark and light. Then prove Cancel/Back change no IDs, Pitch Black and Torus
-  each change only the Home wallpaper ID, preserve widget IDs/layout, and keep the lock-preservation
-  rule on the real dump. Release/hosting/merge stay paused; CI195 stays withheld, CI181 the fallback.
+- ci: **No new CI result exists for this head.** Only source/fixture/syntax checks were run locally
+  (no Gradle, no emulator, no APK). The new JUnit policy test, spotless, the Play debug build and the
+  extended API 37 smoke are CI gates.
+- next: a fresh CI must run spotless, the unit tests (including `DotFieldWallpaperPolicyTest`),
+  assemble the Play debug APK and run the API 37 emulator smoke. The smoke must prove the measured
+  `Preview live wallpaper` action opens the real system picker, retain preview pixels and
+  `DotFieldWallpaper` transition logs, and require Back to leave Home/Lock IDs unchanged. Then decide
+  whether to accept the system confirmation on the disposable emulator to prove actual HOME dots,
+  normal destination selection, widget bindings, Lock preservation and the DEBUG pause/resume draw
+  gate; otherwise leave apply/pause explicitly pending rather than faking success.
+  Release/hosting/merge stay paused. Weather remains owned by the launcher and pending a separate
+  phase; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay open.
 
-## done (this run — wallpaper preview scroll ordering)
+## done (this run — original dot-field live wallpaper, preview-only runtime gate pending)
+
+- **Original art, not a redesign:** a deterministic monochrome dot field is drawn on a Canvas at a
+  visible frame cadence of about 15 fps with a restrained 14 s breathe/drift cycle and a sparse
+  existing red accent (`0xFFD7261E`). Geometry derives from the real `SurfaceHolder` frame; there is
+  no copied asset, network, location, storage, sensor, alarm, wake lock or foreground service.
+- **Live policy (JVM-testable):** `DotFieldFramePolicy` gates every frame on engine alive + visible +
+  valid non-zero surface, handles create/change/destroy and terminal engine destruction, and exposes
+  the ~66 ms cadence. `DotFieldGeometry` rejects zero/negative sizes and resizes on rotation.
+  `DotFieldMotion` supplies the bounded slow phase. The drawing loop uses preallocated paints and
+  primitive canvas calls (no per-frame allocations).
+- **Engine lifecycle:** `DotFieldWallpaperService.Engine` owns one drawing `HandlerThread`, checks
+  `holder.surface.isValid` before locking, and calls `removeCallbacksAndMessages(null)` on visibility
+  false, surface destruction and engine destruction. Frames are never posted unless the pure gate
+  passes; a destroyed engine is terminal. Transition-only `Log.d` lines are DEBUG-only (no per-frame
+  spam). Each engine has its own thread/policy, so independent preview instances are safe.
+- **Play-only declaration:** `play/AndroidManifest.xml` adds only the service with
+  `android:permission="android.permission.BIND_WALLPAPER"`, the
+  `android.service.wallpaper.WallpaperService` action and `@xml/dotwel_dot_field_wallpaper`.
+  `play/res/xml/dotwel_dot_field_wallpaper.xml` carries the description/thumbnail, and
+  `play/res/drawable/dotwel_live_wallpaper_thumbnail.xml` is generated original dot geometry. No
+  `uses-permission` was added; SDK/dependency/workflow/signing/applicationId are untouched.
+- **Explicit settings action, separate from the two static choices:** the existing AMOLED screen gains
+  a distinct `Live wallpaper` group whose button launches the platform
+  `ACTION_CHANGE_LIVE_WALLPAPER` with `EXTRA_LIVE_WALLPAPER_COMPONENT` for our service, with
+  resolution/failure feedback. Entering settings or the preview never applies anything, and the app
+  never calls `setWallpaperComponent`. The two static tiles, preview/Apply/Cancel and lock guards are
+  unchanged.
+- **Guards and smoke:** `nothingui-wallpaper-guard.sh` now asserts the Play-only BIND_WALLPAPER
+  service/action/metadata/thumbnail, no added permission or forbidden platform service, the frame
+  gate and callback cleanup, and the explicit non-setting preview launch. `emulator-smoke.sh` adds a
+  bounded `_cwg_preview_live_wallpaper` phase that measures the action, opens the real system picker,
+  retains preview pixels and `dumpsys wallpaper`/logcat, requires a DEBUG `DotFieldWallpaper`
+  visibility/surface transition, and requires Back to leave Home/Lock IDs unchanged. New pure
+  `live_wallpaper_preview_is_ready` and `live_wallpaper_became_visible` helpers fail closed on the
+  settings gallery, HOME, empty/unknown captures and hidden-only logs. No workflow was edited.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped with no APK);
+  `nothingui-polish-guard.sh` OK; `emulator-smoke-test.sh` all pass (**593 ok**, including the new
+  preview/log fixtures and source wiring); `emulator-smoke-drawer-test.sh` all pass; `sh -n` clean on
+  every edited script; `git diff --check` clean. XML metadata/manifest/strings parse cleanly.
+- **Blocked/unknown:** no local JUnit, APK, merged manifest or emulator result exists. The policy
+  test, style, Play build and every runtime proof are CI gates. The debug transition assertion may
+  need the first real CI logcat to confirm the platform picker binds our preview engine; if it does
+  not within the bounded polls, the run fails closed. System confirmation was deliberately not
+  accepted, so HOME dots/destination/widget/Lock and the pause/resume draw gate remain unproven.
+  No merge, release or Play submission.
+
+## done (previous run — wallpaper preview scroll ordering)
 
 - **Root cause from the CI195 runtime stop, not guessed:** `capture_wallpaper_gallery` grepped the
   initial unscrolled `wallpaper-preview-<mode>.xml` for `Apply to Home screen`, `CC BY 4.0` and the
