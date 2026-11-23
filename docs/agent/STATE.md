@@ -3,29 +3,86 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather HOME lifecycle review correction — implemented and locally verified,
-  PENDING CI. Visible weather rendering and the real provider remain unconnected.** This run
-  corrects the lifecycle/consent review on top of `0a0ce97`: screen-off clears both the screen and
-  user-present gates and drops the queued read, screen-on re-queries `PowerManager` and
-  `KeyguardManager`, weather hides at a transition start and returns only after a completed NORMAL,
-  a stale persisted enable cannot overwrite a newer in-process edit, and the process owner survives
-  activity recreation. Production still uses `NoNetworkWeatherWork`; no repository, transport,
-  worker, alarm or device location exists. CI254's full-green milestone remains the starting point.
+- current_phase: **Weather HOME widget render phase — implemented and locally verified, PENDING CI.
+  The user-placeable weather tile now renders the shared owner state; the real provider is still
+  unconnected.** This run is bounded to a render-only `DotWelWeatherWidgetProvider`: a coordinate-free
+  pure render model, a paper/charcoal rounded RemoteViews tile with 2x1/2x2 resizing, a Play-only
+  receiver and metadata, a tap into the existing Weather settings route, shared session/result
+  publication from the process-wide runtime, and a pure-state test set. Production still uses
+  `NoNetworkWeatherWork`; no repository, transport, worker, alarm, device location, permission or
+  dependency was added, and the widget is deliberately not auto-seeded.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `b4a985b` (screen-off/retry test); code fixes `e3aa964` and `1da882c`, guard `10055d2`;
-  base `0a0ce97`. The STATE commit follows this list.
+- head: `b0bb658` (format/monitor follow-up); feature commits `b6e0781` (pure model) and `20efa5a`
+  (provider/resources/wiring/guard); base `5899de0`. The STATE commit follows this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI254 was FULL GREEN and independently audited: 243 tests total, 132 weather tests.** That
-  audit confirmed real settings consent JSON generation 1 persisted across restart, and disable
-  generation 2 / null fields / empty cache persisted across restart and final off; the focused red
-  accent was verified as focus, not error. **No CI result exists for `e3aa964`, `1da882c` or
-  `b4a985b`.** The next API 37 CI is the compile gate for the launcher hookup and the runtime proof.
-- next: **visible weather rendering**, then **repository wiring** (real provider behind the owner's
-  injected work), then **live provider**, then **runtime audits**. Release, hosting and merge stay
-  paused. PrivateSpace, settings round-trip, non-Play, large-screen, backup/restore and performance
-  audits stay open. Do not claim a forecast is connected or the launcher is complete.
+- ci: **CI263 was FULL GREEN and independently audited: 273 tests total, 162 weather tests.** The
+  audited artifact installed (APK SHA-256
+  `49dee8da4fa3f6fa38516e159c0f29fbb371d582a08b26887c0f7ea53c03c283`) and the settings run ended
+  final disabled generation 2. **No CI result exists for `b6e0781`, `20efa5a` or `b0bb658`.** The
+  next API 37 CI is the compile gate for the provider and the runtime publication.
+- next: **repository activation** (wire the real MET repository behind the owner's injected
+  `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle instrumentation**
+  (specific screen/keyguard cases still pending), then the **backup/SAF broader audit**. Release,
+  hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play, large-screen,
+  backup/restore and performance audits stay open. Do not claim a forecast is connected or the
+  launcher is complete.
 
-## done (this run — HOME lifecycle review correction, PENDING CI)
+## done (this run — Weather HOME widget render phase, PENDING CI)
+
+- **Pure coordinate-free render model** — new `WeatherWidgetRender.kt`:
+  `WeatherWidgetForecast` carries only `temperatureCelsius`, `symbolCode`, `asOf` and `stale`; the
+  sealed `WeatherWidgetRender` is `Off`/`NotConnected`/`Loading`/`Forecast`/`Unavailable`; the pure
+  `WeatherWidgetState` reducer commits a session and a result and clears the committed result on a
+  disable/revoke (an edit disables first, so the next enable starts in `Loading` with no prior
+  forecast). `WeatherWidgetStateStore` is the process-wide in-memory publication point (no ordinary
+  prefs, no backup-visible file, no coordinates). `WeatherWidgetText` provides whole-degree Celsius,
+  a truthful condition fallback (`Forecast`) for a missing/unknown provider symbol and bounded
+  `now`/`Nm ago`/`Nh ago`/`Nd ago` labels. A no-network `CACHE_MISS` maps to `NotConnected`, never a
+  fabricated current temperature.
+- **Render-only provider** — new `DotWelWeatherWidgetProvider` (Play-only receiver). `onUpdate`,
+  `onAppWidgetOptionsChanged` and `refreshAll` only read `WeatherWidgetStateStore.render()` and call
+  a full `updateAppWidget`; there is no partial update, load, repository, transport, receiver
+  registration, coroutine, thread, executor, worker, alarm, wake lock, service, location access,
+  ordinary-preferences access or logging. The tile tap resolves the existing
+  `PreferenceActivity.createIntent(context, WeatherSettings)` route and uses an explicit
+  `FLAG_UPDATE_CURRENT or FLAG_IMMUTABLE` activity `PendingIntent` (Play only).
+- **Original resources** — new `nothingui_widget_weather.xml` reuses the paper/charcoal rounded tile,
+  Doto fonts and muted/content colour tokens of the clock/battery/device widgets. A single compact
+  row (auto-sized temperature + stacked condition/as-of) is legible at 2x1 and 2x2; no chart, vendor
+  asset or private widget code. `nothingui_weather_widget_info.xml` targets a 2x2 cell, allows
+  horizontal+vertical resize, shrinks to 40dp and requests no periodic updates. New strings cover
+  off, not-connected, loading, unavailable/retry, updated/as-of and content descriptions.
+- **Play-only declaration, no seed** — `play/AndroidManifest.xml` declares the receiver
+  `exported="false"` with `APPWIDGET_UPDATE`/`APPWIDGET_OPTIONS_CHANGED` and the metadata. It adds
+  no permission and is **not** added to `default_workspace_4x5.xml`; the existing clock/battery/
+  device seed and layouts are untouched.
+- **Shared publication** — `WeatherHomeRuntime` now passes the owner's `onSessionChanged` and
+  `resultSink` into `WeatherWidgetStateStore` and repaints placed tiles with a main-thread
+  `updateAppWidget` post. `NothingUiWidgetMonitor` also repaints the tile on resume/theme/config, so
+  the surface colour follows the stored theme. The tile never becomes a load entry point.
+- **Guard** — `scripts/nothingui-weather-guard.sh` now also requires the ready-state publication,
+  the render-only provider, the real settings tap, the immutable PendingIntent, the resize metadata,
+  the Play-only non-exported receiver, the truthful `CACHE_MISS -> NotConnected` mapping and the
+  coordinate-free model. It forbids `requestLoad`, the session controller, repository, OkHttp,
+  transport, consent store, location, worker/alarm, receiver registration, coroutine/thread/executor,
+  wake lock, service, ordinary prefs, DataStore and logging in the provider, and forbids auto-seeding.
+  `scripts/nothingui-weather-guard-test.sh` proves every assertion can fail (18 checks).
+- **Verification actually run (offline JVM/shell only; no Gradle, no Android build, no emulator):**
+  `WeatherWidgetRenderTest` (14 new tests) and the prior weather suite ran together as **176 tests,
+  OK (0 failures)** via kotlinc 2.4.21 + JUnit 4.13.2 + kotlinx-coroutines 1.11.0 +
+  kotlinx-serialization 1.13.0 + OkHttp 5.5.1 + Okio 3.16.0 (jars in `/tmp/opencode` only; no
+  project dependency added). The whole weather package **plus** the new provider compiled against
+  the local `android-37.0/android.jar` with small stubs for the generated `R` and project UI types
+  (`rc=0`). Standalone ktlint 1.8.0 reports zero violations on every changed Kotlin file; the new
+  and edited XML parses; `git diff --check` is clean. `nothingui-weather-guard.sh` passes and
+  `nothingui-weather-guard-test.sh` reports all passed (18 checks). The pre-existing
+  `nothingui-widget-guard.sh` and its mutation test still pass.
+- **Missing evidence / not claimed:** no Gradle/Play/Spotless compile, no API 37 emulator, no
+  screenshot/pixel review, no APK and no CI result for these commits. The provider/RemoteViews
+  rendering, the settings tap and the resize behaviour are unproven on a device. No forecast is
+  connected; the production work seam is still `NoNetworkWeatherWork`.
+
+## done (previous run — HOME lifecycle review correction, PENDING CI)
 
 - **Screen-off gates:** `WeatherHomeOwner.setScreenInteractive(false)` now clears its own
   `userPresent` value as well as `screenInteractive`, invalidates the read epoch and cancels the read
