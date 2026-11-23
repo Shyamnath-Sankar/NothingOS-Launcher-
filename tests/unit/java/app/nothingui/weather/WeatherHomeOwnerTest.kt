@@ -366,17 +366,20 @@ class WeatherHomeOwnerTest {
         harness.owner.onScreenOff()
         dispatcher.runAll()
 
+        assertEquals("the queued read must be canceled", 0, harness.store.reads)
         assertTrue(harness.work.starts.isEmpty())
         assertFalse(harness.owner.current().visible)
 
         harness.owner.setScreenInteractive(true)
         dispatcher.runAll()
+        assertEquals(0, harness.store.reads)
         assertTrue("screen-on must not restore a stale unlock", harness.work.starts.isEmpty())
         assertFalse(harness.owner.current().visible)
 
         harness.owner.setUserPresent(true)
         dispatcher.runAll()
 
+        assertEquals("unlock must retry the dropped read", 1, harness.store.reads)
         assertEquals(1, harness.work.starts.size)
         assertTrue(harness.owner.current().isActive)
         harness.close()
