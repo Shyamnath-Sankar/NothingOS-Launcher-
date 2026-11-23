@@ -18,7 +18,7 @@ when no task input is given, and continues from "next".
   outline is treated as unproven theme focus: focused and measured-hint-blurred captures are kept and
   no semantic longitude error may appear, without a production UI change from colour alone.
 - branch: `agent/home-widget-composition-v1-new`
-- head: the branch tip after this run's smoke fix; the previous runtime wiring was `c4ad8e9` on top of
+- head: `927657b` (this run's smoke fix); the previous runtime wiring was `c4ad8e9` on top of
   helper/fixture `e9becce` and checkpoint `ed4e9e2`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **actual CI250 compile/style/units were green; its runtime failed only the post-enable
