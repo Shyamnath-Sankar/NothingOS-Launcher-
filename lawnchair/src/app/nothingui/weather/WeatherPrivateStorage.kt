@@ -36,6 +36,5 @@ object WeatherPrivateStorage {
 
     fun throttleDirectory(noBackupRoot: File): File = directory(noBackupRoot, "throttle")
 
-    private fun directory(noBackupRoot: File, child: String): File =
-        File(File(noBackupRoot, ROOT_DIRECTORY), child)
+    private fun directory(noBackupRoot: File, child: String): File = File(File(noBackupRoot, ROOT_DIRECTORY), child)
 }

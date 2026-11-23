@@ -163,9 +163,8 @@ class WeatherConsentPolicyTest {
         assertNull(second.location)
     }
 
-    private fun validLocation(label: String): WeatherManualLocation =
-        (
-            WeatherConsentPolicy.parseLocation(label, "51.5074", "-0.1278")
-                as WeatherLocationInput.Valid
-            ).location
+    private fun validLocation(label: String): WeatherManualLocation = (
+        WeatherConsentPolicy.parseLocation(label, "51.5074", "-0.1278")
+            as WeatherLocationInput.Valid
+        ).location
 }

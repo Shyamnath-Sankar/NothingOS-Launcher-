@@ -66,31 +66,30 @@ class OkHttpWeatherTransportTest {
      * stalled body and cannot accidentally cancel while still waiting for
      * headers.
      */
-    private fun bodyPhaseClient(bodyPhase: CountDownLatch): OkHttpClient =
-        OkHttpClient.Builder()
-            .retryOnConnectionFailure(false)
-            .readTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(90, TimeUnit.SECONDS)
-            .addInterceptor { chain ->
-                val response = chain.proceed(chain.request())
-                val original = response.body
-                val signaling = object : ForwardingSource(original.source()) {
-                    override fun read(sink: Buffer, byteCount: Long): Long {
-                        bodyPhase.countDown()
-                        return super.read(sink, byteCount)
-                    }
+    private fun bodyPhaseClient(bodyPhase: CountDownLatch): OkHttpClient = OkHttpClient.Builder()
+        .retryOnConnectionFailure(false)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(90, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val response = chain.proceed(chain.request())
+            val original = response.body
+            val signaling = object : ForwardingSource(original.source()) {
+                override fun read(sink: Buffer, byteCount: Long): Long {
+                    bodyPhase.countDown()
+                    return super.read(sink, byteCount)
                 }
-                val buffered = signaling.buffer()
-                val wrapped = object : ResponseBody() {
-                    override fun contentType(): MediaType? = original.contentType()
-
-                    override fun contentLength(): Long = original.contentLength()
-
-                    override fun source(): BufferedSource = buffered
-                }
-                response.newBuilder().body(wrapped).build()
             }
-            .build()
+            val buffered = signaling.buffer()
+            val wrapped = object : ResponseBody() {
+                override fun contentType(): MediaType? = original.contentType()
+
+                override fun contentLength(): Long = original.contentLength()
+
+                override fun source(): BufferedSource = buffered
+            }
+            response.newBuilder().body(wrapped).build()
+        }
+        .build()
 
     @Test
     fun cancellingTheRepositoryCancelsTheLocalCallAndCommitsNothing() = runBlocking {

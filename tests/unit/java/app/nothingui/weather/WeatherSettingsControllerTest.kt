@@ -41,7 +41,21 @@ class WeatherSettingsControllerTest {
         assertEquals("", state.draft.longitudeText)
         assertFalse(state.draft.consentChecked)
         assertFalse(state.canEnable)
+        assertFalse(state.showValidationErrors)
         assertTrue(controller.store.writes.isEmpty())
+    }
+
+    @Test
+    fun editingRevealsFieldErrorsWithoutEnablingOrWriting() = runBlocking {
+        val controller = controller()
+
+        controller.onDraftChanged(WeatherSettingsDraft(label = ""))
+
+        assertTrue(controller.state.value.showValidationErrors)
+        assertFalse(controller.state.value.isEnabled)
+        assertFalse(controller.state.value.canEnable)
+        assertTrue(controller.store.writes.isEmpty())
+        assertTrue(controller.observed.isEmpty())
     }
 
     @Test
@@ -76,6 +90,7 @@ class WeatherSettingsControllerTest {
         controller.enable()
 
         assertEquals(WeatherSettingsMessage.INVALID_LOCATION, controller.state.value.message)
+        assertTrue(controller.state.value.showValidationErrors)
         assertFalse(controller.state.value.saved.enabled)
         assertTrue(controller.store.writes.isEmpty())
     }

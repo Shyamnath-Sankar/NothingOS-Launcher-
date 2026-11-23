@@ -49,6 +49,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.navigation.AmoledWallpapers
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.preferences.navigation.WeatherSettings
 import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.collectAsStateBlocking
 import app.nothingui.launcher.WidgetPickerRequest
@@ -104,6 +105,13 @@ fun HomeScreenPreferences(
                     onClick = {
                         context.startActivity(WidgetPickerRequest.launcherIntent(context))
                     },
+                )
+            }
+            PreferenceGroup(heading = stringResource(id = R.string.dotwel_weather_settings_label)) {
+                NavigationActionPreference(
+                    label = stringResource(id = R.string.dotwel_weather_entry_label),
+                    subtitle = stringResource(id = R.string.dotwel_weather_settings_description),
+                    destination = WeatherSettings,
                 )
             }
         }

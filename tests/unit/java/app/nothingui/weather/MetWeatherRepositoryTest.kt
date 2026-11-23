@@ -794,8 +794,7 @@ class MetWeatherRepositoryTest {
     private class PersistFailingThrottleStore : WeatherThrottleStore {
         private val delegate = InMemoryWeatherThrottleStore()
 
-        override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision =
-            delegate.claim(now, minimumInterval)
+        override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision = delegate.claim(now, minimumInterval)
 
         override fun recordRetryNotBefore(until: Instant): Boolean = false
 

@@ -1146,4 +1146,43 @@
     <string name="dotwel_live_wallpaper_preview">Preview live wallpaper</string>
     <string name="dotwel_live_wallpaper_unavailable">The system live-wallpaper preview is unavailable on this device.</string>
     <string name="dotwel_live_wallpaper_preview_failed">Could not open the system live-wallpaper preview.</string>
+
+    <!-- Manual-location weather settings. No background refresh and no geocoding. -->
+    <string name="dotwel_weather_settings_label">Weather</string>
+    <string name="dotwel_weather_settings_description">Manual location, Celsius forecast</string>
+    <string name="dotwel_weather_entry_label">Weather settings</string>
+    <string name="dotwel_weather_location_label">Location label</string>
+    <string name="dotwel_weather_location_hint">For example, Home</string>
+    <string name="dotwel_weather_latitude_label">Latitude</string>
+    <string name="dotwel_weather_longitude_label">Longitude</string>
+    <string name="dotwel_weather_coordinates_hint">Use 4 decimal places or fewer. No GPS, network geocoding or device location is used.</string>
+    <string name="dotwel_weather_privacy_heading">Before you enable</string>
+    <string name="dotwel_weather_privacy_notice">Weather is off until you save and enable it. While Home is visible, the rounded coordinates you enter and your device IP address go only to MET Norway (api.met.no). There is no background tracking. The forecast is cached on this device. MET Norway gives no guarantee or SLA.</string>
+    <string name="dotwel_weather_forecast_notice">The dot-matrix widget shows a Celsius forecast, not a live observation.</string>
+    <string name="dotwel_weather_consent_checkbox">I understand and want to enable weather</string>
+    <string name="dotwel_weather_enable">Save and enable</string>
+    <string name="dotwel_weather_disable">Disable and clear location</string>
+    <string name="dotwel_weather_enabled_status">Weather is enabled for %1$s (%2$s, %3$s). Disabling stops the session and clears this location cache. The shared provider throttle is kept.</string>
+    <string name="dotwel_weather_state_enabled">Enabled</string>
+    <string name="dotwel_weather_state_disabled">Disabled</string>
+    <string name="dotwel_weather_attribution">Weather data: MET Norway (met.no), CC BY 4.0.</string>
+    <string name="dotwel_weather_terms">Terms of Service</string>
+    <string name="dotwel_weather_source">Source</string>
+    <string name="dotwel_weather_license">License</string>
+    <string name="dotwel_weather_terms_url" translatable="false">https://docs.api.met.no/doc/TermsOfService</string>
+    <string name="dotwel_weather_source_url" translatable="false">https://www.met.no/en</string>
+    <string name="dotwel_weather_license_url" translatable="false">https://creativecommons.org/licenses/by/4.0/</string>
+    <string name="dotwel_weather_error_empty_label">Enter a place label</string>
+    <string name="dotwel_weather_error_label_too_long">Use %1$d characters or fewer</string>
+    <string name="dotwel_weather_error_label_invalid">The label contains an unsupported control character</string>
+    <string name="dotwel_weather_error_latitude">Latitude must be a number from -90 to 90</string>
+    <string name="dotwel_weather_error_longitude">Longitude must be a number from -180 to 180</string>
+    <string name="dotwel_weather_message_enabled">Weather enabled. It loads only while Home is visible.</string>
+    <string name="dotwel_weather_message_disabled">Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.</string>
+    <string name="dotwel_weather_message_revoked">Weather was turned off because the location changed. Review the notice and enable it again.</string>
+    <string name="dotwel_weather_message_invalid">Fix the location fields before enabling weather.</string>
+    <string name="dotwel_weather_message_consent">Tick the consent box to enable weather.</string>
+    <string name="dotwel_weather_message_storage">Could not save the weather setting. It was not enabled.</string>
+    <string name="dotwel_weather_message_conflict">The weather setting changed elsewhere. Review it and try again.</string>
+    <string name="dotwel_weather_message_loading">Loading the saved weather setting…</string>
 </resources>

@@ -50,6 +50,7 @@ data class WeatherSettingsUiState(
     val message: WeatherSettingsMessage? = null,
     val busy: Boolean = false,
     val loading: Boolean = false,
+    val showValidationErrors: Boolean = false,
 ) {
     val isEnabled: Boolean
         get() = saved.enabled
@@ -101,6 +102,7 @@ class WeatherSettingsController(
                 draft = draft,
                 validation = validate(draft),
                 message = null,
+                showValidationErrors = true,
             )
         }
         revokeIfEnabledLocationChanged()
@@ -112,7 +114,12 @@ class WeatherSettingsController(
             if (snapshot.loading || snapshot.saved.enabled) return@withLock
             when (val validation = snapshot.validation) {
                 is WeatherLocationInput.Invalid -> {
-                    _state.update { it.copy(message = WeatherSettingsMessage.INVALID_LOCATION) }
+                    _state.update {
+                        it.copy(
+                            message = WeatherSettingsMessage.INVALID_LOCATION,
+                            showValidationErrors = true,
+                        )
+                    }
                     return@withLock
                 }
 
@@ -134,6 +141,7 @@ class WeatherSettingsController(
                                     draft = it.draft.copy(consentChecked = false),
                                     busy = false,
                                     message = WeatherSettingsMessage.ENABLED,
+                                    showValidationErrors = false,
                                 )
                             }
                             consentObserver(outcome.state)
@@ -178,6 +186,7 @@ class WeatherSettingsController(
                     validation = validate(WeatherSettingsDraft()),
                     busy = true,
                     message = WeatherSettingsMessage.DISABLED,
+                    showValidationErrors = false,
                 )
             }
             val outcome = withContext(ioDispatcher) { persistRevoked(current) }
@@ -198,6 +207,7 @@ class WeatherSettingsController(
                     draft = it.draft.copy(consentChecked = false),
                     busy = true,
                     message = WeatherSettingsMessage.REVOKED_BY_EDIT,
+                    showValidationErrors = true,
                 )
             }
             val outcome = withContext(ioDispatcher) { persistRevoked(saved) }
@@ -274,12 +284,11 @@ class WeatherSettingsController(
         }
     }
 
-    private fun validate(draft: WeatherSettingsDraft): WeatherLocationInput =
-        WeatherConsentPolicy.parseLocation(
-            label = draft.label,
-            latitudeText = draft.latitudeText,
-            longitudeText = draft.longitudeText,
-        )
+    private fun validate(draft: WeatherSettingsDraft): WeatherLocationInput = WeatherConsentPolicy.parseLocation(
+        label = draft.label,
+        latitudeText = draft.latitudeText,
+        longitudeText = draft.longitudeText,
+    )
 
     private fun initialState(saved: WeatherConsentState): WeatherSettingsUiState {
         val draft = saved.location?.let {
