@@ -57,6 +57,7 @@ import app.nothingui.weather.FileWeatherCacheStore
 import app.nothingui.weather.FileWeatherConsentStore
 import app.nothingui.weather.WeatherConsentPolicy
 import app.nothingui.weather.WeatherConsentState
+import app.nothingui.weather.WeatherHomeRuntime
 import app.nothingui.weather.WeatherLocationInput
 import app.nothingui.weather.WeatherLocationInputError
 import app.nothingui.weather.WeatherPrivateStorage
@@ -97,9 +98,11 @@ private fun createController(context: Context): WeatherSettingsController {
     val cacheStore: ClearableWeatherCacheStore = FileWeatherCacheStore(
         WeatherPrivateStorage.cacheDirectory(noBackupRoot),
     )
+    val appContext = context.applicationContext
     return WeatherSettingsController(
         store = FileWeatherConsentStore(WeatherPrivateStorage.consentDirectory(noBackupRoot)),
         cacheStore = cacheStore,
+        consentObserver = { state -> WeatherHomeRuntime.observeConsent(appContext, state) },
     )
 }
 
