@@ -3155,6 +3155,8 @@ assert_eq 'a control clipped by the viewport is not tappable evidence' \
     "$(ui_clickable_label_within "$settings_scroll_xml" 'Apply to Home screen' '0 72 1080 1750')"
 assert_eq 'the settings scroll gesture stays inside the measured band' \
     '540 1450 416' "$(settings_scroll_target "$settings_scroll_xml" 1794)"
+assert_eq 'the upward settings scroll gesture stays inside the measured band' \
+    '540 416 1450' "$(settings_scroll_target_up "$settings_scroll_xml" 1794)"
 
 settings_no_scroll="$TMP_DIR/settings-no-scroll.xml"
 cat > "$settings_no_scroll" <<'EOF'
@@ -4080,6 +4082,106 @@ printf '%s\n' '{"version":1,"enabled":true,"generation":4,"label":null,"latitude
     > "$weather_null_enabled_json"
 assert_eq 'an enabled record without a stored location fails closed' \
     'malformed' "$(weather_consent_state "$weather_null_enabled_json")"
+
+# The real first Weather screen shows the privacy notice and the upper fields,
+# but Save/Enable and often Longitude sit below the fold. Screen identity must
+# not demand an offscreen control, and a clipped field must still be associated
+# with its stable label rather than its visible position.
+weather_initial_xml="$TMP_DIR/weather-initial.xml"
+cat > "$weather_initial_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.widget.TextView" text="Before you enable" bounds="[84,300][996,360]" />
+      <node index="1" class="android.widget.TextView" text="Weather is off until you explicitly save and enable a location." bounds="[84,380][996,500]" />
+      <node index="2" class="android.widget.TextView" text="Terms of Service" clickable="true" bounds="[84,520][400,580]" />
+      <node index="3" class="android.widget.TextView" text="Source" clickable="true" bounds="[420,520][700,580]" />
+      <node index="4" class="android.widget.TextView" text="License" clickable="true" bounds="[720,520][996,580]" />
+      <node index="5" class="android.widget.TextView" text="Weather" bounds="[84,700][300,760]" />
+      <node index="6" class="android.widget.EditText" text="" content-desc="Location label" clickable="true" enabled="true" bounds="[126,1636][954,1776]" />
+      <node index="7" class="android.widget.EditText" text="" content-desc="Latitude" clickable="true" enabled="true" bounds="[126,1826][954,1966]" />
+      <node index="8" class="android.widget.EditText" text="" content-desc="Longitude" clickable="true" enabled="true" bounds="[126,2016][954,2156]" />
+      <node index="9" class="android.widget.Button" clickable="true" enabled="false" bounds="[84,2206][996,2326]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_true 'the initial Weather privacy screen is identified without the offscreen Save control' \
+    weather_settings_screen_identity "$weather_initial_xml"
+assert_eq 'the clipped Latitude field is associated by its label' \
+    '126 1826 954 1966' \
+    "$(ui_labelled_edit_text_bounds "$weather_initial_xml" 'Latitude')"
+assert_eq 'the initially empty Latitude field reports an empty draft' \
+    '' "$(ui_labelled_edit_text_text "$weather_initial_xml" 'Latitude')"
+
+weather_noprivacy_xml="$TMP_DIR/weather-noprivacy.xml"
+cat > "$weather_noprivacy_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[126,1826][954,1966]" />
+</hierarchy>
+EOF
+assert_false 'a hierarchy without the unique privacy heading is not the Weather destination' \
+    weather_settings_screen_identity "$weather_noprivacy_xml"
+
+weather_descendant_xml="$TMP_DIR/weather-descendant.xml"
+cat > "$weather_descendant_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="60.0000" bounds="[40,320][1040,420]">
+    <node index="0" class="android.widget.TextView" text="Latitude" bounds="[60,330][200,370]" />
+  </node>
+  <node index="1" class="android.widget.EditText" text="10.0000" bounds="[40,440][1040,540]">
+    <node index="0" class="android.widget.TextView" text="Longitude" bounds="[60,450][200,490]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a populated field is associated through its descendant label' \
+    '40 320 1040 420|60.0000' \
+    "$(ui_labelled_edit_text_state "$weather_descendant_xml" 'Latitude')"
+assert_eq 'a populated longitude field is not confused with latitude' \
+    '40 440 1040 540|10.0000' \
+    "$(ui_labelled_edit_text_state "$weather_descendant_xml" 'Longitude')"
+
+weather_sibling_xml="$TMP_DIR/weather-sibling.xml"
+cat > "$weather_sibling_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.view.ViewGroup" bounds="[0,0][1080,600]">
+    <node index="0" class="android.widget.TextView" text="Latitude" bounds="[40,300][200,340]" />
+    <node index="1" class="android.widget.EditText" text="60.0000" bounds="[40,320][1040,420]" />
+    <node index="2" class="android.widget.TextView" text="Longitude" bounds="[40,430][220,470]" />
+    <node index="3" class="android.widget.EditText" text="10.0000" bounds="[40,450][1040,550]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a preceding sibling label associates with the next field' \
+    '40 320 1040 420|60.0000' \
+    "$(ui_labelled_edit_text_state "$weather_sibling_xml" 'Latitude')"
+assert_eq 'a later sibling label does not shift latitude to longitude' \
+    '40 450 1040 550|10.0000' \
+    "$(ui_labelled_edit_text_state "$weather_sibling_xml" 'Longitude')"
+
+weather_duplicate_field_xml="$TMP_DIR/weather-duplicate-field.xml"
+cat > "$weather_duplicate_field_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[40,320][1040,420]" />
+  <node index="1" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[40,440][1040,540]" />
+</hierarchy>
+EOF
+assert_eq 'duplicate field labels fail closed instead of picking one' \
+    '' "$(ui_labelled_edit_text_state "$weather_duplicate_field_xml" 'Latitude')"
+assert_eq 'an absent field label yields no field' \
+    '' "$(ui_labelled_edit_text_state "$weather_initial_xml" 'Not a field')"
+
+assert_eq 'a target below the viewport scrolls down' \
+    'down' "$(weather_target_scroll_direction '126 1826 954 1966' '0 72 1080 1794')"
+assert_eq 'a target above the viewport scrolls up' \
+    'up' "$(weather_target_scroll_direction '126 10 954 60' '0 72 1080 1794')"
+assert_eq 'a target clipped at the bottom scrolls down' \
+    'down' "$(weather_target_scroll_direction '126 1750 954 1890' '0 72 1080 1794')"
+assert_eq 'a target clipped at the top scrolls up' \
+    'up' "$(weather_target_scroll_direction '126 40 954 180' '0 72 1080 1794')"
+assert_eq 'a malformed target has no inferred scroll direction' \
+    '' "$(weather_target_scroll_direction '126 100 954' '0 72 1080 1794')"
 
 # --- static regression on the weather runtime gate --------------------------
 

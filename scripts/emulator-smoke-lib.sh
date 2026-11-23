@@ -1721,6 +1721,141 @@ ui_edit_text_bounds() (
         '
 )
 
+# Succeed when at least one real node carries the exact text/content-description
+# $2. Used only to prove that a destination heading is present; uniqueness is
+# enforced separately when a single node must be identified.
+ui_label_present() (
+    xml=${1:-}
+    label=${2:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$label" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk -v label="$label" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "text") == label || attr($0, "content-desc") == label) found = 1
+            }
+            END { exit found ? 0 : 1 }
+        '
+)
+
+# Associate a Compose OutlinedTextField (exposed as android.widget.EditText)
+# with its stable label instead of its position among the currently visible
+# EditText nodes. The label may be the field's own text/content-description, a
+# descendant label, an ancestor label, or an immediately preceding sibling label
+# of the same parent. Exactly one label node and exactly one matching field are
+# required; a missing, duplicated or otherwise ambiguous association prints
+# nothing so a caller never types into the wrong field. The result is
+# "<x1> <y1> <x2> <y2>|<current text>".
+ui_labelled_edit_text_state() (
+    xml=${1:-}
+    label=${2:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$label" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v label="$label" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function valid(b) {
+                return b ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) {
+                        end[open[sp]] = n
+                        delete open[sp]
+                        sp--
+                    }
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                n++
+                cls[n] = attr($0, "class")
+                txt[n] = attr($0, "text")
+                desc[n] = attr($0, "content-desc")
+                bnd[n] = attr($0, "bounds")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                if (selfclose) {
+                    depth[n] = sp + 1
+                    end[n] = n
+                } else {
+                    sp++
+                    depth[n] = sp
+                    open[sp] = n
+                }
+            }
+            END {
+                for (i = 1; i <= n; i++) {
+                    if (txt[i] == label || desc[i] == label) {
+                        label_count++
+                        label_idx[label_count] = i
+                    }
+                }
+                if (label_count != 1) exit
+                L = label_idx[1]
+                for (e = 1; e <= n; e++) {
+                    if (cls[e] != "android.widget.EditText") continue
+                    if (!valid(bnd[e])) continue
+                    matched = 0
+                    if (txt[e] == label || desc[e] == label) matched = 1
+                    if (!matched && depth[L] > depth[e] && L > e && L <= end[e]) matched = 1
+                    if (!matched && depth[L] < depth[e] && L < e && e <= end[L]) matched = 1
+                    if (!matched && cls[L] != "android.widget.EditText" &&
+                        depth[L] == depth[e] && L < e && end[L] < e) {
+                        between = 0
+                        for (m = L + 1; m < e; m++) {
+                            if (cls[m] == "android.widget.EditText" && depth[m] == depth[e]) {
+                                between = 1
+                                break
+                            }
+                        }
+                        if (!between) matched = 1
+                    }
+                    if (matched) {
+                        match_count++
+                        match_e = e
+                    }
+                }
+                if (match_count != 1) exit
+                b = bnd[match_e]
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                pn = split(s, p, /[[:space:]]+/)
+                if (pn == 4) print p[1], p[2], p[3], p[4] "|" txt[match_e]
+            }
+        '
+)
+
+ui_labelled_edit_text_bounds() (
+    state=$(ui_labelled_edit_text_state "${1:-}" "${2:-}")
+    [ -n "$state" ] || return 0
+    printf '%s\n' "${state%%|*}"
+)
+
+ui_labelled_edit_text_text() (
+    state=$(ui_labelled_edit_text_state "${1:-}" "${2:-}")
+    [ -n "$state" ] || return 0
+    printf '%s\n' "${state#*|}"
+)
+
 # Print the dominant checkable node as "<x1> <y1> <x2> <y2>|<checked>".
 # Compose can expose both the toggleable Row and its inner Checkbox as
 # checkable. When every measured checkable node agrees on the checked state, the
@@ -1943,6 +2078,55 @@ weather_consent_state() (
     esac
 )
 
+# Succeed only when the hierarchy is the real WeatherPreferences destination:
+# the unique privacy heading, the unique Terms link, a unique Location label and
+# a unique Latitude field must all be present. A Save/Disable control, a
+# Longitude field or any controls below the fold are deliberately NOT required,
+# because those legitimately sit outside the initial viewport. The Weather
+# heading is only required to be present (the top app bar and the group heading
+# can both legitimately carry it).
+weather_settings_screen_identity() (
+    xml=${1:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$(ui_unique_label_bounds "$xml" 'Before you enable')" ] || return 1
+    [ -n "$(ui_unique_label_bounds "$xml" 'Terms of Service')" ] || return 1
+    [ -n "$(ui_unique_label_bounds "$xml" 'Location label')" ] || return 1
+    [ -n "$(ui_unique_label_bounds "$xml" 'Latitude')" ] || return 1
+    ui_label_present "$xml" 'Weather' || return 1
+    return 0
+)
+
+# Print the measured scroll direction needed to bring a target into a viewport:
+# "up" when the target is fully or partly above the viewport, "down" when it is
+# fully or partly below it. Malformed or missing rectangles print nothing so the
+# caller can choose a bounded fallback instead of guessing a coordinate.
+weather_target_scroll_direction() (
+    target=${1:-}
+    viewport=${2:-}
+    set -- $target
+    [ "$#" -eq 4 ] || return 1
+    ty1=$2
+    ty2=$4
+    set -- $viewport
+    [ "$#" -eq 4 ] || return 1
+    vy1=$2
+    vy2=$4
+    case "$ty1$ty2$vy1$vy2" in
+        *[!0-9]*) return 1 ;;
+    esac
+    [ "$ty2" -gt "$ty1" ] || return 1
+    [ "$vy2" -gt "$vy1" ] || return 1
+    if [ "$ty2" -le "$vy1" ]; then
+        printf 'up\n'
+    elif [ "$ty1" -ge "$vy2" ]; then
+        printf 'down\n'
+    elif [ "$ty1" -lt "$vy1" ]; then
+        printf 'up\n'
+    else
+        printf 'down\n'
+    fi
+)
+
 # Print "x y_from y_to" for a genuine vertical scroll inside the measured
 # settings scroll container, clipped to the safe viewport. Prints nothing when
 # the container or a usable band is unavailable so the caller fails closed.
@@ -1960,6 +2144,26 @@ settings_scroll_target() (
     y_from=$((y2 - span / 5))
     y_to=$((y1 + span / 5))
     [ "$y_from" -gt "$y_to" ] || return 1
+    printf '%s %s %s\n' "$x" "$y_from" "$y_to"
+)
+
+# Print "x y_from y_to" for the opposite (upward) scroll: the gesture starts in
+# the upper part of the measured band and ends lower down, so earlier content is
+# revealed. Bounds and the fail-closed rules match settings_scroll_target.
+settings_scroll_target_up() (
+    xml=$1
+    nav_top=${2:-}
+    container=$(ui_scroll_container_bounds "$xml" "$nav_top")
+    [ -n "$container" ] || return 1
+    set -- $container
+    x=$((($1 + $3) / 2))
+    y1=$2
+    y2=$4
+    span=$((y2 - y1))
+    [ "$span" -ge 200 ] || return 1
+    y_from=$((y1 + span / 5))
+    y_to=$((y2 - span / 5))
+    [ "$y_to" -gt "$y_from" ] || return 1
     printf '%s %s %s\n' "$x" "$y_from" "$y_to"
 )
 
