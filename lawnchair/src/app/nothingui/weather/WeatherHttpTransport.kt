@@ -37,5 +37,6 @@ data class WeatherHttpResponse(
     val body: String?,
     val expiresAt: Instant?,
     val lastModified: String?,
-    val retryAfterSeconds: Long? = null,
+    /** Raw `Retry-After`; the repository parses seconds or an HTTP-date with its injected clock. */
+    val retryAfter: String? = null,
 )

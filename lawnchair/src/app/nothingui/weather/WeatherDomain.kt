@@ -78,10 +78,15 @@ data class WeatherForecast(
     val symbolCode: String?,
     val validAt: Instant,
     val retrievedAt: Instant,
+    val revalidatedAt: Instant? = null,
     val units: WeatherUnits = WeatherUnits.CELSIUS,
 ) {
     val temperatureLabel: String
         get() = "${temperatureCelsius.roundToInt()}${units.symbol}"
+
+    /** The latest moment the payload was known to be valid. */
+    val evidenceAt: Instant
+        get() = revalidatedAt?.takeIf { it.isAfter(retrievedAt) } ?: retrievedAt
 }
 
 /**
@@ -116,12 +121,18 @@ sealed interface WeatherLoadResult {
     data class Success(
         val forecast: WeatherForecast,
         val stale: Boolean,
+        /**
+         * True only when this call durably replaced the cache entry. A served
+         * cache, a denied refresh, or a failed write all report false.
+         */
+        val cacheUpdated: Boolean = false,
     ) : WeatherLoadResult
 
     data class Unavailable(
         val reason: WeatherFailureReason,
         val lastSuccess: WeatherForecast? = null,
         val retryAt: Instant? = null,
+        val lastSuccessStale: Boolean = false,
     ) : WeatherLoadResult
 
     data object Disabled : WeatherLoadResult
@@ -134,9 +145,11 @@ enum class WeatherFailureReason {
     HTTP_ERROR,
     FORBIDDEN,
     RATE_LIMITED,
+    THROTTLED,
     MALFORMED,
     NO_RELEVANT_PERIOD,
     CACHE_MISS,
+    CACHE_STORAGE,
 }
 
 sealed interface WeatherParseResult {

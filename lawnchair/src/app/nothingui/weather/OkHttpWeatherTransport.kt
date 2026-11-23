@@ -20,16 +20,28 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 
 /**
  * MET's terms require an honest product identity and a contact route. It also
  * allows a moderate, direct request volume for a free commercial app, but no
  * SLA and a 20 requests/second ceiling across all installs: this client has no
  * polling loop and no background scheduler.
+ *
+ * The call is asynchronous and cancellable. Coroutine cancellation invokes
+ * [Call.cancel], and every read loop re-checks cancellation, so a paused HOME
+ * surface can stop an in-flight request. Already-sent bytes cannot be retracted;
+ * that is the caller's opt-in and lifecycle responsibility.
  *
  * Not constructed anywhere yet. The production path remains disabled until the
  * real opt-in UI, privacy notice and visible HOME lifecycle gate are wired.
@@ -41,7 +53,7 @@ class OkHttpWeatherTransport(
 ) : WeatherHttpTransport {
     private val userAgent: String = "DotWelLauncher/$appVersion (+$PROJECT_ISSUES_URL)"
 
-    override suspend fun get(request: WeatherHttpRequest): WeatherHttpResponse = withContext(Dispatchers.IO) {
+    override suspend fun get(request: WeatherHttpRequest): WeatherHttpResponse {
         val httpRequest = Request.Builder()
             .url(request.url)
             .header("User-Agent", userAgent)
@@ -51,7 +63,10 @@ class OkHttpWeatherTransport(
             }
             .build()
 
-        client.newCall(httpRequest).execute().use { response ->
+        val call = client.newCall(httpRequest)
+        val response = call.await()
+        try {
+            currentCoroutineContext().ensureActive()
             val declaredLength = response.body.contentLength()
             if (declaredLength > maxResponseBytes) {
                 throw IOException("weather response is larger than $maxResponseBytes bytes")
@@ -61,26 +76,52 @@ class OkHttpWeatherTransport(
             } else {
                 readBounded(response.body.byteStream(), maxResponseBytes)
             }
-            WeatherHttpResponse(
+            currentCoroutineContext().ensureActive()
+            return WeatherHttpResponse(
                 code = response.code,
                 body = body,
                 expiresAt = response.headers.getDate("Expires")?.toInstant(),
                 lastModified = response.headers["Last-Modified"],
-                retryAfterSeconds = response.headers["Retry-After"]?.trim()?.toLongOrNull(),
+                retryAfter = response.headers["Retry-After"],
             )
+        } finally {
+            if (!currentCoroutineContext().isActive) call.cancel()
+            response.close()
         }
     }
 
-    private fun readBounded(stream: InputStream, limit: Long): String {
+    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
+        enqueue(
+            object : Callback {
+                override fun onFailure(call: Call, error: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (continuation.isActive) {
+                        continuation.resume(response)
+                    } else {
+                        response.close()
+                    }
+                }
+            },
+        )
+    }
+
+    private suspend fun readBounded(stream: InputStream, limit: Long): String {
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(READ_BUFFER_BYTES)
         var total = 0L
-        while (true) {
-            val read = stream.read(buffer)
-            if (read < 0) break
-            total += read
-            if (total > limit) throw IOException("weather response is larger than $limit bytes")
-            output.write(buffer, 0, read)
+        stream.use { input ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > limit) throw IOException("weather response is larger than $limit bytes")
+                output.write(buffer, 0, read)
+            }
         }
         return String(output.toByteArray(), Charsets.UTF_8)
     }
