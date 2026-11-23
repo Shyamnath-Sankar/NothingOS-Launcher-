@@ -35,6 +35,7 @@ PROVENANCE="$ROOT/docs/wallpapers/README.md"
 BY_LICENSE="$ROOT/licenses/wallpapers/CC-BY-4.0.txt"
 ZERO_LICENSE="$ROOT/licenses/wallpapers/CC0-1.0.txt"
 SMOKE="$ROOT/scripts/emulator-smoke.sh"
+SMOKE_LIB="$ROOT/scripts/emulator-smoke-lib.sh"
 LIVE_SERVICE="$ROOT/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperService.kt"
 LIVE_POLICY="$ROOT/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperPolicy.kt"
 LIVE_META="$ROOT/play/res/xml/dotwel_dot_field_wallpaper.xml"
@@ -44,8 +45,9 @@ LIVE_TEST="$ROOT/tests/unit/java/app/nothingui/wallpaper/DotFieldWallpaperPolicy
 
 for file in "$CATALOG" "$TARGET" "$APPLIER" "$UI" "$DASHBOARD" "$HOME_PREFS" \
     "$ROUTES" "$NAV" "$PNG" "$VECTOR" "$SOURCE_SVG" "$RECOLORED_SVG" \
-    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE" "$LIVE_SERVICE" \
-    "$LIVE_POLICY" "$LIVE_META" "$LIVE_THUMB" "$PLAY_MANIFEST" "$LIVE_TEST"; do
+    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE" "$SMOKE_LIB" \
+    "$LIVE_SERVICE" "$LIVE_POLICY" "$LIVE_META" "$LIVE_THUMB" "$PLAY_MANIFEST" \
+    "$LIVE_TEST"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -281,6 +283,14 @@ grep -Fq 'settings_scroll_target' "$SMOKE" ||
     fail "the smoke does not scroll inside the measured settings container"
 grep -Fq '_cwg_measure_control' "$SMOKE" ||
     fail "the smoke has no bounded scroll-to-visible helper"
+grep -Fq 'ui_known_scroll_container_bounds' "$SMOKE" ||
+    fail "the smoke has no measured at-limit ScrollView fallback"
+grep -Fq 'android.widget.ScrollView' "$SMOKE_LIB" ||
+    fail "the at-limit viewport fallback does not recognise the real ScrollView class"
+grep -Fq 'attr($0, "package") != want_pkg' "$SMOKE_LIB" ||
+    fail "the at-limit viewport fallback is not scoped to the app package"
+grep -Fq 'if (w <= 0 || h <= 0) return -1' "$SMOKE_LIB" ||
+    fail "the at-limit viewport fallback accepts non-positive bounds"
 grep -Fq 'Cancel preview' "$SMOKE" ||
     fail "the smoke does not exercise the explicit Cancel preview control"
 grep -Fq 'wallpaper_lock_preserved' "$SMOKE" ||

@@ -1003,7 +1003,10 @@ ui_clickable_label_bounds() (
 # navigation-bar top. The settings screens use a Compose verticalScroll Column,
 # so this reads the real `scrollable="true"` node rather than a guessed phone
 # height or a hardcoded coordinate. Prints nothing when no scrollable container
-# is measurable.
+# is measurable. When the content is already at its end, UiAutomator reports
+# that same surface as `scrollable="false"`; use
+# ui_known_scroll_container_bounds as a measured fallback there, never as a
+# substitute for this strict true-scroll reading.
 ui_scroll_container_bounds() (
     xml=$1
     nav_top=${2:-}
@@ -1032,6 +1035,74 @@ ui_scroll_container_bounds() (
             {
                 if ($0 !~ /<node[[:space:]]/) next
                 if (attr($0, "scrollable") != "true") next
+                b = attr($0, "bounds")
+                a = area(b)
+                if (a > best_area) {
+                    best_area = a
+                    best = b
+                }
+            }
+            END { if (best != "") print best }
+        ')
+    [ -n "$values" ] || return 0
+    values=$(printf '%s\n' "$values" | tr '[],' '   ')
+    set -- $values
+    x1=$1
+    y1=$2
+    x2=$3
+    y2=$4
+    if [ -n "$nav_top" ] && [ "$nav_top" -gt 0 ] && [ "$y2" -gt "$nav_top" ]; then
+        y2=$nav_top
+    fi
+    [ "$y2" -gt "$y1" ] || return 0
+    printf '%s %s %s %s\n' "$x1" "$y1" "$x2" "$y2"
+)
+
+# Print the bounds ("x1 y1 x2 y2") of a measured container known to scroll even
+# when it reports `scrollable="false"` because its content is already at the
+# end. Only the exact `android.widget.ScrollView` class (what UiAutomator
+# reports for a Compose `verticalScroll` surface) inside the expected app
+# package, with a `scrollable="false"` flag and strictly positive measured
+# bounds, is accepted. Arbitrary roots, decor/other views, wrong-package nodes
+# and missing/zero-sized bounds are ignored. The result is clipped below the
+# measured navigation-bar top exactly like the strict helper, so a partially
+# clipped control still fails the visibility check. Prints nothing when no such
+# container is measurable.
+ui_known_scroll_container_bounds() (
+    xml=$1
+    nav_top=${2:-}
+    package=${3:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$package" ] || return 0
+    case "$nav_top" in '' | *[!0-9]*) nav_top= ;; esac
+    values=$(tr '>' '\n' < "$xml" |
+        awk -v want_pkg="$package" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function area(b,    s, p, n, w, h) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return -1
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                w = p[3] - p[1]
+                h = p[4] - p[2]
+                if (w <= 0 || h <= 0) return -1
+                return w * h
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "class") != "android.widget.ScrollView") next
+                if (attr($0, "package") != want_pkg) next
+                if (attr($0, "scrollable") != "false") next
                 b = attr($0, "bounds")
                 a = area(b)
                 if (a > best_area) {

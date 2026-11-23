@@ -2229,9 +2229,13 @@ _cwg_widget_ids() {
 # Measure a real tappable control inside the settings scroll container. Each
 # attempt re-captures the hierarchy, measures the actual scrollable container
 # clipped to the navigation-bar safe viewport, and accepts the control only
-# when it is fully visible. Otherwise it performs one bounded swipe inside the
-# measured container. No hardcoded phone height or coordinate is used. Prints
-# the measured bounds on success and nothing after the small attempt bound.
+# when it is fully visible. When the content is already at its end, UiAutomator
+# reports the same surface as a non-scrollable `android.widget.ScrollView`, so
+# the strict scrollable measurement falls back to that exact known class in
+# this app's package before deciding. Otherwise it performs one bounded swipe
+# inside the measured container. No hardcoded phone height or coordinate is
+# used. Prints the measured bounds on success and nothing after the small
+# attempt bound.
 _cwg_measure_control() {
     _cmc_label=$1
     _cmc_tag=$2
@@ -2244,6 +2248,10 @@ _cwg_measure_control() {
         capture_ui_xml "wallpaper-scroll-$_cmc_tag-$_cmc_attempt.xml" || return 1
         _cmc_xml="$ARTIFACTS/wallpaper-scroll-$_cmc_tag-$_cmc_attempt.xml"
         _cmc_viewport=$(ui_scroll_container_bounds "$_cmc_xml" "$_cwg_nav_top")
+        if [ -z "$_cmc_viewport" ]; then
+            _cmc_viewport=$(ui_known_scroll_container_bounds \
+                "$_cmc_xml" "$_cwg_nav_top" "$PKG")
+        fi
         _cmc_bounds=
         if [ -n "$_cmc_viewport" ]; then
             _cmc_bounds=$(ui_clickable_label_within "$_cmc_xml" "$_cmc_label" "$_cmc_viewport")

@@ -3139,6 +3139,114 @@ EOF
 assert_eq 'a settings screen without a scrollable node has no scroll target' \
     '' "$(settings_scroll_target "$settings_no_scroll" 1794)"
 
+# At the end of the content UiAutomator reports the real scrolling surface as
+# `android.widget.ScrollView scrollable="false"`. That exact known class in the
+# app package is the only fallback viewport; the strict scrollable reading still
+# wins first and every other node is ignored.
+scroll_pkg=com.launchernos.dotwellabs.debug
+settings_scroll_limit="$TMP_DIR/settings-scroll-limit.xml"
+cat > "$settings_scroll_limit" <<EOF
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="$scroll_pkg" scrollable="false" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="$scroll_pkg" scrollable="false" bounds="[0,0][1080,1920]">
+      <node index="0" class="android.widget.FrameLayout" package="$scroll_pkg" clickable="true" bounds="[84,1447][572,1573]">
+        <node index="0" text="Preview live wallpaper" class="android.widget.TextView" package="$scroll_pkg" clickable="false" bounds="[84,1447][572,1573]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an at-limit ScrollView is not a strict scrollable target' \
+    '' "$(ui_scroll_container_bounds "$settings_scroll_limit" 1794)"
+assert_eq 'the known at-limit ScrollView is measured in the app package' \
+    '0 0 1080 1794' "$(ui_known_scroll_container_bounds "$settings_scroll_limit" 1794 "$scroll_pkg")"
+assert_eq 'the known at-limit ScrollView is clipped to the navigation top' \
+    '0 0 1080 1700' "$(ui_known_scroll_container_bounds "$settings_scroll_limit" 1700 "$scroll_pkg")"
+assert_eq 'the known at-limit ScrollView is measured without a navigation top' \
+    '0 0 1080 1920' "$(ui_known_scroll_container_bounds "$settings_scroll_limit" '' "$scroll_pkg")"
+assert_eq 'a fully contained clickable ancestor is measured after scrolling' \
+    '84 1447 572 1573' \
+    "$(ui_clickable_label_within "$settings_scroll_limit" 'Preview live wallpaper' \
+        "$(ui_known_scroll_container_bounds "$settings_scroll_limit" 1794 "$scroll_pkg")")"
+assert_eq 'the known-container fallback requires an expected package' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit" 1794)"
+
+settings_scroll_limit_crossed="$TMP_DIR/settings-scroll-limit-crossed.xml"
+sed 's/\[84,1447\]\[572,1573\]/[84,1678][572,1804]/g' \
+    "$settings_scroll_limit" > "$settings_scroll_limit_crossed"
+assert_eq 'the initial control crossing the navigation top is not tappable evidence' \
+    '' \
+    "$(ui_clickable_label_within "$settings_scroll_limit_crossed" 'Preview live wallpaper' \
+        "$(ui_known_scroll_container_bounds "$settings_scroll_limit_crossed" 1794 "$scroll_pkg")")"
+
+settings_scroll_limit_root="$TMP_DIR/settings-scroll-limit-root.xml"
+cat > "$settings_scroll_limit_root" <<EOF
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="$scroll_pkg" scrollable="false" bounds="[0,0][1080,1920]" />
+</hierarchy>
+EOF
+assert_eq 'a root-only non-scrollable node is not a viewport' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_root" 1794 "$scroll_pkg")"
+
+settings_scroll_limit_view="$TMP_DIR/settings-scroll-limit-view.xml"
+cat > "$settings_scroll_limit_view" <<EOF
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.view.View" package="$scroll_pkg" scrollable="false" bounds="[0,0][1080,1920]" />
+</hierarchy>
+EOF
+assert_eq 'an arbitrary non-scrollable view is not a viewport' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_view" 1794 "$scroll_pkg")"
+
+settings_scroll_limit_no_bounds="$TMP_DIR/settings-scroll-limit-no-bounds.xml"
+cat > "$settings_scroll_limit_no_bounds" <<EOF
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.ScrollView" package="$scroll_pkg" scrollable="false" />
+</hierarchy>
+EOF
+assert_eq 'a known ScrollView without measured bounds is not a viewport' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_no_bounds" 1794 "$scroll_pkg")"
+
+settings_scroll_limit_zero="$TMP_DIR/settings-scroll-limit-zero.xml"
+sed 's/\[0,0\]\[1080,1920\]/[0,0][0,0]/g' \
+    "$settings_scroll_limit" > "$settings_scroll_limit_zero"
+assert_eq 'a known ScrollView with zero bounds is not a viewport' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_zero" 1794 "$scroll_pkg")"
+
+settings_scroll_limit_wrong_pkg="$TMP_DIR/settings-scroll-limit-wrong-pkg.xml"
+sed "s/package=\"$scroll_pkg\"/package=\"com.example.other\"/g" \
+    "$settings_scroll_limit" > "$settings_scroll_limit_wrong_pkg"
+assert_eq 'a known ScrollView in a wrong package is not a viewport' \
+    '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_wrong_pkg" 1794 "$scroll_pkg")"
+
+known_scroll_body="$TMP_DIR/ui_known_scroll_container_bounds.sh"
+sed -n '/^ui_known_scroll_container_bounds() (/,/^)/p' "$LIB" > "$known_scroll_body"
+assert_true 'the known-container fallback only accepts the real ScrollView class' \
+    grep -Fq 'attr($0, "class") != "android.widget.ScrollView"' "$known_scroll_body"
+assert_true 'the known-container fallback is scoped to the app package' \
+    grep -Fq 'attr($0, "package") != want_pkg' "$known_scroll_body"
+assert_true 'the known-container fallback requires non-scrollable at-limit state' \
+    grep -Fq 'attr($0, "scrollable") != "false"' "$known_scroll_body"
+assert_true 'the known-container fallback rejects zero or negative bounds' \
+    grep -Fq 'if (w <= 0 || h <= 0) return -1' "$known_scroll_body"
+
+measure_body="$TMP_DIR/_cwg_measure_control.sh"
+sed -n '/^_cwg_measure_control() {/,/^}/p' "$SMOKE" > "$measure_body"
+strict_viewport_line=$(grep -n 'ui_scroll_container_bounds "\$_cmc_xml" "\$_cwg_nav_top"' \
+    "$measure_body" | sed -n '1s/:.*//p')
+fallback_viewport_line=$(grep -n 'ui_known_scroll_container_bounds' \
+    "$measure_body" | sed -n '1s/:.*//p')
+if [ -n "$strict_viewport_line" ] && [ -n "$fallback_viewport_line" ] &&
+    [ "$strict_viewport_line" -lt "$fallback_viewport_line" ] &&
+    grep -Fq '"$PKG"' "$measure_body"; then
+    pass 'the measured helper tries the strict scrollable viewport before the known fallback'
+else
+    fail 'the measured helper tries the strict scrollable viewport before the known fallback'
+fi
+
 nav_none="$TMP_DIR/nav-none.txt"
 printf 'no window data here\n' > "$nav_none"
 assert_eq 'an unmeasurable navigation bar prints nothing' \
