@@ -3952,6 +3952,113 @@ else
     pass 'the executed order check rejects an unresolved bounds string under sh -eu'
 fi
 
+# --- weather settings helper fixtures --------------------------------------
+
+weather_ui_xml="$TMP_DIR/weather-ui.xml"
+cat > "$weather_ui_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.widget.EditText" text="" content-desc="Location label" clickable="true" enabled="true" bounds="[40,200][1040,300]" />
+      <node index="1" class="android.widget.EditText" text="not-a-number" clickable="true" enabled="true" bounds="[40,320][1040,420]" />
+      <node index="2" class="android.widget.EditText" text="10.0000" clickable="true" enabled="true" bounds="[40,440][1040,540]" />
+      <node index="3" text="I understand and want to enable weather setup" checkable="true" checked="false" enabled="true" bounds="[40,560][1040,640]" />
+      <node index="4" class="android.widget.Button" clickable="false" enabled="false" bounds="[40,660][1040,760]">
+        <node index="0" class="android.widget.TextView" text="Save and enable" clickable="false" enabled="true" bounds="[80,680][500,740]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'all three weather EditText fields are measured in order' \
+    '40 200 1040 300
+40 320 1040 420
+40 440 1040 540' "$(ui_edit_text_bounds "$weather_ui_xml")"
+assert_eq 'the weather consent checkbox is the only unique checkable control' \
+    '40 560 1040 640' "$(ui_unique_checkable_bounds "$weather_ui_xml")"
+assert_eq 'the weather consent checkbox reports its unchecked state' \
+    'false' "$(ui_unique_checkable_checked "$weather_ui_xml")"
+assert_eq 'a disabled button ancestor disables its text label' \
+    'false' "$(ui_unique_label_enabled "$weather_ui_xml" 'Save and enable')"
+
+weather_enabled_xml="$TMP_DIR/weather-enabled.xml"
+cat > "$weather_enabled_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.Button" clickable="true" enabled="true" bounds="[40,660][1040,760]">
+    <node index="0" class="android.widget.TextView" text="Save and enable" clickable="false" enabled="true" bounds="[80,680][500,740]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an enabled button label reports enabled' \
+    'true' "$(ui_unique_label_enabled "$weather_enabled_xml" 'Save and enable')"
+
+weather_duplicate_enabled_xml="$TMP_DIR/weather-duplicate-enabled.xml"
+cat > "$weather_duplicate_enabled_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.TextView" text="Save and enable" enabled="false" bounds="[1,2][3,4]" />
+  <node index="1" class="android.widget.TextView" text="Save and enable" enabled="true" bounds="[5,6][7,8]" />
+</hierarchy>
+EOF
+assert_eq 'duplicate button labels do not yield an enabled state' \
+    '' "$(ui_unique_label_enabled "$weather_duplicate_enabled_xml" 'Save and enable')"
+
+assert_true 'a fully measured control inside the viewport is tappable' \
+    ui_bounds_within '40 200 1040 300' '0 72 1080 1794'
+assert_false 'a control clipped by the navigation top is not tappable' \
+    ui_bounds_within '40 1700 1040 1800' '0 72 1080 1794'
+assert_false 'a malformed control rectangle is not tappable' \
+    ui_bounds_within '40 200 1040' '0 72 1080 1794'
+
+ime_shown_dump="$TMP_DIR/ime-shown.dump"
+cat > "$ime_shown_dump" <<'EOF'
+InputMethodManagerService
+  mCurMethodId=com.google.android.inputmethod.latin/.LatinIME
+  mInputShown=true
+EOF
+ime_hidden_dump="$TMP_DIR/ime-hidden.dump"
+cat > "$ime_hidden_dump" <<'EOF'
+InputMethodManagerService
+  mCurMethodId=com.google.android.inputmethod.latin/.LatinIME
+  mInputShown=false
+EOF
+assert_true 'a shown IME is detected from dumpsys input_method' \
+    ime_is_shown "$ime_shown_dump"
+assert_false 'a hidden IME is not detected as shown' \
+    ime_is_shown "$ime_hidden_dump"
+assert_false 'missing IME evidence fails closed as hidden' \
+    ime_is_shown "$TMP_DIR/ime-missing.dump"
+
+assert_eq 'the weather cache filename matches the production URL-safe base64 name' \
+    'NjAuMDAwMCwxMC4wMDAw' "$(weather_cache_filename '60.0000,10.0000')"
+assert_eq 'an empty weather cache key has no filename' \
+    '' "$(weather_cache_filename '')"
+
+weather_missing_json="$TMP_DIR/weather-missing.json"
+assert_eq 'a missing weather consent record is reported as missing' \
+    'missing' "$(weather_consent_state "$weather_missing_json")"
+weather_disabled_json="$TMP_DIR/weather-disabled.json"
+printf '%s\n' '{"version":1,"enabled":false,"generation":3,"label":null,"latitude":null,"longitude":null}' \
+    > "$weather_disabled_json"
+assert_eq 'a valid disabled weather record reports disabled and its generation' \
+    'disabled|3' "$(weather_consent_state "$weather_disabled_json")"
+weather_enabled_json="$TMP_DIR/weather-enabled.json"
+printf '%s\n' '{"version":1,"enabled":true,"generation":4,"label":"Emulator test","latitude":"60.0000","longitude":"10.0000"}' \
+    > "$weather_enabled_json"
+assert_eq 'a valid enabled weather record reports only the synthetic location' \
+    'enabled|4|Emulator test|60.0000|10.0000' \
+    "$(weather_consent_state "$weather_enabled_json")"
+weather_corrupt_json="$TMP_DIR/weather-corrupt.json"
+printf '%s\n' '{"version":2,"enabled":true,"generation":4,"label":"Emulator test","latitude":"60.0000","longitude":"10.0000"}' \
+    > "$weather_corrupt_json"
+assert_eq 'an unexpected weather record version fails closed' \
+    'malformed' "$(weather_consent_state "$weather_corrupt_json")"
+weather_null_enabled_json="$TMP_DIR/weather-null-enabled.json"
+printf '%s\n' '{"version":1,"enabled":true,"generation":4,"label":null,"latitude":null,"longitude":null}' \
+    > "$weather_null_enabled_json"
+assert_eq 'an enabled record without a stored location fails closed' \
+    'malformed' "$(weather_consent_state "$weather_null_enabled_json")"
+
 # --- static regression on the customization runtime gate --------------------
 
 customization_body="$TMP_DIR/capture_customization_settings.sh"

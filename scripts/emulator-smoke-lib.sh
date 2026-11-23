@@ -1654,6 +1654,278 @@ ui_clickable_label_within() (
     printf '%s %s %s %s\n' "$bx1" "$by1" "$bx2" "$by2"
 )
 
+# Succeed only when all four bounds values are measured integers and the whole
+# rectangle sits inside the supplied viewport. Used before a control is tapped
+# so a partially clipped or malformed control is never treated as evidence.
+ui_bounds_within() (
+    bounds=${1:-}
+    viewport=${2:-}
+    set -- $bounds
+    [ "$#" -eq 4 ] || return 1
+    bx1=$1
+    by1=$2
+    bx2=$3
+    by2=$4
+    set -- $viewport
+    [ "$#" -eq 4 ] || return 1
+    vx1=$1
+    vy1=$2
+    vx2=$3
+    vy2=$4
+    case "$bx1$by1$bx2$by2$vx1$vy1$vx2$vy2" in
+        *[!0-9]*) return 1 ;;
+    esac
+    [ "$bx2" -gt "$bx1" ] || return 1
+    [ "$by2" -gt "$by1" ] || return 1
+    [ "$vx2" -gt "$vx1" ] || return 1
+    [ "$vy2" -gt "$vy1" ] || return 1
+    [ "$bx1" -ge "$vx1" ] &&
+        [ "$by1" -ge "$vy1" ] &&
+        [ "$bx2" -le "$vx2" ] &&
+        [ "$by2" -le "$vy2" ]
+)
+
+# Print "x1 y1 x2 y2" for every real EditText in document order. Compose
+# OutlinedTextField is exposed as android.widget.EditText. Malformed entries are
+# skipped; a caller must still bound the count and check each measured rectangle
+# against the visible viewport.
+ui_edit_text_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "class") != "android.widget.EditText") next
+                emit(attr($0, "bounds"))
+            }
+        '
+)
+
+# Print the unique checkable node as "<x1> <y1> <x2> <y2>|<checked>". Missing,
+# duplicated or malformed checkable nodes print nothing, so the consent toggle
+# is never inferred from an unrelated view.
+ui_unique_checkable_state() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "checkable") != "true") next
+                checked = attr($0, "checked")
+                if (checked != "true" && checked != "false") next
+                bounds = attr($0, "bounds")
+                if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                s = bounds
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) next
+                count++
+                line = p[1] " " p[2] " " p[3] " " p[4] "|" checked
+            }
+            END { if (count == 1) print line }
+        '
+)
+
+ui_unique_checkable_bounds() (
+    state=$(ui_unique_checkable_state "${1:-}")
+    [ -n "$state" ] || return 0
+    printf '%s\n' "${state%|*}"
+)
+
+ui_unique_checkable_checked() (
+    state=$(ui_unique_checkable_state "${1:-}")
+    [ -n "$state" ] || return 0
+    printf '%s\n' "${state##*|}"
+)
+
+# Print the enabled state ("true"/"false") of the only node carrying the exact
+# label/description. A disabled ancestor makes the control disabled even when
+# its inner text node stays enabled, and duplicate labels print nothing.
+ui_unique_label_enabled() (
+    xml=$1
+    label=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$label" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v label="$label" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                enabled = attr($0, "enabled")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                if (!selfclose) {
+                    sp++
+                    stack[sp] = enabled
+                }
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text != label && desc != label) next
+                state = ""
+                if (enabled == "false") state = "false"
+                else if (enabled == "true") state = "true"
+                start = sp
+                for (i = start; i >= 1; i--) {
+                    v = stack[i]
+                    if (v == "false") {
+                        state = "false"
+                        break
+                    }
+                    if (v == "true" && state == "") state = "true"
+                }
+                if (state == "") next
+                count++
+                result = state
+            }
+            END { if (count == 1) print result }
+        '
+)
+
+# Succeed only while the supplied `dumpsys input_method` capture reports a
+# shown IME. Unknown/absent evidence is treated as hidden so the caller never
+# sends a Back key that could navigate away from the screen.
+ime_is_shown() (
+    dump=${1:-}
+    [ -s "$dump" ] || return 1
+    grep -Eq 'mInputShown[=:] *true|mIsInputViewShown[=:] *true|isInputViewShown[=:] *true' "$dump"
+)
+
+# Print the URL-safe, unpadded base64 file name used by FileWeatherCacheStore
+# for a location key. The production store uses Base64.getUrlEncoder without
+# padding; a missing encoder or an empty key prints nothing.
+weather_cache_filename() (
+    key=${1:-}
+    [ -n "$key" ] || return 0
+    command -v base64 >/dev/null 2>&1 || return 0
+    name=$(printf '%s' "$key" | base64 2>/dev/null |
+        tr -d '\r\n' | tr '+/' '-_' | tr -d '=') || return 0
+    [ -n "$name" ] || return 0
+    printf '%s\n' "$name"
+)
+
+# Print the persisted weather consent as one normalized line:
+#   missing
+#   malformed
+#   disabled|<generation>
+#   enabled|<generation>|<label>|<latitude>|<longitude>
+# Only the exact production schema is accepted. The file is app-private JSON,
+# so a malformed or unexpected record fails closed rather than being treated as
+# a valid opt-in.
+weather_consent_state() (
+    file=${1:-}
+    if [ -z "$file" ] || [ ! -e "$file" ]; then
+        printf 'missing\n'
+        return 0
+    fi
+    if [ ! -f "$file" ] || [ ! -s "$file" ]; then
+        printf 'malformed\n'
+        return 0
+    fi
+    text=$(cat "$file" 2>/dev/null) || {
+        printf 'malformed\n'
+        return 0
+    }
+    version_count=$(printf '%s' "$text" | grep -Eo '"version":1([,}])' | wc -l | tr -d ' ')
+    enabled_count=$(printf '%s' "$text" | grep -Eo '"enabled":(true|false)' | wc -l | tr -d ' ')
+    generation_count=$(printf '%s' "$text" | grep -Eo '"generation":[0-9]+' | wc -l | tr -d ' ')
+    if [ "$version_count" -ne 1 ] || [ "$enabled_count" -ne 1 ] ||
+        [ "$generation_count" -ne 1 ]; then
+        printf 'malformed\n'
+        return 0
+    fi
+    enabled=$(printf '%s' "$text" | sed -n 's/.*"enabled":\(true\|false\).*/\1/p')
+    generation=$(printf '%s' "$text" |
+        sed -n 's/.*"generation":\([0-9][0-9]*\).*/\1/p')
+    case "$enabled" in
+        false)
+            null_count=$(printf '%s' "$text" |
+                grep -Eo '"(label|latitude|longitude)":null' | wc -l | tr -d ' ')
+            string_count=$(printf '%s' "$text" |
+                grep -Eo '"(label|latitude|longitude)":"' | wc -l | tr -d ' ')
+            if [ "$null_count" -ne 3 ] || [ "$string_count" -ne 0 ]; then
+                printf 'malformed\n'
+                return 0
+            fi
+            printf 'disabled|%s\n' "$generation"
+            ;;
+        true)
+            label_count=$(printf '%s' "$text" |
+                grep -Eo '"label":"[^"\\]*"' | wc -l | tr -d ' ')
+            latitude_count=$(printf '%s' "$text" |
+                grep -Eo '"latitude":"[^"\\]*"' | wc -l | tr -d ' ')
+            longitude_count=$(printf '%s' "$text" |
+                grep -Eo '"longitude":"[^"\\]*"' | wc -l | tr -d ' ')
+            if [ "$label_count" -ne 1 ] || [ "$latitude_count" -ne 1 ] ||
+                [ "$longitude_count" -ne 1 ]; then
+                printf 'malformed\n'
+                return 0
+            fi
+            label=$(printf '%s' "$text" |
+                sed -n 's/.*"label":"\([^"\\]*\)".*/\1/p')
+            latitude=$(printf '%s' "$text" |
+                sed -n 's/.*"latitude":"\([^"\\]*\)".*/\1/p')
+            longitude=$(printf '%s' "$text" |
+                sed -n 's/.*"longitude":"\([^"\\]*\)".*/\1/p')
+            [ -n "$label" ] || {
+                printf 'malformed\n'
+                return 0
+            }
+            case "$latitude" in
+                '' | *[!0-9.-]*) printf 'malformed\n'; return 0 ;;
+            esac
+            case "$longitude" in
+                '' | *[!0-9.-]*) printf 'malformed\n'; return 0 ;;
+            esac
+            printf 'enabled|%s|%s|%s|%s\n' \
+                "$generation" "$label" "$latitude" "$longitude"
+            ;;
+        *)
+            printf 'malformed\n'
+            ;;
+    esac
+)
+
 # Print "x y_from y_to" for a genuine vertical scroll inside the measured
 # settings scroll container, clipped to the safe viewport. Prints nothing when
 # the container or a usable band is unavailable so the caller fails closed.
