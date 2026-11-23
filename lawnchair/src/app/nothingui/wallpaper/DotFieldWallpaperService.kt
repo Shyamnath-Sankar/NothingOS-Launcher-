@@ -24,6 +24,7 @@ import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.view.SurfaceHolder
 import com.android.launcher3.BuildConfig
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -42,6 +43,7 @@ class DotFieldWallpaperService : WallpaperService() {
 
     private inner class DotFieldEngine : Engine() {
 
+        private val engineToken = nextEngineToken.getAndIncrement()
         private val policy = DotFieldFramePolicy()
         private val lock = ReentrantLock()
         private val idle = lock.newCondition()
@@ -79,8 +81,13 @@ class DotFieldWallpaperService : WallpaperService() {
             super.onVisibilityChanged(visible)
             lock.withLock { policy.onVisibilityChanged(visible) }
             if (visible) {
-                requestFrame(immediate = true)
+                // Record the transition before any new frame is posted so the
+                // cumulative drawn count is exactly the state left by the
+                // preceding hidden transition. This lets the runtime smoke prove
+                // that nothing was drawn while hidden and that resume frames
+                // increase afterwards.
                 logTransition("visibility=true")
+                requestFrame(immediate = true)
             } else {
                 cancelAndAwaitIdle()
                 logTransition("visibility=false")
@@ -240,7 +247,8 @@ class DotFieldWallpaperService : WallpaperService() {
         private fun logTransition(transition: String) {
             if (!BuildConfig.DEBUG) return
             val counters = lock.withLock {
-                "posted=$postedFrames drawn=$drawnFrames pending=$framePending drawing=$drawing"
+                "engine=$engineToken posted=$postedFrames drawn=$drawnFrames " +
+                    "pending=$framePending drawing=$drawing"
             }
             Log.d(TAG, "$transition $counters")
         }
@@ -294,5 +302,7 @@ class DotFieldWallpaperService : WallpaperService() {
 
     companion object {
         const val TAG: String = "DotFieldWallpaper"
+
+        private val nextEngineToken = AtomicInteger()
     }
 }

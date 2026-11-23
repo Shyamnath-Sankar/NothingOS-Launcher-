@@ -2416,6 +2416,12 @@ capture_wallpaper_gallery() {
     _cwg_apply_wallpaper 'Pitch Black' 'pitch-black'
     _cwg_apply_wallpaper 'Wireframe Torus' 'wireframe-torus'
 
+    # The live apply runs after both static applies so the Lock wallpaper is an
+    # explicit, already-changed target that must be preserved by the Home-only
+    # live selection. It reopens the gallery, confirms through the measured
+    # system UI, and then proves the real pause/resume draw gate.
+    _cwg_apply_live_wallpaper
+
     _cwg_ids_final=$(_cwg_read_ids "$ARTIFACTS/wallpaper-ids-final.txt") ||
         fail "could not measure the final wallpaper IDs"
     printf 'final ids=%s\n' "$_cwg_ids_final" >> "$ARTIFACTS/wallpaper-baseline.txt"
@@ -2484,6 +2490,279 @@ _cwg_preview_live_wallpaper() {
     capture_ui_xml "live-wallpaper-after-back.xml" || true
     adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
     sleep 1
+}
+
+# Runtime gate for the original live wallpaper. Reopens the gallery, measures
+# the explicit Preview live wallpaper action, requires the exact Dot Field
+# (Live) platform preview from com.android.wallpaper.livepicker, taps only a
+# positive fully visible measured Set wallpaper control above the navigation
+# bar, and resolves any normal destination dialog only through its exact
+# measured Home screen option. It never taps a Home-and-lock/lock destination,
+# never uses a shell wallpaper setter/service binding and never confirms
+# blindly. dumpsys must then prove DotFieldWallpaperService is the System
+# wallpaper, the Home ID changed and the Lock wallpaper was preserved.
+_cwg_apply_live_wallpaper() {
+    _cal_ids_before=$(_cwg_read_ids "$ARTIFACTS/live-apply-ids-before.txt") ||
+        fail "could not measure wallpaper IDs before applying the live wallpaper"
+    set -- $_cal_ids_before
+    _cal_home_before=$1
+    _cal_lock_before=$2
+
+    _cwg_launch_gallery live-apply ||
+        fail "could not open the gallery for the live wallpaper apply"
+    sleep 1
+    capture_ui_xml "live-apply-gallery.xml" ||
+        fail "could not capture the live wallpaper gallery for the apply"
+    _cal_control=$(_cwg_measure_control 'Preview live wallpaper' 'live-apply' 8) ||
+        fail "could not reveal the live wallpaper preview action for the apply"
+    [ -n "$_cal_control" ] ||
+        fail "the live wallpaper preview action has no measured bounds for the apply"
+    adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-preview-before.txt" 2>&1 || true
+    tap_center_of_bounds "$_cal_control"
+
+    _cal_ready=
+    _cal_attempt=0
+    while [ "$_cal_attempt" -lt 8 ]; do
+        _cal_attempt=$((_cal_attempt + 1))
+        sleep 1
+        capture_ui_xml "live-apply-preview-$_cal_attempt.xml" || continue
+        if live_wallpaper_preview_is_dotfield \
+            "$ARTIFACTS/live-apply-preview-$_cal_attempt.xml"; then
+            _cal_ready=1
+            break
+        fi
+    done
+    [ -n "$_cal_ready" ] ||
+        fail "the exact Dot Field (Live) system preview did not open from the measured action"
+    _cal_preview_xml="$ARTIFACTS/live-apply-preview-$_cal_attempt.xml"
+    capture_screenshot_to "live-apply-preview.png"
+    [ -s "$ARTIFACTS/live-apply-preview.png" ] ||
+        fail "could not capture the Dot Field (Live) system preview pixels"
+
+    set -- $_cwg_nav
+    _cal_viewport="0 0 $3 $2"
+    _cal_set=$(ui_clickable_label_within "$_cal_preview_xml" 'Set wallpaper' "$_cal_viewport") || true
+    [ -n "$_cal_set" ] ||
+        fail "could not measure a positive, fully visible Set wallpaper button above the navigation bar"
+    printf 'set_wallpaper=%s viewport=%s\n' "$_cal_set" "$_cal_viewport" \
+        > "$ARTIFACTS/live-apply-set-wallpaper.txt"
+    tap_center_of_bounds "$_cal_set"
+
+    _cal_dialog=
+    _cal_applied=
+    _cal_dest_attempt=0
+    while [ "$_cal_dest_attempt" -lt 10 ]; do
+        _cal_dest_attempt=$((_cal_dest_attempt + 1))
+        sleep 1
+        _cal_dest_xml="$ARTIFACTS/live-apply-destination-$_cal_dest_attempt.xml"
+        capture_ui_xml "live-apply-destination-$_cal_dest_attempt.xml" || true
+        if [ -s "$_cal_dest_xml" ]; then
+            _cal_dest=$(live_wallpaper_destination_bounds "$_cal_dest_xml" "$_cwg_nav_top")
+            if [ -n "$_cal_dest" ]; then
+                printf 'destination=Home screen bounds=%s\n' "$_cal_dest" \
+                    > "$ARTIFACTS/live-apply-destination.txt"
+                tap_center_of_bounds "$_cal_dest"
+                _cal_dialog=1
+                break
+            fi
+            if live_wallpaper_destination_ambiguous "$_cal_dest_xml"; then
+                fail "the live-wallpaper destination dialog has no unique measured 'Home screen' option; refusing to tap a lock destination (evidence: $_cal_dest_xml)"
+            fi
+        fi
+        _cal_poll_id_file="$ARTIFACTS/live-apply-ids-destination-$_cal_dest_attempt.txt"
+        _cal_poll_ids=$(_cwg_read_ids "$_cal_poll_id_file" 2>/dev/null || true)
+        if [ -n "$_cal_poll_ids" ]; then
+            set -- $_cal_poll_ids
+            if [ "$1" != "$_cal_home_before" ] &&
+                live_wallpaper_service_active "$_cal_poll_id_file"; then
+                _cal_applied=1
+                break
+            fi
+        fi
+    done
+    if [ -z "$_cal_dialog" ] && [ -z "$_cal_applied" ]; then
+        capture_screenshot_to "live-apply-destination-last.png"
+        capture_ui_xml "live-apply-destination-last.xml" || true
+        fail "the system neither offered a measured 'Home screen' destination nor applied the live wallpaper; refusing to guess"
+    fi
+
+    _cal_poll=0
+    _cal_home_after=
+    _cal_lock_after=
+    while [ "$_cal_poll" -lt 10 ]; do
+        _cal_poll=$((_cal_poll + 1))
+        sleep 1
+        _cal_ids_file="$ARTIFACTS/live-apply-ids-$_cal_poll.txt"
+        _cal_after=$(_cwg_read_ids "$_cal_ids_file") ||
+            fail "could not read wallpaper IDs after confirming the live wallpaper"
+        set -- $_cal_after
+        _cal_home_after=$1
+        _cal_lock_after=$2
+        if [ "$_cal_home_after" != "$_cal_home_before" ] &&
+            live_wallpaper_service_active "$_cal_ids_file"; then
+            break
+        fi
+    done
+    [ -n "$_cal_home_after" ] ||
+        fail "no wallpaper ID result after confirming the live wallpaper"
+    [ "$_cal_home_after" != "$_cal_home_before" ] ||
+        fail "confirming the live wallpaper did not change the Home wallpaper ID"
+    live_wallpaper_service_active "$_cal_ids_file" ||
+        fail "dumpsys wallpaper does not report DotFieldWallpaperService as the System wallpaper"
+    wallpaper_lock_preserved "$_cal_home_before" "$_cal_lock_before" "$_cal_lock_after" ||
+        fail "confirming the live wallpaper changed the lock wallpaper"
+    printf 'applied=live-wallpaper before=%s after=%s lock=%s dialog=%s\n' \
+        "$_cal_ids_before" "$_cal_home_after" "$_cal_lock_after" "$_cal_dialog" \
+        > "$ARTIFACTS/live-apply.txt"
+
+    # Keep two timed HOME frames. The slow dot-field motion normally changes the
+    # pixels between them, but a stable frame is recorded rather than treated as
+    # a failure: this is not a clock-difference correctness oracle.
+    return_home live-apply
+    sleep 2
+    capture_ui_xml "live-apply-home.xml" ||
+        fail "could not capture HOME after applying the live wallpaper"
+    capture_screenshot_to "live-apply-home-frame1.png"
+    sleep 2
+    capture_screenshot_to "live-apply-home-frame2.png"
+    [ -s "$ARTIFACTS/live-apply-home-frame1.png" ] &&
+        [ -s "$ARTIFACTS/live-apply-home-frame2.png" ] ||
+        fail "could not capture the two timed HOME frames after applying the live wallpaper"
+
+    _cal_widgets_after=$(_cwg_widget_ids "$ARTIFACTS/live-apply-widgets-after.txt") ||
+        fail "could not re-dump widgets after applying the live wallpaper"
+    [ "$_cal_widgets_after" = "$_cwg_widgets_before" ] ||
+        fail "applying the live wallpaper changed the widget IDs"
+    # A third-party Clock/Calendar widget may have been placed on another page.
+    # Its binding is still explicit through the launcher-owned appwidget dump.
+    if [ -s "$ARTIFACTS/widgets-appwidget-providers.txt" ]; then
+        while IFS= read -r _cal_binding; do
+            _cal_binding_id=$(printf '%s\n' "$_cal_binding" | awk -F '\t' '{ print $2 }')
+            [ -n "$_cal_binding_id" ] || continue
+            case " $_cal_widgets_after " in
+                *" $_cal_binding_id "*) ;;
+                *) fail "the third-party widget binding AppWidgetId=$_cal_binding_id disappeared after applying the live wallpaper" ;;
+            esac
+        done < "$ARTIFACTS/widgets-appwidget-providers.txt"
+    fi
+    verify_home_widgets "$ARTIFACTS/live-apply-home.xml"
+
+    _cwg_live_pause_resume
+}
+
+# Prove the real pause/resume draw gate through opaque fullscreen activity
+# transitions. Launching the device Settings must hide the applied engine with
+# pending=false drawing=false; the normal HOME key must resume the exact same
+# engine token at the exact hidden drawn count (no hidden drawing); staying HOME
+# and opening Settings again must hide that same engine with a strictly larger
+# drawn count. Every phase is sliced after a read-only logcat baseline and the
+# shared crash history is never cleared.
+_cwg_live_pause_resume() {
+    capture_ui_xml "live-apply-hidden-before.xml" ||
+        fail "could not capture HOME before the live wallpaper pause"
+    capture_screenshot_to "live-apply-hidden-before.png"
+    adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-home-before.txt" 2>&1 || true
+
+    adb_cmd shell am start -W -a android.settings.SETTINGS \
+        > "$ARTIFACTS/live-apply-settings-launch1.txt" 2>&1 ||
+        fail "could not launch Settings for the live wallpaper hidden transition"
+    wait_for_foreground com.android.settings \
+        "$ARTIFACTS/live-apply-activities-settings1.txt" 15 ||
+        fail "Settings was not the measured resumed activity for the hidden transition"
+    capture_ui_xml "live-apply-settings-hidden1.xml" || true
+    capture_screenshot_to "live-apply-settings-hidden1.png"
+    adb_cmd shell dumpsys wallpaper > "$ARTIFACTS/live-apply-dumpsys-hidden1.txt" 2>&1 || true
+    _cal_engine=
+    _cal_hidden_drawn=
+    _cal_try=0
+    while [ "$_cal_try" -lt 6 ]; do
+        _cal_try=$((_cal_try + 1))
+        sleep 1
+        adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-hidden1-full.txt" 2>&1 || true
+        live_wallpaper_preview_log_after \
+            "$ARTIFACTS/live-apply-logcat-home-before.txt" \
+            "$ARTIFACTS/live-apply-logcat-hidden1-full.txt" \
+            "$ARTIFACTS/live-apply-logcat-hidden1.txt" || continue
+        live_wallpaper_single_engine "$ARTIFACTS/live-apply-logcat-hidden1.txt" ||
+            continue
+        _cal_engine=$(live_wallpaper_hidden_engine \
+            "$ARTIFACTS/live-apply-logcat-hidden1.txt") || continue
+        _cal_hidden_drawn=$(live_wallpaper_hidden_drawn \
+            "$ARTIFACTS/live-apply-logcat-hidden1.txt" "$_cal_engine") || continue
+        break
+    done
+    [ -n "$_cal_engine" ] && [ -n "$_cal_hidden_drawn" ] ||
+        fail "no clean single-engine applied live-wallpaper hidden transition was captured"
+    printf 'hidden1 engine=%s drawn=%s\n' "$_cal_engine" "$_cal_hidden_drawn" \
+        > "$ARTIFACTS/live-apply-transitions.txt"
+
+    sleep 2
+
+    return_home live-hidden
+    capture_ui_xml "live-apply-home-resumed.xml" ||
+        fail "could not capture HOME after the hidden interval"
+    capture_screenshot_to "live-apply-home-resumed.png"
+    _cal_resumed=
+    _cal_try=0
+    while [ "$_cal_try" -lt 6 ]; do
+        _cal_try=$((_cal_try + 1))
+        sleep 1
+        adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-resumed-full.txt" 2>&1 || true
+        live_wallpaper_preview_log_after \
+            "$ARTIFACTS/live-apply-logcat-hidden1-full.txt" \
+            "$ARTIFACTS/live-apply-logcat-resumed-full.txt" \
+            "$ARTIFACTS/live-apply-logcat-resumed.txt" || continue
+        live_wallpaper_single_engine "$ARTIFACTS/live-apply-logcat-resumed.txt" ||
+            continue
+        live_wallpaper_resume_unchanged \
+            "$ARTIFACTS/live-apply-logcat-resumed.txt" "$_cal_engine" \
+            "$_cal_hidden_drawn" || continue
+        _cal_resumed=1
+        break
+    done
+    [ -n "$_cal_resumed" ] ||
+        fail "the same live wallpaper engine did not resume at the exact hidden drawn count (hidden drawing suspected)"
+    printf 'resumed engine=%s drawn=%s\n' "$_cal_engine" \
+        "$(live_wallpaper_visible_drawn "$ARTIFACTS/live-apply-logcat-resumed.txt" "$_cal_engine")" \
+        >> "$ARTIFACTS/live-apply-transitions.txt"
+
+    sleep 1
+    adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-home2-full.txt" 2>&1 || true
+
+    adb_cmd shell am start -W -a android.settings.SETTINGS \
+        > "$ARTIFACTS/live-apply-settings-launch2.txt" 2>&1 ||
+        fail "could not relaunch Settings for the resumed-frame transition"
+    wait_for_foreground com.android.settings \
+        "$ARTIFACTS/live-apply-activities-settings2.txt" 15 ||
+        fail "Settings was not the measured resumed activity for the resumed-frame transition"
+    capture_ui_xml "live-apply-settings-hidden2.xml" || true
+    capture_screenshot_to "live-apply-settings-hidden2.png"
+    adb_cmd shell dumpsys wallpaper > "$ARTIFACTS/live-apply-dumpsys-hidden2.txt" 2>&1 || true
+    _cal_hidden2=
+    _cal_try=0
+    while [ "$_cal_try" -lt 6 ]; do
+        _cal_try=$((_cal_try + 1))
+        sleep 1
+        adb_cmd logcat -d > "$ARTIFACTS/live-apply-logcat-hidden2-full.txt" 2>&1 || true
+        live_wallpaper_preview_log_after \
+            "$ARTIFACTS/live-apply-logcat-home2-full.txt" \
+            "$ARTIFACTS/live-apply-logcat-hidden2-full.txt" \
+            "$ARTIFACTS/live-apply-logcat-hidden2.txt" || continue
+        live_wallpaper_single_engine "$ARTIFACTS/live-apply-logcat-hidden2.txt" ||
+            continue
+        live_wallpaper_hidden_frame_increase \
+            "$ARTIFACTS/live-apply-logcat-hidden2.txt" "$_cal_engine" \
+            "$_cal_hidden_drawn" || continue
+        _cal_hidden2=1
+        break
+    done
+    [ -n "$_cal_hidden2" ] ||
+        fail "the resumed live wallpaper engine did not draw new frames before hiding again"
+    printf 'hidden2 engine=%s drawn=%s\n' "$_cal_engine" \
+        "$(live_wallpaper_hidden_drawn "$ARTIFACTS/live-apply-logcat-hidden2.txt" "$_cal_engine")" \
+        >> "$ARTIFACTS/live-apply-transitions.txt"
+
+    return_home live-hidden-again
 }
 
 # Explicitly apply one measured tile. The caller has already entered the

@@ -363,6 +363,8 @@ grep -Fq 'idle.signalAll()' "$LIVE_SERVICE" ||
     fail "the draw does not publish completion to a waiting teardown"
 grep -Fq 'posted=$postedFrames drawn=$drawnFrames' "$LIVE_SERVICE" ||
     fail "the transition trace does not expose frame counters"
+grep -Fq 'engine=$engineToken' "$LIVE_SERVICE" ||
+    fail "the transition trace does not expose a per-engine identity token"
 grep -Fq 'holder.surface.isValid' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not check the real surface"
 grep -Fq 'holder.surfaceFrame' "$LIVE_SERVICE" ||

@@ -2780,3 +2780,231 @@ live_wallpaper_preview_log_after() (
     [ -s "$out" ] || return 1
     return 0
 )
+
+# Normalise the DEBUG-only DotFieldWallpaper visibility transitions. The engine
+# now stamps every transition with its own cumulative identity token, so the
+# runtime pause/resume proof can correlate one applied engine across separate
+# freshly captured log slices and reject a preview, stale or different engine.
+# Output one tab-free row per complete transition:
+#   <engine> <visible:true|false> <posted> <drawn> <pending> <drawing>
+# Incomplete, non-numeric or non-DotField lines are ignored.
+live_wallpaper_visibility_events() (
+    log=$1
+    [ -s "$log" ] || return 0
+    grep -F 'DotFieldWallpaper' "$log" 2>/dev/null |
+        grep -E 'engine=[0-9]+' |
+        grep -E 'visibility=(true|false)' |
+        grep -E 'posted=[0-9]+' |
+        grep -E 'drawn=[0-9]+' |
+        grep -E 'pending=(true|false)' |
+        grep -E 'drawing=(true|false)' |
+        awk '
+            {
+                tok = vis = posted = drawn = pending = drawing = ""
+                if (match($0, /engine=[0-9]+/))
+                    tok = substr($0, RSTART + 7, RLENGTH - 7)
+                if (match($0, /visibility=(true|false)/))
+                    vis = substr($0, RSTART + 11, RLENGTH - 11)
+                if (match($0, /posted=[0-9]+/))
+                    posted = substr($0, RSTART + 7, RLENGTH - 7)
+                if (match($0, /drawn=[0-9]+/))
+                    drawn = substr($0, RSTART + 6, RLENGTH - 6)
+                if (match($0, /pending=(true|false)/))
+                    pending = substr($0, RSTART + 8, RLENGTH - 8)
+                if (match($0, /drawing=(true|false)/))
+                    drawing = substr($0, RSTART + 8, RLENGTH - 8)
+                if (tok != "" && vis != "" && posted != "" && drawn != "" &&
+                    pending != "" && drawing != "")
+                    print tok, vis, posted, drawn, pending, drawing
+            }
+        '
+)
+
+# Succeed only when every parsed visibility transition in the slice belongs to
+# exactly one engine token. A mixed preview/applied (or recreated) engine slice
+# fails closed.
+live_wallpaper_single_engine() (
+    log=$1
+    [ -s "$log" ] || return 1
+    n=$(live_wallpaper_visibility_events "$log" |
+        awk '{ seen[$1] = 1 } END { print length(seen) }')
+    [ "$n" = "1" ]
+)
+
+# Print the token of the applied engine that produced a clean hidden transition
+# (`visibility=false pending=false drawing=false`) in the slice. Any mix of
+# engines, a missing hidden transition, or a final hidden transition that still
+# has a pending/in-flight frame fails closed. The slice must be one fresh
+# post-baseline tail, never the whole shared logcat buffer.
+live_wallpaper_hidden_engine() (
+    log=$1
+    [ -s "$log" ] || return 1
+    live_wallpaper_visibility_events "$log" |
+        awk '
+            $2 == "false" {
+                seen[$1] = 1
+                last = $1
+            }
+            END {
+                if (last == "") exit 1
+                if (length(seen) != 1) exit 1
+                print last
+            }
+        '
+)
+
+# Print the cumulative drawn count of the last clean hidden transition for the
+# given engine token. A final hidden transition with pending or drawing still
+# true is not a quiescent hide and fails closed.
+live_wallpaper_hidden_drawn() (
+    log=$1
+    token=$2
+    [ -s "$log" ] || return 1
+    [ -n "$token" ] || return 1
+    live_wallpaper_visibility_events "$log" |
+        awk -v token="$token" '
+            $1 == token && $2 == "false" {
+                drawn = $4
+                pending = $5
+                drawing = $6
+                found = 1
+            }
+            END {
+                if (!found) exit 1
+                if (pending != "false" || drawing != "false") exit 1
+                print drawn
+            }
+        '
+)
+
+# Print the cumulative drawn count of the last visible transition for the given
+# engine token. A visible transition is logged before the resume frame is
+# posted, so no pending/drawing requirement is applied here.
+live_wallpaper_visible_drawn() (
+    log=$1
+    token=$2
+    [ -s "$log" ] || return 1
+    [ -n "$token" ] || return 1
+    live_wallpaper_visibility_events "$log" |
+        awk -v token="$token" '
+            $1 == token && $2 == "true" { drawn = $4; found = 1 }
+            END {
+                if (!found) exit 1
+                print drawn
+            }
+        '
+)
+
+# Succeed only when the same engine resumed with the exact cumulative drawn
+# count it had at the preceding hide: no frame was drawn while hidden.
+live_wallpaper_resume_unchanged() (
+    log=$1
+    token=$2
+    expected=$3
+    [ -n "$expected" ] || return 1
+    actual=$(live_wallpaper_visible_drawn "$log" "$token") || return 1
+    [ "$actual" = "$expected" ]
+)
+
+# Succeed only when the same engine hid again with a strictly larger cumulative
+# drawn count than the prior hide: frames really resumed while visible.
+live_wallpaper_hidden_frame_increase() (
+    log=$1
+    token=$2
+    prior=$3
+    case "$prior" in '' | *[!0-9]*) return 1 ;; esac
+    actual=$(live_wallpaper_hidden_drawn "$log" "$token") || return 1
+    [ "$actual" -gt "$prior" ]
+)
+
+# Succeed only when the captured hierarchy is the real platform live-wallpaper
+# preview of this app's original wallpaper: the CI-known livepicker package and
+# the exact "Dot Field (Live)" title, with a measured confirm control. The
+# launcher settings gallery, an empty capture or any other wallpaper fails
+# closed.
+live_wallpaper_preview_is_dotfield() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    if grep -Fq 'Preview live wallpaper' "$xml"; then
+        return 1
+    fi
+    grep -Fq 'package="com.android.wallpaper.livepicker"' "$xml" || return 1
+    grep -Fq 'Dot Field (Live)' "$xml" || return 1
+    grep -Eq 'text="Set wallpaper"' "$xml" || return 1
+    return 0
+)
+
+# Count the exact destination labels in a live-wallpaper confirmation dialog.
+# Only exact text/content-desc matches are considered so a hint sentence that
+# merely mentions Apply or a lock screen is never treated as a destination.
+live_wallpaper_destination_texts() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text == "" && desc == "") next
+                label = (text != "") ? text : desc
+                if (label == "Home screen" || label == "Home and lock screen" ||
+                    label == "Home and lock" || label == "Lock screen")
+                    print label
+            }
+        '
+)
+
+# Print the measured bounds of the single exact "Home screen" destination that
+# is fully visible above the measured navigation top. Zero or multiple exact
+# matches, a clipped/zero/negative control, or a non-numeric navigation top
+# print nothing. The caller must never tap "Home and lock screen" or a lock
+# destination, and must fail closed when this prints nothing while a destination
+# dialog is present.
+live_wallpaper_destination_bounds() (
+    xml=$1
+    nav_top=$2
+    [ -s "$xml" ] || return 0
+    case "$nav_top" in '' | *[!0-9]*) return 0 ;; esac
+    [ "$nav_top" -gt 0 ] || return 0
+    count=$(live_wallpaper_destination_texts "$xml" | grep -cx 'Home screen' || true)
+    [ "$count" = "1" ] || return 0
+    ui_clickable_label_within "$xml" 'Home screen' "0 0 1000000 $nav_top"
+)
+
+# Succeed when a destination dialog is present but does not offer exactly one
+# exact "Home screen" choice: only lock/lock-and-home options, or duplicate
+# "Home screen" labels. No destination text at all is not ambiguous here (the
+# picker may have applied directly or not shown a dialog yet).
+live_wallpaper_destination_ambiguous() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    destinations=$(live_wallpaper_destination_texts "$xml" | grep -c . || true)
+    [ "${destinations:-0}" -gt 0 ] || return 1
+    homes=$(live_wallpaper_destination_texts "$xml" | grep -cx 'Home screen' || true)
+    [ "$homes" = "1" ] && return 1
+    return 0
+)
+
+# Succeed only when `dumpsys wallpaper` reports this app's DotFieldWallpaperService
+# in the System wallpaper state (not the Lock/Fallback state, and not a stale
+# preview entry). Any other wallpaper or a missing System section fails closed.
+live_wallpaper_service_active() (
+    dump=$1
+    [ -s "$dump" ] || return 1
+    awk '
+        BEGIN { in_system = 0; found = 0 }
+        /^[[:space:]]*System wallpaper state:/ { in_system = 1; next }
+        /^[[:space:]]*(Lock|Fallback) wallpaper state:/ { in_system = 0; next }
+        in_system && /DotFieldWallpaperService/ { found = 1 }
+        END { exit(found ? 0 : 1) }
+    ' "$dump"
+)

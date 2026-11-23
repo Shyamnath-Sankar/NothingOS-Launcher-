@@ -3435,6 +3435,214 @@ assert_true 'Cancel/Back must leave the wallpaper IDs unchanged' \
 assert_true 'the live preview is exercised by the gallery capture' \
     grep -Fq '_cwg_preview_live_wallpaper' "$SMOKE"
 
+# --- live-wallpaper apply/destination/pause-resume safety fixtures ----------
+#
+# Per-engine transition correlation: the engine stamps a stable identity token
+# and the smoke derives only the freshly appended tail for each phase.
+
+live_engine_log="$TMP_DIR/live-engine.log"
+cat > "$live_engine_log" <<'EOF'
+D/DotFieldWallpaper( 123): visibility=true engine=7 posted=1 drawn=0 pending=false drawing=false
+I/Other( 500): unrelated line
+D/DotFieldWallpaper( 123): visibility=false engine=7 posted=5 drawn=4 pending=false drawing=false
+D/DotFieldWallpaper( 123): visibility=true engine=7 posted=6 drawn=4 pending=false drawing=false
+D/DotFieldWallpaper( 123): visibility=false engine=7 posted=20 drawn=18 pending=false drawing=false
+EOF
+assert_eq 'the per-engine visibility parser reads the drawn counter' \
+    '4' "$(live_wallpaper_visible_drawn "$live_engine_log" 7)"
+assert_eq 'the hidden parser reads the quiescent hide drawn counter' \
+    '18' "$(live_wallpaper_hidden_drawn "$live_engine_log" 7)"
+assert_true 'a single applied engine is correlated' \
+    live_wallpaper_single_engine "$live_engine_log"
+live_resume_ok="$TMP_DIR/resume-ok.log"
+printf 'D/DotFieldWallpaper( 123): visibility=true engine=7 posted=6 drawn=4 pending=false drawing=false\n' \
+    > "$live_resume_ok"
+assert_true 'a clean resume slice matches the hidden drawn count' \
+    live_wallpaper_resume_unchanged "$live_resume_ok" 7 4
+assert_false 'a resume with a different drawn count is rejected' \
+    live_wallpaper_resume_unchanged "$live_engine_log" 7 99
+assert_true 'the second hide proves resumed frames increased the drawn count' \
+    live_wallpaper_hidden_frame_increase "$live_engine_log" 7 4
+
+live_no_resume="$TMP_DIR/live-no-resume.log"
+printf 'D/DotFieldWallpaper( 123): visibility=false engine=7 posted=5 drawn=4 pending=false drawing=false\n' \
+    > "$live_no_resume"
+assert_false 'a hidden-only slice never proves a resume' \
+    live_wallpaper_resume_unchanged "$live_no_resume" 7 4
+
+live_mixed="$TMP_DIR/live-mixed.log"
+cat > "$live_mixed" <<'EOF'
+D/DotFieldWallpaper( 123): visibility=false engine=7 posted=5 drawn=4 pending=false drawing=false
+D/DotFieldWallpaper( 123): visibility=false engine=8 posted=2 drawn=1 pending=false drawing=false
+EOF
+assert_false 'a mixed preview/applied engine slice fails closed' \
+    live_wallpaper_single_engine "$live_mixed"
+assert_false 'a mixed engine slice cannot supply a unique hidden engine' \
+    live_wallpaper_hidden_engine "$live_mixed"
+
+live_busy_hide="$TMP_DIR/live-busy-hide.log"
+printf 'D/DotFieldWallpaper( 123): visibility=false engine=7 posted=5 drawn=4 pending=true drawing=true\n' \
+    > "$live_busy_hide"
+assert_false 'a hidden transition with pending/drawing true is not quiescent' \
+    live_wallpaper_hidden_drawn "$live_busy_hide" 7
+assert_false 'a pending/drawing hide cannot prove a later frame increase' \
+    live_wallpaper_hidden_frame_increase "$live_busy_hide" 7 0
+
+live_equal_hide="$TMP_DIR/live-equal-hide.log"
+printf 'D/DotFieldWallpaper( 123): visibility=false engine=7 posted=20 drawn=4 pending=false drawing=false\n' \
+    > "$live_equal_hide"
+assert_false 'a second hide with no new drawn frame is rejected' \
+    live_wallpaper_hidden_frame_increase "$live_equal_hide" 7 4
+
+# Stale visible evidence: a pre-baseline visible line must not satisfy a phase.
+live_stale_baseline="$TMP_DIR/live-stale-baseline.log"
+printf 'D/DotFieldWallpaper( 123): visibility=true engine=7 posted=6 drawn=4 pending=false drawing=false\n' \
+    > "$live_stale_baseline"
+live_stale_full="$TMP_DIR/live-stale-full.log"
+cp "$live_stale_baseline" "$live_stale_full"
+printf 'I/ActivityManager( 500): no fresh resume yet\n' >> "$live_stale_full"
+live_stale_slice="$TMP_DIR/live-stale-slice.log"
+assert_true 'the phase boundary isolates the appended tail' \
+    live_wallpaper_preview_log_after "$live_stale_baseline" "$live_stale_full" "$live_stale_slice"
+assert_false 'a stale pre-baseline visible transition cannot prove a resume' \
+    live_wallpaper_resume_unchanged "$live_stale_slice" 7 4
+
+# Exact Dot Field title and package readiness.
+live_dotfield_ok="$TMP_DIR/live-dotfield-ok.xml"
+cat > "$live_dotfield_ok" <<'EOF'
+<hierarchy>
+  <node text="Dot Field (Live)" package="com.android.wallpaper.livepicker" class="android.widget.TextView" bounds="[100,100][900,200]" />
+  <node text="Set wallpaper" package="com.android.wallpaper.livepicker" class="android.widget.Button" clickable="true" bounds="[386,1638][693,1773]" />
+</hierarchy>
+EOF
+assert_true 'the exact Dot Field (Live) livepicker preview is accepted' \
+    live_wallpaper_preview_is_dotfield "$live_dotfield_ok"
+live_dotfield_notitle="$TMP_DIR/live-dotfield-notitle.xml"
+sed 's/Dot Field (Live)/Image Wallpaper/' "$live_dotfield_ok" > "$live_dotfield_notitle"
+assert_false 'a preview without the exact Dot Field title is rejected' \
+    live_wallpaper_preview_is_dotfield "$live_dotfield_notitle"
+live_dotfield_wrongpkg="$TMP_DIR/live-dotfield-wrongpkg.xml"
+sed 's/com.android.wallpaper.livepicker/com.example.other/g' "$live_dotfield_ok" \
+    > "$live_dotfield_wrongpkg"
+assert_false 'a preview from another picker package is rejected' \
+    live_wallpaper_preview_is_dotfield "$live_dotfield_wrongpkg"
+
+# Destination dialog: only the exact measured Home screen control is usable.
+live_destination_home="$TMP_DIR/live-destination-home.xml"
+cat > "$live_destination_home" <<'EOF'
+<hierarchy>
+  <node text="Home screen" class="android.widget.Button" clickable="true" bounds="[200,800][900,900]" />
+  <node text="Home and lock screen" class="android.widget.Button" clickable="true" bounds="[200,920][900,1020]" />
+</hierarchy>
+EOF
+assert_eq 'the exact Home screen destination is measured' \
+    '200 800 900 900' "$(live_wallpaper_destination_bounds "$live_destination_home" 1000)"
+assert_false 'a dialog that also offers Home and lock is not ambiguous' \
+    live_wallpaper_destination_ambiguous "$live_destination_home"
+live_destination_lockonly="$TMP_DIR/live-destination-lockonly.xml"
+cat > "$live_destination_lockonly" <<'EOF'
+<hierarchy>
+  <node text="Home and lock screen" class="android.widget.Button" clickable="true" bounds="[200,800][900,900]" />
+  <node text="Lock screen" class="android.widget.Button" clickable="true" bounds="[200,920][900,1020]" />
+</hierarchy>
+EOF
+assert_eq 'a lock-only destination never yields Home screen bounds' \
+    '' "$(live_wallpaper_destination_bounds "$live_destination_lockonly" 1000)"
+assert_true 'a lock-only destination is ambiguous and must fail closed' \
+    live_wallpaper_destination_ambiguous "$live_destination_lockonly"
+live_destination_dupe="$TMP_DIR/live-destination-dupe.xml"
+cat > "$live_destination_dupe" <<'EOF'
+<hierarchy>
+  <node text="Home screen" class="android.widget.Button" clickable="true" bounds="[200,800][900,900]" />
+  <node text="Home screen" class="android.widget.Button" clickable="true" bounds="[200,920][900,1020]" />
+</hierarchy>
+EOF
+assert_eq 'duplicate Home screen destinations yield no bounds' \
+    '' "$(live_wallpaper_destination_bounds "$live_destination_dupe" 1000)"
+assert_true 'duplicate Home screen destinations are ambiguous' \
+    live_wallpaper_destination_ambiguous "$live_destination_dupe"
+live_destination_clipped="$TMP_DIR/live-destination-clipped.xml"
+cat > "$live_destination_clipped" <<'EOF'
+<hierarchy>
+  <node text="Home screen" class="android.widget.Button" clickable="true" bounds="[200,1080][900,1180]" />
+</hierarchy>
+EOF
+assert_eq 'a Home screen destination below the navigation top is rejected' \
+    '' "$(live_wallpaper_destination_bounds "$live_destination_clipped" 1000)"
+assert_eq 'a non-numeric navigation top fails closed' \
+    '' "$(live_wallpaper_destination_bounds "$live_destination_home" bogus)"
+
+# System wallpaper proof: our service must be in the System section, never only
+# in the Lock/Fallback section or absent.
+live_dumpsys_active="$TMP_DIR/live-dumpsys-active.txt"
+cat > "$live_dumpsys_active" <<'EOF'
+System wallpaper state:
+ User 0: id=42: mWhich=1: mSystemWasBoth=false
+   mWallpaperComponent=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.wallpaper.DotFieldWallpaperService}
+Lock wallpaper state:
+ User 0: id=41: mWhich=2
+EOF
+assert_true 'the DotField service is proven active in the System wallpaper state' \
+    live_wallpaper_service_active "$live_dumpsys_active"
+live_dumpsys_lockonly="$TMP_DIR/live-dumpsys-lockonly.txt"
+cat > "$live_dumpsys_lockonly" <<'EOF'
+System wallpaper state:
+ User 0: id=42: mWhich=1
+Lock wallpaper state:
+ User 0: id=41: mWhich=2
+   mWallpaperComponent=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.wallpaper.DotFieldWallpaperService}
+EOF
+assert_false 'a service only in the Lock section is not an applied System wallpaper' \
+    live_wallpaper_service_active "$live_dumpsys_lockonly"
+assert_false 'an absent service fails closed' \
+    live_wallpaper_service_active "$TMP_DIR/live-dumpsys-missing.txt"
+
+# Source wiring for the runtime apply and pause/resume gate.
+SERVICE_ENGINE="$ROOT_DIR/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperService.kt"
+apply_body="$TMP_DIR/live_wallpaper_apply.sh"
+sed -n '/^_cwg_apply_live_wallpaper() {/,/^}/p' "$SMOKE" > "$apply_body"
+pause_body="$TMP_DIR/live_wallpaper_pause.sh"
+sed -n '/^_cwg_live_pause_resume() {/,/^}/p' "$SMOKE" > "$pause_body"
+assert_true 'the runtime live apply is exercised after the static applies' \
+    awk '/_cwg_apply_wallpaper .Pitch Black./ { seen = 1 }
+         /_cwg_apply_wallpaper .Wireframe Torus./ { if (seen) seen = 2 }
+         /^    _cwg_apply_live_wallpaper$/ { if (seen == 2) ok = 1 }
+         END { exit(ok ? 0 : 1) }' "$SMOKE"
+assert_true 'the live apply requires the exact Dot Field preview' \
+    grep -Fq 'live_wallpaper_preview_is_dotfield' "$apply_body"
+assert_true 'the Set wallpaper control is measured inside the display above the navigation bar' \
+    grep -Fq "ui_clickable_label_within \"\$_cal_preview_xml\" 'Set wallpaper' \"\$_cal_viewport\"" "$apply_body"
+assert_true 'the destination is resolved only through the measured Home screen helper' \
+    grep -Fq 'live_wallpaper_destination_bounds' "$apply_body"
+assert_true 'an ambiguous destination fails closed instead of tapping a lock choice' \
+    grep -Fq 'live_wallpaper_destination_ambiguous' "$apply_body"
+assert_false 'the apply never taps a Home and lock destination' \
+    grep -Fq 'tap_center_of_bounds "Home and lock' "$apply_body"
+assert_false 'the apply never uses a direct wallpaper component setter' \
+    grep -Fq 'setWallpaperComponent' "$apply_body"
+assert_false 'the apply never uses a shell wallpaper setter or service binding' \
+    grep -Eq 'cmd wallpaper|service call wallpaper|bindService' "$apply_body"
+assert_true 'the applied System service is proven through dumpsys' \
+    grep -Fq 'live_wallpaper_service_active' "$apply_body"
+assert_true 'the lock wallpaper is preserved through the existing parser' \
+    grep -Fq 'wallpaper_lock_preserved' "$apply_body"
+assert_true 'the pause/resume gate launches the opaque device Settings screen' \
+    grep -Fq 'am start -W -a android.settings.SETTINGS' "$pause_body"
+assert_true 'the pause proves the measured resumed Settings activity' \
+    grep -Fq 'wait_for_foreground com.android.settings' "$pause_body"
+assert_true 'the pause/resume correlates one engine token' \
+    grep -Fq 'live_wallpaper_single_engine' "$pause_body"
+assert_true 'the pause requires a quiescent hidden engine' \
+    grep -Fq 'live_wallpaper_hidden_engine' "$pause_body"
+assert_true 'the resume requires the exact hidden drawn count' \
+    grep -Fq 'live_wallpaper_resume_unchanged' "$pause_body"
+assert_true 'the second hide requires a larger drawn count' \
+    grep -Fq 'live_wallpaper_hidden_frame_increase' "$pause_body"
+assert_false 'the pause/resume phase never clears the shared logcat buffer' \
+    grep -Fq 'logcat -c' "$pause_body"
+assert_true 'the service stamps transitions with a per-engine identity token' \
+    grep -Fq 'engine=$engineToken' "$SERVICE_ENGINE"
+
 # Focused structure regression for the frame protocol. This checks the exact
 # lock placement (not concurrency behaviour): gate+enqueue share one lock,
 # teardown removes queued callbacks and waits for an in-flight draw, and the
