@@ -817,34 +817,112 @@ verify_default_home_consent() {
 }
 
 # The Play home replaces the inherited welcome smartspace with a quiet date pill
-# plus the three original widgets. Assert the rendered date strip and the live
-# clock widget text, not a static source guard, and keep the inherited brand
-# check on the actual HOME.
+# plus the three original widgets. A real bind can be transiently absent while
+# the launcher rebinds its AppWidgetHostViews (a PendingAppWidgetHostView after a
+# settings return), so confirm the live primary HOME with bounded, fresh state
+# instead of trusting one capture. Every attempt captures its own XML and PNG
+# plus the resumed activity and appwidget host state. Readiness still requires
+# the actual clock/date text and all three original widget child ids, so a
+# permanently missing clock fails closed. Nothing here resets, reseeds, binds,
+# edits, moves or deletes a workspace item, database row or preference.
 verify_nothing_home() {
+    _vnh_max_attempts=15
     _vnh_attempt=1
-    _vnh_captured=0
-    while [ "$_vnh_attempt" -le 4 ]; do
-        if capture_ui_xml home.xml; then
-            _vnh_captured=1
-            if grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$ARTIFACTS/home.xml" &&
-                grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$ARTIFACTS/home.xml"; then
-                if grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
-                    fail "actual HOME UI still exposes inherited Lawnchair text"
-                fi
-                capture_screenshot_to home.png
-                [ -s "$ARTIFACTS/home.png" ] || fail "actual HOME screenshot capture failed"
-                printf 'Actual HOME: date strip and live clock widget text are visible; no Lawnchair text.\n' \
-                    > "$ARTIFACTS/home-nothing.txt"
-                printf 'Screenshot: home.png.\n' >> "$ARTIFACTS/home-nothing.txt"
-                verify_home_widgets
-                return 0
-            fi
+    _vnh_ready=0
+    _vnh_ready_xml=
+    _vnh_ready_png=
+    : > "$ARTIFACTS/home-readiness-log.txt"
+    adb_cmd shell cmd role get-role-holders --user 0 "$HOME_ROLE" \
+        > "$ARTIFACTS/home-readiness-role-holders.txt" 2>&1 || true
+    adb_cmd shell cmd package resolve-activity --brief \
+        -a android.intent.action.MAIN -c android.intent.category.HOME \
+        > "$ARTIFACTS/home-readiness-default-home.txt" 2>&1 || true
+    while [ "$_vnh_attempt" -le "$_vnh_max_attempts" ]; do
+        _vnh_xml="home-readiness-$_vnh_attempt.xml"
+        _vnh_png="home-readiness-$_vnh_attempt.png"
+        _vnh_activity="activities-home-readiness-$_vnh_attempt.txt"
+        _vnh_appwidget="appwidget-home-readiness-$_vnh_attempt.txt"
+        capture_ui_xml "$_vnh_xml" || true
+        capture_screenshot_to "$_vnh_png"
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/$_vnh_activity" 2>&1 || true
+        adb_cmd shell dumpsys appwidget \
+            > "$ARTIFACTS/$_vnh_appwidget" 2>&1 || true
+
+        _vnh_clock=no
+        _vnh_date=no
+        _vnh_clock_id=no
+        _vnh_battery_id=no
+        _vnh_device_id=no
+        _vnh_device_progress=no
+        _vnh_pending=0
+        if [ -s "$ARTIFACTS/$_vnh_xml" ]; then
+            grep -Eq 'text="[0-9]{1,2}:[0-9]{2}"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_clock=yes || true
+            grep -Eq 'text="[A-Z]{3} [0-9]{1,2} [A-Z]{3}"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_date=yes || true
+            grep -Eq 'resource-id="[^"]*/nothingui_clock_time"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_clock_id=yes || true
+            grep -Eq 'resource-id="[^"]*/nothingui_battery_art"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_battery_id=yes || true
+            grep -Eq 'resource-id="[^"]*/nothingui_device_storage_value"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_device_id=yes || true
+            grep -Eq 'resource-id="[^"]*/nothingui_device_storage_progress"' "$ARTIFACTS/$_vnh_xml" &&
+                _vnh_device_progress=yes || true
+            _vnh_pending=$(grep -c 'PendingAppWidgetHostView' "$ARTIFACTS/$_vnh_xml" || true)
+        fi
+        _vnh_foreground=
+        if [ -s "$ARTIFACTS/$_vnh_activity" ]; then
+            _vnh_foreground=$(resumed_component "$ARTIFACTS/$_vnh_activity" || true)
+        fi
+        _vnh_fg_home=no
+        if [ -s "$ARTIFACTS/$_vnh_activity" ] &&
+            foreground_is_component "$ARTIFACTS/$_vnh_activity" "$PKG" "$LAUNCHER_ACTIVITY"; then
+            _vnh_fg_home=yes
+        fi
+        _vnh_png_present=no
+        [ -s "$ARTIFACTS/$_vnh_png" ] && _vnh_png_present=yes || true
+        printf 'attempt=%s foreground=%s foreground_home=%s clock=%s date=%s clock_id=%s battery_id=%s device_id=%s device_progress=%s pending_hosts=%s png=%s xml=%s appwidget=%s\n' \
+            "$_vnh_attempt" "${_vnh_foreground:-unknown}" "$_vnh_fg_home" \
+            "$_vnh_clock" "$_vnh_date" "$_vnh_clock_id" "$_vnh_battery_id" \
+            "$_vnh_device_id" "$_vnh_device_progress" "$_vnh_pending" \
+            "$_vnh_png_present" "$_vnh_xml" "$_vnh_appwidget" \
+            >> "$ARTIFACTS/home-readiness-log.txt"
+        if [ -s "$ARTIFACTS/$_vnh_xml" ] &&
+            [ "$_vnh_fg_home" = yes ] &&
+            primary_home_is_ready "$ARTIFACTS/$_vnh_xml"; then
+            _vnh_ready=1
+            _vnh_ready_xml="$ARTIFACTS/$_vnh_xml"
+            _vnh_ready_png="$ARTIFACTS/$_vnh_png"
+            break
         fi
         _vnh_attempt=$((_vnh_attempt + 1))
         sleep 1
     done
-    [ "$_vnh_captured" -eq 1 ] || fail "could not dump the actual HOME UIAutomator hierarchy"
-    fail "actual HOME does not expose the NothingUI date strip and live clock widget"
+    if [ "$_vnh_ready" -ne 1 ]; then
+        printf 'The primary/default HOME did not become ready within %s bounded attempts. The last state is in %s and %s with foreground %s in %s; the actual clock/date text and all three original widget children remain required.\n' \
+            "$_vnh_max_attempts" "$_vnh_xml" "$_vnh_png" \
+            "${_vnh_foreground:-unknown}" "$_vnh_activity" \
+            > "$ARTIFACTS/home-readiness-failure.txt"
+        printf 'Attempt log: home-readiness-log.txt; appwidget state: %s.\n' \
+            "$_vnh_appwidget" >> "$ARTIFACTS/home-readiness-failure.txt"
+        fail "actual HOME does not expose the NothingUI date strip and live clock widget"
+    fi
+    cp "$_vnh_ready_xml" "$ARTIFACTS/home.xml"
+    if [ -s "$_vnh_ready_png" ]; then
+        cp "$_vnh_ready_png" "$ARTIFACTS/home.png"
+    else
+        capture_screenshot_to home.png
+    fi
+    [ -s "$ARTIFACTS/home.png" ] || fail "actual HOME screenshot capture failed"
+    if grep -Fq 'Lawnchair' "$ARTIFACTS/home.xml"; then
+        fail "actual HOME UI still exposes inherited Lawnchair text"
+    fi
+    printf 'Actual HOME: date strip and live clock widget text are visible after %s bounded state-based readiness attempt(s); no Lawnchair text.\n' \
+        "$_vnh_attempt" > "$ARTIFACTS/home-nothing.txt"
+    printf 'Screenshot: home.png (ready attempt %s); attempt log: home-readiness-log.txt.\n' \
+        "$_vnh_attempt" >> "$ARTIFACTS/home-nothing.txt"
+    verify_home_widgets "$ARTIFACTS/home.xml"
 }
 
 # Fresh Play installs seed two 2x2 widgets plus the wide device card through the

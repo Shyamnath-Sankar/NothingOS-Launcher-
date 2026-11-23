@@ -2670,6 +2670,9 @@ sed -n '/^verify_nothing_home() {/,/^}/p' "$SMOKE" > "$home_verify_body"
 home_widgets_body="$TMP_DIR/verify_home_widgets.sh"
 sed -n '/^verify_home_widgets() {/,/^}/p' "$SMOKE" > "$home_widgets_body"
 
+primary_home_ready_body="$TMP_DIR/primary_home_is_ready.sh"
+sed -n '/^primary_home_is_ready() (/,/^)/p' "$SMOKE" > "$primary_home_ready_body"
+
 own_widget_setup_body="$TMP_DIR/complete_own_widget_setup.sh"
 sed -n '/^complete_own_widget_setup() {/,/^}/p' "$SMOKE" > "$own_widget_setup_body"
 
@@ -2770,6 +2773,147 @@ assert_true 'the widget binding check requires a real battery description' \
 assert_true 'the widget binding check requires the real device storage pair' \
     grep -Fq 'home_widget_device_storage_is_real "$_vhw_device_value" "$_vhw_device_detail"' \
     "$home_widgets_body"
+
+# --- executed primary-HOME readiness fixtures (CI269) ---------------------
+# CI269 returned from the read-only grid settings and verify_nothing_home saw
+# the date pill plus battery/device hosts but not the clock while the launcher
+# was still reinflating a PendingAppWidgetHostView. Readiness must retry on
+# fresh live state, but a permanently missing clock must still fail closed.
+assert_true 'the primary HOME readiness predicate is extractable' \
+    test -s "$primary_home_ready_body"
+
+ready_missing_clock_xml="$TMP_DIR/ready-missing-clock.xml"
+cat > "$ready_missing_clock_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="MON 23 NOV" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_date" class="android.widget.TextView" bounds="[40,100][500,180]" />
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.widget.PendingAppWidgetHostView" bounds="[40,400][500,800]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_battery_art" class="android.widget.ImageView" bounds="[540,400][1000,800]" />
+    <node index="3" text="42%" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_value" class="android.widget.TextView" bounds="[40,900][500,1000]" />
+    <node index="4" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_progress" class="android.widget.ProgressBar" bounds="[40,1020][500,1060]" />
+  </node>
+</hierarchy>
+EOF
+ready_clock_xml="$TMP_DIR/ready-clock.xml"
+cat > "$ready_clock_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="MON 23 NOV" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_date" class="android.widget.TextView" bounds="[40,100][500,180]" />
+    <node index="1" text="3:07" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_clock_time" class="android.widget.TextClock" bounds="[40,400][500,800]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_battery_art" class="android.widget.ImageView" bounds="[540,400][1000,800]" />
+    <node index="3" text="42%" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_value" class="android.widget.TextView" bounds="[40,900][500,1000]" />
+    <node index="4" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_device_storage_progress" class="android.widget.ProgressBar" bounds="[40,1020][500,1060]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'a pending-reinflation HOME is not primary-ready without the clock' \
+    sh -c '. "$1"; . "$2"; primary_home_is_ready "$3"' \
+    sh "$LIB" "$primary_home_ready_body" "$ready_missing_clock_xml"
+assert_true 'the same HOME is primary-ready once the real clock text returns' \
+    sh -c '. "$1"; . "$2"; primary_home_is_ready "$3"' \
+    sh "$LIB" "$primary_home_ready_body" "$ready_clock_xml"
+
+home_readiness_harness="$TMP_DIR/home-readiness-harness.sh"
+cat > "$home_readiness_harness" <<'EOF'
+set -eu
+. "$1"
+. "$2"
+. "$3"
+ARTIFACTS=$4
+MODE=$5
+MISSING_XML=$6
+CLOCK_XML=$7
+PKG=com.launchernos.dotwellabs.debug
+LAUNCHER_ACTIVITY=app.lawnchair.LawnchairLauncher
+HOME_ROLE=android.app.role.HOME
+COUNTER=$ARTIFACTS/capture-count
+ACTIVITIES=$ARTIFACTS/launcher-activities.txt
+mkdir -p "$ARTIFACTS"
+cat > "$ACTIVITIES" <<'DUMP'
+  * Task{abc #1 type=home}
+    mResumedActivity: ActivityRecord{abc u0 com.launchernos.dotwellabs.debug/app.lawnchair.LawnchairLauncher t1}
+    topResumedActivity=ActivityRecord{abc u0 com.launchernos.dotwellabs.debug/app.lawnchair.LawnchairLauncher t1}
+DUMP
+sleep() { :; }
+fail() { printf 'fail:%s\n' "$*" >&2; exit 1; }
+adb_cmd() {
+    case "$*" in
+        *'dumpsys activity activities'*) cat "$ACTIVITIES" ;;
+        *'dumpsys appwidget'*) printf 'appwidget dump\n' ;;
+        *'get-role-holders'*) printf '%s\n' "$PKG" ;;
+        *'resolve-activity'*) printf '%s/%s\n' "$PKG" "$LAUNCHER_ACTIVITY" ;;
+        *) : ;;
+    esac
+}
+capture_ui_xml() {
+    n=0
+    [ ! -f "$COUNTER" ] || n=$(cat "$COUNTER")
+    n=$((n + 1))
+    printf '%s\n' "$n" > "$COUNTER"
+    if [ "$MODE" = transient ] && [ "$n" -ge 5 ]; then
+        cp "$CLOCK_XML" "$ARTIFACTS/$1"
+    else
+        cp "$MISSING_XML" "$ARTIFACTS/$1"
+    fi
+    return 0
+}
+capture_screenshot_to() {
+    mkdir -p "$ARTIFACTS"
+    printf 'png:%s\n' "$1" > "$ARTIFACTS/$1"
+}
+verify_home_widgets() {
+    printf 'verified\n' > "$ARTIFACTS/home-widgets-verified.txt"
+}
+verify_nothing_home
+EOF
+
+ready_transient_dir="$TMP_DIR/ready-transient"
+if sh "$home_readiness_harness" "$LIB" "$primary_home_ready_body" \
+    "$home_verify_body" "$ready_transient_dir" transient \
+    "$ready_missing_clock_xml" "$ready_clock_xml"; then
+    pass 'readiness accepts a transiently pending clock that returns on a fresh capture'
+else
+    fail 'readiness accepts a transiently pending clock that returns on a fresh capture'
+fi
+assert_true 'the transient run records the no-clock then clock-ready transition' \
+    sh -c 'grep -Fq "attempt=1 " "$1/home-readiness-log.txt" &&
+        grep -Fq "clock=no" "$1/home-readiness-log.txt" &&
+        grep -Fq "attempt=5 " "$1/home-readiness-log.txt" &&
+        grep -Fq "clock=yes" "$1/home-readiness-log.txt"' sh "$ready_transient_dir"
+assert_true 'the transient run captures a fresh XML and PNG for every attempt' \
+    sh -c '[ -s "$1/home-readiness-1.xml" ] && [ -s "$1/home-readiness-1.png" ] &&
+        [ -s "$1/home-readiness-5.xml" ] && [ -s "$1/home-readiness-5.png" ] &&
+        ! cmp -s "$1/home-readiness-1.xml" "$1/home-readiness-5.xml"' sh "$ready_transient_dir"
+assert_true 'the transient run captures foreground and appwidget diagnostics per attempt' \
+    sh -c '[ -s "$1/activities-home-readiness-1.txt" ] &&
+        [ -s "$1/appwidget-home-readiness-1.txt" ] &&
+        [ -s "$1/activities-home-readiness-5.txt" ] &&
+        [ -s "$1/appwidget-home-readiness-5.txt" ]' sh "$ready_transient_dir"
+assert_true 'the transient run promotes the ready attempt to home.xml and home.png' \
+    sh -c 'cmp -s "$1/home.xml" "$1/home-readiness-5.xml" &&
+        cmp -s "$1/home.png" "$1/home-readiness-5.png"' sh "$ready_transient_dir"
+
+ready_permanent_dir="$TMP_DIR/ready-permanent"
+if sh "$home_readiness_harness" "$LIB" "$primary_home_ready_body" \
+    "$home_verify_body" "$ready_permanent_dir" permanent \
+    "$ready_missing_clock_xml" "$ready_clock_xml"; then
+    fail 'a permanently missing clock never becomes primary-ready'
+else
+    pass 'a permanently missing clock never becomes primary-ready'
+fi
+assert_true 'the permanent failure keeps polling beyond the old four captures' \
+    grep -Fq 'attempt=5 ' "$ready_permanent_dir/home-readiness-log.txt"
+assert_true 'the permanent failure retains a bounded failure summary' \
+    sh -c '[ -s "$1/home-readiness-failure.txt" ] &&
+        grep -Fq "bounded attempts" "$1/home-readiness-failure.txt"' \
+    sh "$ready_permanent_dir"
+assert_false 'the permanent failure never promotes a clock-less page to home.xml' \
+    test -s "$ready_permanent_dir/home.xml"
+assert_true 'the permanent failure never emits a success evidence file' \
+    test ! -e "$ready_permanent_dir/home-nothing.txt"
+
 assert_true 'the clean home capture requires the SYSTEM theme choice' \
     grep -Fq 'assert_settings_theme_choice_system' "$clean_home_body"
 assert_true 'the clean home capture proves widgets for each dark/light XML' \
