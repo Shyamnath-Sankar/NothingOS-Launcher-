@@ -385,9 +385,32 @@ accepted; the fresh transition does not itself prove a rendered frame. Back must
 Lock IDs unchanged; the post-Back logcat is retained as
 `live-wallpaper-logcat-after-back.txt` for the paused/destroyed transition. The engine removes
 queued callbacks and waits for an in-flight draw under one lock on hidden, surface destruction and
-engine destruction, and DEBUG transition lines include cumulative posted/drawn/pending/drawing
-counters (no per-frame logging). The system confirmation and the post-selection pause/resume draw
-gate are deliberately not automated here; they remain a separate runtime gate.
+engine destruction, and DEBUG transition lines include a stable per-engine identity token plus
+cumulative posted/drawn/pending/drawing counters (no per-frame logging). The visible transition is
+logged before the resume frame is posted, so its drawn count is exactly the state left by the
+preceding hide.
+
+After both static applies, `_cwg_apply_live_wallpaper` reopens the gallery, measures the same
+`Preview live wallpaper` action and requires the exact `Dot Field (Live)` title from
+`com.android.wallpaper.livepicker`. It measures a positive, fully visible `Set wallpaper` control
+inside the display above the measured navigation top and taps it once. Any normal system
+destination dialog is resolved only through the single exact measured `Home screen` control; a
+lock/lock-and-home destination, duplicate `Home screen` labels, a clipped control or a non-numeric
+navigation top fails closed with the captured XML/screenshot, never a blind confirm. The app never
+calls `setWallpaperComponent`, a shell wallpaper setter or a service binding. `dumpsys wallpaper`
+must then report `DotFieldWallpaperService` in the System wallpaper state, the Home ID must change
+and the existing `wallpaper_lock_preserved` rule must hold. Two timed HOME frames are retained
+without treating an unchanged frame as a failure.
+
+The runtime pause/resume gate uses real opaque activity transitions: it launches the device
+Settings, proves through `dumpsys activity` that Settings is the resumed activity, and requires a
+fresh post-baseline `visibility=false` with `pending=false drawing=false` for one engine token.
+After a bounded hidden interval the normal HOME key must resume that exact token with the exact
+same cumulative drawn count (no hidden drawing). Staying HOME and reopening Settings must produce a
+second hide for the same token with a strictly larger drawn count (resumed frames). Mixed engines,
+a missing resume, a pending/drawing hide, a stale pre-baseline visible line and a hidden-only slice
+all fail closed. Every phase keeps its read-only baseline, full and sliced logcat, dumpsys, XML and
+screenshots; the shared crash/ANR history is never cleared.
 
 ## Locked private-space validation
 

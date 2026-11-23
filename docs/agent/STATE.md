@@ -3,33 +3,72 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P6 original dot-field live wallpaper — CI206 measured-viewport harness fix only:
-  `_cwg_measure_control` now measures the at-limit known `android.widget.ScrollView` as a fallback
-  viewport when the strict `scrollable="true"` reading is absent. App/service/UI, permissions,
-  manifest, workflows and dependencies are untouched. Runtime preview/apply/pause gates remain open.**
+- current_phase: **P6 original dot-field live wallpaper — CI208 preview is the measured baseline.
+  This run adds the runtime apply/pause-resume completion gate (measured Set wallpaper, exact Home
+  screen destination only, dumpsys System-service + Home/Lock proof, per-engine DEBUG token and
+  opaque Settings hide/resume/hide draw-count proof). The new runtime gate is PENDING until a fresh
+  CI runs it; no apply/pause success is claimed yet. App/UI behaviour, permissions, manifest,
+  workflows and dependencies are untouched.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this STATE commit on top of `ef83036` (`fix(smoke): measure the at-limit known ScrollView
-  viewport`); earlier feature `8bbc25e`, guards `25398e2`, smoke `2f225c0`, phase fix `f659bbb`,
-  service lock `71a7c90`, logcat/frame correction `69b3541`, CI205 repair `ba53a24`.
-  The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded candidate
-  history and are not the fallback.
+- head: this STATE commit on top of `2eba66e` (`docs(agent): record CI206 at-limit viewport repair`);
+  CI208 preview baseline is `2eba66e`; earlier feature `8bbc25e`, guards `25398e2`, smoke `2f225c0`,
+  phase fix `f659bbb`, service lock `71a7c90`, logcat/frame correction `69b3541`, CI205 repair
+  `ba53a24`. The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded
+  candidate history and are not the fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI206 style and actual 96 tests in 16 suites with 0 failures/errors/skips passed and the
-  Play debug APK was built.** The runtime then stopped in `_cwg_measure_control` while measuring the
-  `Preview live wallpaper` control. No new CI result exists for this harness repair head.
-  Locally only bounded shell fixtures/source guards, `sh -n` and `git diff --check` were run (no
-  Gradle, no Android build, no emulator, no APK); do not claim the runtime preview passed.
-- next: a fresh normal CI must rebuild the Play debug APK and rerun the API 37 emulator smoke. The
-  smoke must prove the measured `Preview live wallpaper` action opens the real system picker, retain
-  preview pixels, keep the whole-run logcat for crash/ANR checks, and accept only a fresh
-  post-baseline `DotFieldWallpaper` `visibility=true` transition. Then decide whether to accept the
-  system confirmation on the disposable emulator to prove actual HOME dots, normal destination
-  selection, widget bindings, Lock preservation and the DEBUG pause/resume draw gate; otherwise leave
-  apply/pause explicitly pending rather than faking success. Release/hosting/merge stay paused.
-  Weather remains owned by the launcher and pending a separate phase; PrivateSpace,
-  settings-roundtrip, non-Play, large-screen and performance audits stay open.
+- ci: **CI208 passed the measured system preview: actual dot-field preview pixels, fresh logs with
+  34 drawn frames, Back leaving visibility=false pending=false drawing=false with surface/engine
+  destroy at the same 34, and unchanged Home/Lock IDs. 96 JUnit tests in 16 suites with 0 failures/
+  errors/skips, style and the Play debug APK were green.** The new runtime apply + pause/resume gate
+  in this head has **no CI result**; locally only bounded shell fixtures/source guards, `sh -n` and
+  `git diff --check` were run (no Gradle, no Android build, no emulator, no APK).
+- next: a fresh normal CI must rebuild the Play debug APK and prove the new runtime gate: exact
+  `Dot Field (Live)` preview from `com.android.wallpaper.livepicker`, measured Set wallpaper, a
+  measured exact `Home screen` destination (or direct apply), dumpsys
+  `DotFieldWallpaperService` in the System state with a changed Home ID and preserved Lock, then two
+  opaque Settings hides with a clean single-engine token resume at the exact hidden drawn count and
+  a larger drawn count on the second hide. If any of that is missing the smoke fails closed; do not
+  claim apply/pause success before inspecting CI. Release/hosting/merge stay paused. Weather remains
+  owned by the launcher and pending a separate phase; PrivateSpace, settings-roundtrip, non-Play,
+  large-screen and performance audits stay open.
 
-## done (this run — CI206 at-limit ScrollView measured viewport)
+## done (this run — runtime apply/pause-resume completion gate, PENDING CI)
+
+- **Measured system confirmation only, after the static applies:** `capture_wallpaper_gallery` keeps
+  `_cwg_preview_live_wallpaper` and both Pitch Black/Wireframe Torus applies, then calls the new
+  `_cwg_apply_live_wallpaper`. It reopens the gallery through the existing measured
+  `Preview live wallpaper` action and requires the exact `Dot Field (Live)` title from
+  `com.android.wallpaper.livepicker` (`live_wallpaper_preview_is_dotfield`). It measures a positive
+  `Set wallpaper` control fully inside the display above the measured navigation top and taps it
+  once. No coordinate is hardcoded (CI208's `386,1638,693,1773` is evidence, not an input).
+- **Destination fail-closed:** `live_wallpaper_destination_bounds` accepts only one exact, visible
+  `Home screen` control above the navigation top. `live_wallpaper_destination_ambiguous` fails the
+  run when a dialog offers only lock/lock-and-home options or duplicate Home screen labels. The
+  smoke never taps a lock destination and never calls `setWallpaperComponent`, a shell wallpaper
+  setter or a service binding. `dumpsys wallpaper` must report `DotFieldWallpaperService` in the
+  System wallpaper state, with a changed Home ID and `wallpaper_lock_preserved`.
+- **Real pause/resume, not a manual callback:** `_cwg_live_pause_resume` launches the opaque device
+  Settings, proves Settings is the resumed activity, and requires a fresh post-baseline
+  `visibility=false pending=false drawing=false` for one engine token. After a bounded hidden
+  interval the normal HOME key resumes the exact same token with the exact same cumulative drawn
+  count. Staying HOME and reopening Settings must hide the same token with a strictly larger drawn
+  count. Each phase keeps baseline/full/sliced logcat, dumpsys, XML and screenshots; the shared
+  crash history is never cleared and no global `logcat -c` is added.
+- **Per-engine identity token:** `DotFieldWallpaperService` now stamps DEBUG transition lines with a
+  stable `engine=<n>` token (`AtomicInteger`, no per-frame logging). The visible transition is
+  logged before the resume frame is posted so its drawn count is exactly the hidden state. Existing
+  `posted/drawn/pending/drawing` counters, the one-lock frame protocol and all gate/teardown fixes
+  are preserved; the guard now requires the token.
+- **Fixtures added:** hidden frame increase, no resume, mixed engine, pending/drawing true, stale
+  visible outside the phase boundary, lock-only/duplicate/clipped/ambiguous destinations,
+  non-numeric navigation top, System-vs-Lock service placement, and source wiring/order checks.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` all pass; `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped,
+  no local APK); `nothingui-polish-guard.sh` OK; `sh -n` clean on every edited script;
+  `git diff --check` clean. CI208 remains the preview-tested baseline; the runtime apply/pause gate
+  is **PENDING** and must not be claimed until CI evidence is inspected.
+
+## done (previous run — CI206 at-limit ScrollView measured viewport; CI208 then proved the preview)
 
 - **Exact CI206 runtime failure, from the captured XML/pixels and not guessed:** on attempt 1 the
   `Preview live wallpaper` parent button was `[84,1678][572,1804]`, which crosses `navigation_top=1794`;
