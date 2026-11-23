@@ -24,6 +24,8 @@ import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.view.SurfaceHolder
 import app.lawnchair.BuildConfig
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Original monochrome dot-field live wallpaper.
@@ -41,20 +43,21 @@ class DotFieldWallpaperService : WallpaperService() {
     private inner class DotFieldEngine : Engine() {
 
         private val policy = DotFieldFramePolicy()
-        private val policyLock = Any()
+        private val lock = ReentrantLock()
+        private val idle = lock.newCondition()
         private val renderer = DotFieldRenderer()
         private val startNanos = System.nanoTime()
 
         private var workerThread: HandlerThread? = null
-
-        @Volatile
         private var worker: Handler? = null
-
-        @Volatile
         private var surfaceHolder: SurfaceHolder? = null
-
-        @Volatile
         private var destroyed = false
+        private var framePending = false
+        private var drawing = false
+        private var postedFrames = 0L
+        private var drawnFrames = 0L
+        private var activeHolder: SurfaceHolder? = null
+        private var activeGeometry: DotFieldGeometry? = null
 
         private val frameRunnable = object : Runnable {
             override fun run() {
@@ -66,113 +69,180 @@ class DotFieldWallpaperService : WallpaperService() {
             super.onCreate(surfaceHolder)
             val thread = HandlerThread("dot-field-wallpaper")
             thread.start()
-            workerThread = thread
-            worker = Handler(thread.looper)
+            lock.withLock {
+                workerThread = thread
+                worker = Handler(thread.looper)
+            }
         }
 
         override fun onVisibilityChanged(visible: Boolean) {
             super.onVisibilityChanged(visible)
-            synchronized(policyLock) { policy.onVisibilityChanged(visible) }
-            logTransition(if (visible) "visibility=true" else "visibility=false")
+            lock.withLock { policy.onVisibilityChanged(visible) }
             if (visible) {
                 requestFrame(immediate = true)
+                logTransition("visibility=true")
             } else {
-                stopFrames()
+                cancelAndAwaitIdle()
+                logTransition("visibility=false")
             }
         }
 
         override fun onSurfaceCreated(holder: SurfaceHolder) {
             super.onSurfaceCreated(holder)
-            surfaceHolder = holder
             val frame = holder.surfaceFrame
-            synchronized(policyLock) { policy.onSurfaceCreated(frame.width(), frame.height()) }
-            logTransition("surface=created ${frame.width()}x${frame.height()}")
+            lock.withLock {
+                surfaceHolder = holder
+                policy.onSurfaceCreated(frame.width(), frame.height())
+            }
             requestFrame(immediate = true)
+            logTransition("surface=created ${frame.width()}x${frame.height()}")
         }
 
         override fun onSurfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
             super.onSurfaceChanged(holder, format, width, height)
-            surfaceHolder = holder
-            synchronized(policyLock) { policy.onSurfaceChanged(width, height) }
-            logTransition("surface=changed ${width}x$height")
+            lock.withLock {
+                surfaceHolder = holder
+                policy.onSurfaceChanged(width, height)
+            }
             requestFrame(immediate = true)
+            logTransition("surface=changed ${width}x$height")
         }
 
         override fun onSurfaceDestroyed(holder: SurfaceHolder) {
-            synchronized(policyLock) { policy.onSurfaceDestroyed() }
-            surfaceHolder = null
-            stopFrames()
+            lock.withLock { policy.onSurfaceDestroyed() }
+            cancelAndAwaitIdle()
+            lock.withLock { surfaceHolder = null }
             logTransition("surface=destroyed")
             super.onSurfaceDestroyed(holder)
         }
 
         override fun onDestroy() {
-            destroyed = true
-            synchronized(policyLock) { policy.onEngineDestroyed() }
-            surfaceHolder = null
-            stopFrames()
-            val thread = workerThread
-            workerThread = null
-            worker = null
+            lock.withLock {
+                destroyed = true
+                policy.onEngineDestroyed()
+            }
+            cancelAndAwaitIdle()
+            val thread = lock.withLock {
+                surfaceHolder = null
+                val current = workerThread
+                workerThread = null
+                worker = null
+                current
+            }
             thread?.quitSafely()
             logTransition("engine=destroyed")
             super.onDestroy()
         }
 
+        /**
+         * Gate and enqueue are one atomic step under [lock]. A teardown removes
+         * queued callbacks under the same lock, so a frame can never be posted
+         * after hidden/destroy removed the pending callbacks.
+         */
         private fun requestFrame(immediate: Boolean) {
-            if (destroyed) return
-            val handler = worker ?: return
-            val canDraw = synchronized(policyLock) { policy.canDraw() }
-            val delay = synchronized(policyLock) { policy.frameDelayMs() }
-            if (!canDraw) return
-            handler.removeCallbacks(frameRunnable)
-            if (immediate) {
-                handler.post(frameRunnable)
-            } else {
-                handler.postDelayed(frameRunnable, delay)
+            lock.withLock {
+                if (destroyed) return
+                val handler = worker ?: return
+                if (!policy.canDraw()) return
+                if (framePending || drawing) return
+                framePending = true
+                postedFrames++
+                if (immediate) {
+                    handler.post(frameRunnable)
+                } else {
+                    handler.postDelayed(frameRunnable, policy.frameDelayMs())
+                }
             }
         }
 
-        private fun stopFrames() {
-            worker?.removeCallbacksAndMessages(null)
+        /**
+         * Remove any queued frame and wait for an in-flight draw to finish
+         * before returning. await() releases the lock, so the worker can
+         * publish its completion; no join happens while the lock is held.
+         */
+        private fun cancelAndAwaitIdle() {
+            lock.withLock {
+                worker?.removeCallbacksAndMessages(null)
+                framePending = false
+                var interrupted = false
+                while (drawing) {
+                    try {
+                        idle.await()
+                    } catch (interruptedError: InterruptedException) {
+                        interrupted = true
+                    }
+                }
+                if (interrupted) Thread.currentThread().interrupt()
+            }
         }
 
         private fun drawFrame() {
-            if (destroyed) return
-            val holder = surfaceHolder ?: return
-            val geometry = synchronized(policyLock) {
-                if (!policy.canDraw()) return
-                policy.geometry
-            } ?: return
-            if (!holder.surface.isValid) {
-                requestFrame(immediate = false)
+            if (!beginFrame()) return
+            val holder = activeHolder
+            val geometry = activeGeometry
+            if (holder == null || geometry == null) {
+                finishFrame(drew = false)
                 return
             }
-            val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L
-            val canvas = try {
-                holder.lockCanvas()
-            } catch (error: RuntimeException) {
-                Log.w(TAG, "could not lock the wallpaper surface", error)
-                null
-            }
-            if (canvas != null) {
-                try {
-                    renderer.draw(canvas, elapsedMs, geometry)
-                } finally {
-                    try {
-                        holder.unlockCanvasAndPost(canvas)
+            var drew = false
+            try {
+                if (holder.surface.isValid) {
+                    val elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L
+                    val canvas = try {
+                        holder.lockCanvas()
                     } catch (error: RuntimeException) {
-                        Log.w(TAG, "could not post the wallpaper frame", error)
+                        Log.w(TAG, "could not lock the wallpaper surface", error)
+                        null
+                    }
+                    if (canvas != null) {
+                        try {
+                            renderer.draw(canvas, elapsedMs, geometry)
+                        } finally {
+                            try {
+                                holder.unlockCanvasAndPost(canvas)
+                            } catch (error: RuntimeException) {
+                                Log.w(TAG, "could not post the wallpaper frame", error)
+                            }
+                        }
+                        drew = true
                     }
                 }
+            } finally {
+                finishFrame(drew)
             }
-            if (!destroyed) requestFrame(immediate = false)
+            requestFrame(immediate = false)
+        }
+
+        private fun beginFrame(): Boolean {
+            lock.withLock {
+                if (!framePending) return false
+                framePending = false
+                if (destroyed || !policy.canDraw()) return false
+                val holder = surfaceHolder ?: return false
+                val geometry = policy.geometry ?: return false
+                activeHolder = holder
+                activeGeometry = geometry
+                drawing = true
+                return true
+            }
+        }
+
+        private fun finishFrame(drew: Boolean) {
+            lock.withLock {
+                if (drew) drawnFrames++
+                activeHolder = null
+                activeGeometry = null
+                drawing = false
+                idle.signalAll()
+            }
         }
 
         private fun logTransition(transition: String) {
-            if (BuildConfig.DEBUG) {
-                Log.d(TAG, transition)
+            if (!BuildConfig.DEBUG) return
+            val counters = lock.withLock {
+                "posted=$postedFrames drawn=$drawnFrames pending=$framePending drawing=$drawing"
             }
+            Log.d(TAG, "$transition $counters")
         }
 
         override fun onSurfaceRedrawNeeded(holder: SurfaceHolder) {
