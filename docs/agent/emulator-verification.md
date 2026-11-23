@@ -38,6 +38,17 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   (read-only), captures `clean-home-dark.xml`/`.png` and `clean-home-light.xml`/`.png` under system
   night `yes`/`no`, runs the same launcher-owned widget-id and child-value proof for each capture,
   restores the previous night mode, and returns HOME
+- opens the visible `Weather settings` entry on the Home screen preferences through the measured
+  `Icon size and home screen` dashboard row and exercises the real Compose Weather screen. It proves
+  a fresh store is off with `Save and enable` disabled; invalid coordinates and valid synthetic
+  `Emulator test` coordinates without consent cannot enable; a force-stop keeps a disabled draft
+  unsaved; consent plus `60.0000,10.0000` writes only the `no_backup/dotwel-weather-private` store;
+  a restart reloads the label, coordinates and enabled state; and Disable removes a seeded synthetic
+  `.weather` cache fixture and stays disabled after another restart. It dismisses a shown IME before
+  measuring, scrolls only inside the measured settings container, and keeps `weather-*.xml`/`.png`
+  plus app-private consent JSON evidence. It never opens a provider link, makes a network/API call,
+  requests a location permission, writes a workspace item or seeds launcher data. The seeded
+  `.weather` file is a synthetic cache-clear fixture, not forecast data
 - then exercises the three real device-card Settings pills (`nothingui_device_wifi`,
   `nothingui_device_sound`, `nothingui_device_display`) by the bounds of each measured child, not
   the card centre. For each pill it resolves the expected destination from the installed platform

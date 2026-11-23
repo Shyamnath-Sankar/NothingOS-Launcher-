@@ -3979,6 +3979,28 @@ assert_eq 'the weather consent checkbox is the only unique checkable control' \
     '40 560 1040 640' "$(ui_unique_checkable_bounds "$weather_ui_xml")"
 assert_eq 'the weather consent checkbox reports its unchecked state' \
     'false' "$(ui_unique_checkable_checked "$weather_ui_xml")"
+
+weather_checkbox_pair_xml="$TMP_DIR/weather-checkbox-pair.xml"
+cat > "$weather_checkbox_pair_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" checkable="true" checked="true" bounds="[40,560][1040,640]">
+    <node index="0" checkable="true" checked="true" bounds="[40,570][120,630]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'agreeing toggleable row and inner checkbox use the larger row bounds' \
+    '40 560 1040 640' "$(ui_unique_checkable_bounds "$weather_checkbox_pair_xml")"
+assert_eq 'agreeing toggleable row and inner checkbox report the same state' \
+    'true' "$(ui_unique_checkable_checked "$weather_checkbox_pair_xml")"
+weather_checkbox_mixed_xml="$TMP_DIR/weather-checkbox-mixed.xml"
+cat > "$weather_checkbox_mixed_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" checkable="true" checked="true" bounds="[40,560][1040,640]" />
+  <node index="1" checkable="true" checked="false" bounds="[40,570][120,630]" />
+</hierarchy>
+EOF
+assert_eq 'mixed checkable states are ambiguous and fail closed' \
+    '' "$(ui_unique_checkable_state "$weather_checkbox_mixed_xml")"
 assert_eq 'a disabled button ancestor disables its text label' \
     'false' "$(ui_unique_label_enabled "$weather_ui_xml" 'Save and enable')"
 
@@ -4058,6 +4080,76 @@ printf '%s\n' '{"version":1,"enabled":true,"generation":4,"label":null,"latitude
     > "$weather_null_enabled_json"
 assert_eq 'an enabled record without a stored location fails closed' \
     'malformed' "$(weather_consent_state "$weather_null_enabled_json")"
+
+# --- static regression on the weather runtime gate --------------------------
+
+weather_body="$TMP_DIR/capture_weather_settings.sh"
+sed -n '/^# --- Weather settings runtime gate/,/^capture_drawer_attempt/p' \
+    "$SMOKE" > "$weather_body"
+[ -s "$weather_body" ] || fail 'the weather gate body is present'
+
+assert_true 'the weather gate opens the real PreferenceActivity' \
+    grep -Fq -- '-n "$PKG/$PREFERENCES_ACTIVITY"' "$weather_body"
+assert_true 'the weather gate measures the Home screen preferences entry' \
+    grep -Fq "clickable 'Icon size and home screen'" "$weather_body"
+assert_true 'the weather gate taps the visible Weather settings entry' \
+    grep -Fq "clickable 'Weather settings'" "$weather_body"
+assert_true 'the weather gate measures all three real EditText fields' \
+    grep -Fq '_weather_measure_edit_text 3' "$weather_body"
+assert_true 'the weather gate uses the measured consent checkbox state' \
+    grep -Fq '_weather_measure_checkbox' "$weather_body"
+assert_true 'the weather gate dismisses a shown IME instead of guessing' \
+    grep -Fq '_weather_hide_ime' "$weather_body"
+assert_true 'the weather gate proves Back returns to the Home screen preferences' \
+    grep -Fq '_weather_back_to_home_screen' "$weather_body"
+assert_true 'the weather gate reads the app-private consent store' \
+    grep -Fq 'WEATHER_CONSENT_REL' "$weather_body"
+assert_true 'the weather gate reads the app-private cache path' \
+    grep -Fq 'WEATHER_CACHE_REL' "$weather_body"
+assert_true 'the weather gate derives the production cache filename' \
+    grep -Fq 'weather_cache_filename' "$weather_body"
+assert_true 'the weather gate seeds a synthetic cache fixture only' \
+    grep -Fq 'synthetic fixture for the cache-clear gate' "$weather_body"
+assert_true 'the weather gate force-stops and relaunches for persistence' \
+    grep -Fq '_weather_restart' "$weather_body"
+assert_true 'the weather gate requires the fresh Enable control to be disabled' \
+    grep -Fq "= false ] ||" "$weather_body"
+assert_true 'the weather gate checks the saved synthetic label' \
+    grep -Fq '|Emulator test|60.0000|10.0000' "$weather_body"
+assert_true 'the weather gate checks the disabled final state' \
+    grep -Fq '_cws_final' "$weather_body"
+assert_true 'the weather gate retains complete screen PNGs' \
+    grep -Fq 'weather-fresh.png' "$weather_body"
+assert_true 'the weather gate retains enabled and disabled PNGs' \
+    grep -Fq 'weather-enabled.png' "$weather_body"
+assert_true 'the weather gate checks the no-backup backed-up file boundary' \
+    grep -Fq 'weather-backed-up-prefs.xml' "$weather_body"
+assert_false 'the weather gate never guesses a tap coordinate' \
+    grep -Eq 'input tap [0-9]' "$weather_body"
+assert_false 'the weather gate never clears app data or uninstalls' \
+    grep -Eq 'pm clear|adb .*uninstall|run-as "\$PKG" rm -rf' "$weather_body"
+assert_false 'the weather gate never opens a browser or provider link' \
+    grep -Eq 'android.intent.action.VIEW|https?://|Terms of Service|ProviderLink' "$weather_body"
+assert_false 'the weather gate never performs a network request' \
+    grep -Eq 'curl|wget|OkHttp|MetWeatherRepository' "$weather_body"
+assert_false 'the weather gate never requests a location permission' \
+    grep -Eq 'ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION' "$weather_body"
+assert_false 'the weather gate never binds a widget or edits the workspace' \
+    grep -Eq 'bindAppWidget|LauncherSettings|content://|sqlite|launcher.db' "$weather_body"
+assert_false 'the weather gate never writes a preference directly' \
+    grep -Eq 'settings put|putString|putBoolean|\.apply\(\)|commit\(\)' "$weather_body"
+
+weather_call_line=$(grep -n '^capture_weather_settings$' "$SMOKE" | sed -n '1s/:.*//p')
+customize_call_line=$(grep -n '^capture_customization_settings$' "$SMOKE" | sed -n '1s/:.*//p')
+device_shortcuts_line=$(grep -n '^exercise_device_settings_shortcuts$' "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$weather_call_line" ] && [ -n "$customize_call_line" ] &&
+    [ -n "$device_shortcuts_line" ] &&
+    [ "$customize_call_line" -lt "$weather_call_line" ] &&
+    [ "$weather_call_line" -lt "$device_shortcuts_line" ]; then
+    pass 'the weather gate runs after the customization gate and before device shortcuts'
+else
+    fail 'the weather gate runs after the customization gate and before device shortcuts'
+fi
 
 # --- static regression on the customization runtime gate --------------------
 

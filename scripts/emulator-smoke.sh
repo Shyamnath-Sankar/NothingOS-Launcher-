@@ -98,6 +98,8 @@ LAUNCHER_ACTIVITY=app.lawnchair.LawnchairLauncher
 PREFERENCES_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
 THEME_SAMPLE_ACTIVITY=$PREFERENCES_ACTIVITY
 THEME_SAMPLE_EXTRA=app.lawnchair.ui.preferences.THEME_SAMPLE
+WEATHER_CONSENT_REL=no_backup/dotwel-weather-private/consent/consent-state.json
+WEATHER_CACHE_REL=no_backup/dotwel-weather-private/cache
 
 if [ -z "$ARTIFACTS" ]; then
     ARTIFACTS="$ROOT/build/emulator-smoke/$(date +%Y%m%d-%H%M%S)"
@@ -1790,6 +1792,733 @@ read_wm_size() (
         sed -n 's/.*: \([0-9][0-9]*\)x\([0-9][0-9]*\).*/\1 \2/p' |
         sed -n '$p'
 )
+
+# --- Weather settings runtime gate -----------------------------------------
+# These helpers only drive the real Compose WeatherPreferences screen and the
+# app-private store it writes. They never open a provider link, call the network,
+# request a location permission, write a preference directly or seed workspace
+# state. A synthetic manual location is typed like a user would type it.
+
+_weather_snapshot() {
+    _ws_tag=$1
+    capture_ui_xml "weather-$_ws_tag.xml" ||
+        fail "weather $_ws_tag UI XML capture failed"
+    capture_screenshot_to "weather-$_ws_tag.png"
+    [ -s "$ARTIFACTS/weather-$_ws_tag.png" ] ||
+        fail "weather $_ws_tag screenshot capture failed"
+}
+
+_weather_capture_consent() {
+    _wcc_tag=$1
+    _wcc_out="$ARTIFACTS/weather-consent-$_wcc_tag.json"
+    _wcc_err="$ARTIFACTS/weather-consent-$_wcc_tag.err"
+    rm -f "$_wcc_out" "$_wcc_err"
+    if adb_cmd shell run-as "$PKG" sh -c \
+        "test -f '$WEATHER_CONSENT_REL'" > /dev/null 2>&1; then
+        if ! ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" cat \
+            "$WEATHER_CONSENT_REL" > "$_wcc_out" 2> "$_wcc_err"; then
+            _wcc_state=malformed
+        else
+            _wcc_state=$(weather_consent_state "$_wcc_out")
+        fi
+    else
+        _wcc_state=missing
+    fi
+    printf '%s\n' "$_wcc_state" > "$ARTIFACTS/weather-consent-$_wcc_tag.state"
+    printf '%s\n' "$_wcc_state"
+}
+
+_weather_cache_exists() {
+    adb_cmd shell run-as "$PKG" sh -c "test -f '$1'" > /dev/null 2>&1
+}
+
+_weather_seed_cache() {
+    _wsc_rel=$1
+    printf '%s\n' \
+        'v1' \
+        '60.0000,10.0000' \
+        '2026-11-23T00:00:00Z' \
+        '-' \
+        '-' \
+        '-' \
+        'synthetic fixture for the cache-clear gate; not weather data' |
+        ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" sh -c \
+            "mkdir -p '$WEATHER_CACHE_REL'; cat > '$_wsc_rel'" \
+            > "$ARTIFACTS/weather-cache-seed.txt" 2>&1 || return 1
+    _weather_cache_exists "$_wsc_rel"
+}
+
+_weather_viewport() {
+    _wv_xml=$1
+    _wv_vp=$(ui_scroll_container_bounds "$_wv_xml" "$_cws_nav_top")
+    if [ -z "$_wv_vp" ]; then
+        _wv_vp=$(ui_known_scroll_container_bounds \
+            "$_wv_xml" "$_cws_nav_top" "$PKG")
+    fi
+    if [ -z "$_wv_vp" ]; then
+        _wv_root=$(ui_root_bounds "$_wv_xml")
+        if [ -n "$_wv_root" ]; then
+            set -- $_wv_root
+            _wv_y2=$4
+            if [ "$_cws_nav_top" -gt 0 ] && [ "$_wv_y2" -gt "$_cws_nav_top" ]; then
+                _wv_y2=$_cws_nav_top
+            fi
+            if [ "$_wv_y2" -gt "$2" ]; then
+                _wv_vp="$1 $2 $3 $_wv_y2"
+            fi
+        fi
+    fi
+    [ -n "$_wv_vp" ] || return 1
+    printf '%s\n' "$_wv_vp"
+}
+
+_weather_measure_control() {
+    _wmc_kind=$1
+    _wmc_label=$2
+    _wmc_tag=$3
+    _wmc_max=${4:-6}
+    _wmc_attempt=0
+    _wmc_log="$ARTIFACTS/weather-measure-$_wmc_tag.txt"
+    : > "$_wmc_log"
+    _weather_measured=
+    _weather_visible_xml=
+    while [ "$_wmc_attempt" -lt "$_wmc_max" ]; do
+        _wmc_attempt=$((_wmc_attempt + 1))
+        _wmc_xml="$ARTIFACTS/weather-measure-$_wmc_tag-$_wmc_attempt.xml"
+        capture_ui_xml "weather-measure-$_wmc_tag-$_wmc_attempt.xml" || return 1
+        _wmc_viewport=$(_weather_viewport "$_wmc_xml") || _wmc_viewport=
+        _wmc_bounds=
+        if [ -n "$_wmc_viewport" ]; then
+            case "$_wmc_kind" in
+                clickable)
+                    _wmc_bounds=$(ui_unique_clickable_label_bounds \
+                        "$_wmc_xml" "$_wmc_label")
+                    ;;
+                label)
+                    _wmc_bounds=$(ui_unique_label_bounds \
+                        "$_wmc_xml" "$_wmc_label")
+                    ;;
+                *)
+                    _wmc_bounds=
+                    ;;
+            esac
+            if [ -n "$_wmc_bounds" ] &&
+                ! ui_bounds_within "$_wmc_bounds" "$_wmc_viewport"; then
+                _wmc_bounds=
+            fi
+        fi
+        printf 'attempt=%s kind=%s label=%s viewport=%s bounds=%s\n' \
+            "$_wmc_attempt" "$_wmc_kind" "$_wmc_label" \
+            "${_wmc_viewport:-none}" "${_wmc_bounds:-none}" >> "$_wmc_log"
+        if [ -n "$_wmc_bounds" ]; then
+            _weather_measured=$_wmc_bounds
+            _weather_visible_xml=$_wmc_xml
+            cp "$_wmc_xml" "$ARTIFACTS/weather-measure-$_wmc_tag-visible.xml"
+            capture_screenshot_to "weather-measure-$_wmc_tag-visible.png"
+            return 0
+        fi
+        _wmc_target=$(settings_scroll_target "$_wmc_xml" "$_cws_nav_top") ||
+            return 1
+        set -- $_wmc_target
+        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+            "$_wmc_attempt" "$1" "$2" "$1" "$3" >> "$_wmc_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wmc_log" 2>&1 ||
+            return 1
+        sleep 1
+    done
+    return 1
+}
+
+_weather_measure_edit_text() {
+    _wme_index=$1
+    _wme_tag=$2
+    _wme_max=${3:-6}
+    _wme_attempt=0
+    _wme_log="$ARTIFACTS/weather-measure-$_wme_tag.txt"
+    : > "$_wme_log"
+    _weather_measured=
+    _weather_visible_xml=
+    while [ "$_wme_attempt" -lt "$_wme_max" ]; do
+        _wme_attempt=$((_wme_attempt + 1))
+        _wme_xml="$ARTIFACTS/weather-measure-$_wme_tag-$_wme_attempt.xml"
+        capture_ui_xml "weather-measure-$_wme_tag-$_wme_attempt.xml" || return 1
+        _wme_viewport=$(_weather_viewport "$_wme_xml") || _wme_viewport=
+        _wme_bounds=
+        if [ -n "$_wme_viewport" ]; then
+            _wme_all=$(ui_edit_text_bounds "$_wme_xml")
+            _wme_bounds=$(printf '%s\n' "$_wme_all" |
+                sed -n "${_wme_index}p")
+            if [ -n "$_wme_bounds" ] &&
+                ! ui_bounds_within "$_wme_bounds" "$_wme_viewport"; then
+                _wme_bounds=
+            fi
+        fi
+        printf 'attempt=%s index=%s viewport=%s bounds=%s\n' \
+            "$_wme_attempt" "$_wme_index" "${_wme_viewport:-none}" \
+            "${_wme_bounds:-none}" >> "$_wme_log"
+        if [ -n "$_wme_bounds" ]; then
+            _weather_measured=$_wme_bounds
+            _weather_visible_xml=$_wme_xml
+            cp "$_wme_xml" "$ARTIFACTS/weather-measure-$_wme_tag-visible.xml"
+            capture_screenshot_to "weather-measure-$_wme_tag-visible.png"
+            return 0
+        fi
+        _wme_target=$(settings_scroll_target "$_wme_xml" "$_cws_nav_top") ||
+            return 1
+        set -- $_wme_target
+        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+            "$_wme_attempt" "$1" "$2" "$1" "$3" >> "$_wme_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wme_log" 2>&1 ||
+            return 1
+        sleep 1
+    done
+    return 1
+}
+
+_weather_measure_checkbox() {
+    _wmk_tag=$1
+    _wmk_max=${2:-6}
+    _wmk_attempt=0
+    _wmk_log="$ARTIFACTS/weather-measure-$_wmk_tag.txt"
+    : > "$_wmk_log"
+    _weather_measured=
+    _weather_visible_xml=
+    while [ "$_wmk_attempt" -lt "$_wmk_max" ]; do
+        _wmk_attempt=$((_wmk_attempt + 1))
+        _wmk_xml="$ARTIFACTS/weather-measure-$_wmk_tag-$_wmk_attempt.xml"
+        capture_ui_xml "weather-measure-$_wmk_tag-$_wmk_attempt.xml" || return 1
+        _wmk_viewport=$(_weather_viewport "$_wmk_xml") || _wmk_viewport=
+        _wmk_state=
+        if [ -n "$_wmk_viewport" ]; then
+            _wmk_state=$(ui_unique_checkable_state "$_wmk_xml")
+            if [ -n "$_wmk_state" ] &&
+                ! ui_bounds_within "${_wmk_state%|*}" "$_wmk_viewport"; then
+                _wmk_state=
+            fi
+        fi
+        printf 'attempt=%s viewport=%s state=%s\n' \
+            "$_wmk_attempt" "${_wmk_viewport:-none}" "${_wmk_state:-none}" \
+            >> "$_wmk_log"
+        if [ -n "$_wmk_state" ]; then
+            _weather_measured=$_wmk_state
+            _weather_visible_xml=$_wmk_xml
+            cp "$_wmk_xml" "$ARTIFACTS/weather-measure-$_wmk_tag-visible.xml"
+            capture_screenshot_to "weather-measure-$_wmk_tag-visible.png"
+            return 0
+        fi
+        _wmk_target=$(settings_scroll_target "$_wmk_xml" "$_cws_nav_top") ||
+            return 1
+        set -- $_wmk_target
+        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+            "$_wmk_attempt" "$1" "$2" "$1" "$3" >> "$_wmk_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wmk_log" 2>&1 ||
+            return 1
+        sleep 1
+    done
+    return 1
+}
+
+_weather_hide_ime() {
+    _whi_tag=$1
+    _whi_dump="$ARTIFACTS/weather-ime-$_whi_tag.txt"
+    _whi_attempt=0
+    while [ "$_whi_attempt" -lt 3 ]; do
+        ADB_TIMEOUT=30 adb_cmd shell dumpsys input_method > "$_whi_dump" 2>&1 ||
+            fail "could not read the IME state for weather $_whi_tag"
+        if ! ime_is_shown "$_whi_dump"; then
+            return 0
+        fi
+        _whi_attempt=$((_whi_attempt + 1))
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            > "$ARTIFACTS/weather-ime-back-$_whi_tag-$_whi_attempt.txt" 2>&1 ||
+            fail "could not dismiss the weather keyboard ($_whi_tag)"
+        sleep 1
+    done
+    ADB_TIMEOUT=30 adb_cmd shell dumpsys input_method > "$_whi_dump" 2>&1 || true
+    if ime_is_shown "$_whi_dump"; then
+        fail "the weather keyboard stayed visible and could cover controls ($_whi_tag)"
+    fi
+}
+
+_weather_type() {
+    _wty_bounds=$1
+    _wty_text=$2
+    _wty_tag=$3
+    tap_center_of_bounds "$_wty_bounds" ||
+        fail "could not focus the weather field $_wty_tag"
+    sleep 1
+    adb_cmd shell input text "$_wty_text" \
+        > "$ARTIFACTS/weather-input-$_wty_tag.txt" 2>&1 ||
+        fail "could not type into the weather field $_wty_tag"
+    sleep 1
+    _weather_hide_ime "$_wty_tag"
+    sleep 1
+}
+
+_weather_set_checkbox() {
+    _wsc_desired=$1
+    _wsc_tag=$2
+    _weather_measure_checkbox "$_wsc_tag-before" ||
+        fail "could not measure the weather consent checkbox ($_wsc_tag)"
+    _wsc_bounds=${_weather_measured%|*}
+    _wsc_checked=${_weather_measured##*|}
+    printf 'before=%s bounds=%s\n' "$_wsc_checked" "$_wsc_bounds" \
+        > "$ARTIFACTS/weather-checkbox-$_wsc_tag.txt"
+    if [ "$_wsc_checked" != "$_wsc_desired" ]; then
+        tap_center_of_bounds "$_wsc_bounds" ||
+            fail "could not toggle the weather consent checkbox ($_wsc_tag)"
+        sleep 1
+        _weather_measure_checkbox "$_wsc_tag-after" ||
+            fail "could not re-measure the weather consent checkbox ($_wsc_tag)"
+        _wsc_checked=${_weather_measured##*|}
+        printf 'after=%s bounds=%s\n' \
+            "$_wsc_checked" "${_weather_measured%|*}" \
+            >> "$ARTIFACTS/weather-checkbox-$_wsc_tag.txt"
+    fi
+    [ "$_wsc_checked" = "$_wsc_desired" ] ||
+        fail "the weather consent checkbox is '$_wsc_checked', expected '$_wsc_desired'"
+}
+
+_weather_wait_screen() {
+    _wws_tag=$1
+    _wws_attempt=1
+    _weather_screen_xml=
+    while [ "$_wws_attempt" -le 10 ]; do
+        _wws_xml="$ARTIFACTS/weather-$_wws_tag-screen-$_wws_attempt.xml"
+        if capture_ui_xml "weather-$_wws_tag-screen-$_wws_attempt.xml" &&
+            grep -Fq 'Before you enable' "$_wws_xml" &&
+            {
+                grep -Fq 'Save and enable' "$_wws_xml" ||
+                    grep -Fq 'Disable and clear location' "$_wws_xml";
+            }; then
+            _weather_screen_xml=$_wws_xml
+            return 0
+        fi
+        _wws_attempt=$((_wws_attempt + 1))
+        sleep 1
+    done
+    return 1
+}
+
+_weather_enter_from_home_screen() {
+    _weh_tag=$1
+    _weh_attempt=1
+    while [ "$_weh_attempt" -le 8 ]; do
+        _weh_xml="$ARTIFACTS/weather-$_weh_tag-homescreen-$_weh_attempt.xml"
+        if capture_ui_xml "weather-$_weh_tag-homescreen-$_weh_attempt.xml" &&
+            [ -n "$(ui_unique_clickable_label_bounds "$_weh_xml" 'Weather settings')" ]; then
+            break
+        fi
+        _weh_attempt=$((_weh_attempt + 1))
+        sleep 1
+    done
+    [ "$_weh_attempt" -le 8 ] ||
+        fail "the Home screen preferences never exposed the Weather settings entry ($_weh_tag)"
+    _weather_measure_control clickable 'Weather settings' "$_weh_tag-entry" 4 ||
+        fail "could not measure the visible Weather settings entry ($_weh_tag)"
+    _weh_bounds=$_weather_measured
+    tap_center_of_bounds "$_weh_bounds" ||
+        fail "could not tap the measured Weather settings entry ($_weh_tag)"
+    sleep 1
+    _weather_wait_screen "$_weh_tag" ||
+        fail "the tapped Weather settings entry did not open the real Weather screen ($_weh_tag)"
+}
+
+_weather_open_weather() {
+    _wow_tag=$1
+    if ! _wow_out=$(adb_cmd shell am start -W -f 0x18000000 \
+        -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_wow_out" > "$ARTIFACTS/weather-$_wow_tag-launch.txt"
+        fail "could not open the real Preferences activity for weather ($_wow_tag)"
+    fi
+    printf '%s\n' "$_wow_out" > "$ARTIFACTS/weather-$_wow_tag-launch.txt"
+    case "$_wow_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "the Preferences launch for weather reported an error ($_wow_tag)"
+            ;;
+    esac
+    printf '%s\n' "$_wow_out" | grep -q 'Status: ok' ||
+        fail "the Preferences launch for weather did not report Status: ok ($_wow_tag)"
+    sleep 2
+    _wow_dash_attempt=1
+    _wow_dash_xml=
+    while [ "$_wow_dash_attempt" -le 8 ]; do
+        _wow_candidate="$ARTIFACTS/weather-$_wow_tag-dashboard-$_wow_dash_attempt.xml"
+        if capture_ui_xml "weather-$_wow_tag-dashboard-$_wow_dash_attempt.xml" &&
+            [ -n "$(ui_unique_label_bounds "$_wow_candidate" 'Customize launcher')" ] &&
+            [ -n "$(ui_unique_clickable_label_bounds "$_wow_candidate" 'Icon size and home screen')" ]; then
+            _wow_dash_xml=$_wow_candidate
+            break
+        fi
+        _wow_dash_attempt=$((_wow_dash_attempt + 1))
+        sleep 1
+    done
+    [ -n "$_wow_dash_xml" ] ||
+        fail "the real Preferences dashboard never exposed the Home screen entry ($_wow_tag)"
+    _weather_measure_control clickable 'Icon size and home screen' \
+        "$_wow_tag-dashboard" 4 ||
+        fail "could not measure the Home screen preferences entry ($_wow_tag)"
+    _wow_category=$_weather_measured
+    tap_center_of_bounds "$_wow_category" ||
+        fail "could not tap the measured Home screen preferences entry ($_wow_tag)"
+    sleep 1
+    _weather_enter_from_home_screen "$_wow_tag"
+}
+
+_weather_back_to_home_screen() {
+    _wbh_tag=$1
+    adb_cmd shell input keyevent KEYCODE_BACK \
+        > "$ARTIFACTS/weather-$_wbh_tag-back.txt" 2>&1 ||
+        fail "could not press Back from the Weather screen ($_wbh_tag)"
+    sleep 1
+    _wbh_attempt=1
+    while [ "$_wbh_attempt" -le 8 ]; do
+        _wbh_xml="$ARTIFACTS/weather-$_wbh_tag-back-$_wbh_attempt.xml"
+        if capture_ui_xml "weather-$_wbh_tag-back-$_wbh_attempt.xml" &&
+            [ -n "$(ui_unique_clickable_label_bounds "$_wbh_xml" 'Weather settings')" ] &&
+            ! grep -Fq 'Before you enable' "$_wbh_xml"; then
+            _weather_visible_xml=$_wbh_xml
+            return 0
+        fi
+        _wbh_attempt=$((_wbh_attempt + 1))
+        sleep 1
+    done
+    fail "Back from Weather did not return to the Home screen preferences ($_wbh_tag)"
+}
+
+_weather_restart() {
+    _wrs_tag=$1
+    adb_cmd shell am force-stop "$PKG" \
+        > "$ARTIFACTS/weather-$_wrs_tag-force-stop.txt" 2>&1 ||
+        fail "could not force-stop $PKG for the weather restart ($_wrs_tag)"
+    sleep 1
+    adb_cmd shell input keyevent KEYCODE_HOME \
+        > "$ARTIFACTS/weather-$_wrs_tag-home.txt" 2>&1 ||
+        fail "could not press HOME after the weather force-stop ($_wrs_tag)"
+    wait_for_launcher_activity "$_wrs_tag" 15 ||
+        fail "the launcher did not resume after the weather force-stop ($_wrs_tag)"
+    sleep 1
+}
+
+_weather_field_value_present() {
+    _wfp_xml=$1
+    _wfp_value=$2
+    grep -Fq "text=\"$_wfp_value\"" "$_wfp_xml"
+}
+
+capture_weather_settings() {
+    return_home weather-baseline
+    wait_for_launcher_idle "$ARTIFACTS/weather-home-idle.txt" 10 ||
+        fail "launcher was not idle before the weather settings gate"
+    adb_cmd shell dumpsys window > "$ARTIFACTS/weather-navigation-window.txt" 2>&1 ||
+        fail "could not capture the window dump for the weather gate"
+    _cws_nav_bounds=$(ui_navigation_bar_bounds "$ARTIFACTS/weather-navigation-window.txt")
+    [ -n "$_cws_nav_bounds" ] ||
+        fail "could not measure the navigation bar before the weather gate"
+    set -- $_cws_nav_bounds
+    _cws_nav_top=$2
+    adb_cmd shell run-as "$PKG" id \
+        > "$ARTIFACTS/weather-run-as.txt" 2>&1 ||
+        fail "run-as is unavailable for the app-private weather evidence"
+    grep -Eq 'uid=[0-9]+' "$ARTIFACTS/weather-run-as.txt" ||
+        fail "run-as did not report an app uid for the weather evidence"
+
+    # 1. Fresh screen: off, empty and Enable disabled; storage absent/disabled.
+    _weather_open_weather fresh
+    _weather_snapshot fresh
+    grep -Fq 'Before you enable' "$ARTIFACTS/weather-fresh.xml" ||
+        fail "the real Weather screen did not show its privacy notice"
+    _cws_consent=$(_weather_capture_consent before)
+    case "$_cws_consent" in
+        missing | disabled\|*) ;;
+        enabled\|*)
+            fail "the weather gate requires a fresh disabled store, found '$_cws_consent'"
+            ;;
+        *)
+            fail "the initial weather consent record is '$_cws_consent'"
+            ;;
+    esac
+    _weather_measure_edit_text 1 fresh-field-1 ||
+        fail "could not measure the weather location label field"
+    _weather_measure_edit_text 2 fresh-field-2 ||
+        fail "could not measure the weather latitude field"
+    _weather_measure_edit_text 3 fresh-field-3 ||
+        fail "could not measure the weather longitude field"
+    _weather_measure_control label 'Save and enable' fresh-enable 8 ||
+        fail "could not measure the fresh Save and enable control"
+    _cws_fresh_enable=$_weather_measured
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = false ] ||
+        fail "the fresh Weather Save and enable control is not disabled"
+    tap_center_of_bounds "$_cws_fresh_enable" ||
+        fail "could not tap the disabled fresh Save and enable control"
+    sleep 1
+    _cws_consent=$(_weather_capture_consent after-disabled-tap)
+    case "$_cws_consent" in
+        missing | disabled\|*) ;;
+        *) fail "the disabled fresh Save and enable control persisted '$_cws_consent'" ;;
+    esac
+    _weather_back_to_home_screen fresh-back
+
+    # 2. Invalid label/coordinates with consent still cannot enable.
+    _weather_enter_from_home_screen invalid
+    _weather_measure_edit_text 1 invalid-field-1 ||
+        fail "could not measure the invalid label field"
+    _weather_type "$_weather_measured" \
+        'invalidlabelinvalidlabelinvalidlabelinvalidlabelinvalidlabel' invalid-label
+    _weather_measure_edit_text 2 invalid-field-2 ||
+        fail "could not measure the invalid latitude field"
+    _weather_type "$_weather_measured" 'not-a-number' invalid-latitude
+    capture_ui_xml weather-invalid-latitude.xml ||
+        fail "could not capture the invalid label/coordinates error state"
+    grep -Fq 'Use 48 characters or fewer' \
+        "$ARTIFACTS/weather-invalid-latitude.xml" ||
+        fail "the overlong label did not expose its validation error"
+    grep -Fq 'Latitude must be a number from -90 to 90' \
+        "$ARTIFACTS/weather-invalid-latitude.xml" ||
+        fail "the invalid latitude did not expose its validation error"
+    _weather_measure_edit_text 3 invalid-field-3 ||
+        fail "could not measure the invalid longitude field"
+    _weather_type "$_weather_measured" '10.0000' invalid-longitude
+    _weather_set_checkbox true invalid
+    _weather_measure_control label 'Save and enable' invalid-enable 8 ||
+        fail "could not measure Save and enable with invalid coordinates"
+    _cws_invalid_enable=$_weather_measured
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = false ] ||
+        fail "Save and enable is not disabled for invalid latitude"
+    tap_center_of_bounds "$_cws_invalid_enable" ||
+        fail "could not tap the disabled invalid-location Save and enable control"
+    sleep 1
+    _cws_consent=$(_weather_capture_consent after-invalid-tap)
+    case "$_cws_consent" in
+        missing | disabled\|*) ;;
+        *) fail "invalid coordinates persisted '$_cws_consent'" ;;
+    esac
+    _weather_snapshot invalid
+    _weather_back_to_home_screen invalid-back
+
+    # 3. Valid synthetic coordinates without consent cannot enable.
+    _weather_enter_from_home_screen valid-unchecked
+    _weather_measure_edit_text 1 valid-field-1 ||
+        fail "could not measure the valid label field"
+    _weather_type "$_weather_measured" 'Emulator%stest' valid-label
+    _weather_measure_edit_text 2 valid-field-2 ||
+        fail "could not measure the valid latitude field"
+    _weather_type "$_weather_measured" '60.0000' valid-latitude
+    _weather_measure_edit_text 3 valid-field-3 ||
+        fail "could not measure the valid longitude field"
+    _weather_type "$_weather_measured" '10.0000' valid-longitude
+    _weather_measure_checkbox valid-checkbox ||
+        fail "could not measure the unchecked weather consent checkbox"
+    [ "${_weather_measured##*|}" = false ] ||
+        fail "the weather consent checkbox was not unchecked"
+    _weather_measure_control label 'Save and enable' valid-enable 8 ||
+        fail "could not measure Save and enable without consent"
+    _cws_valid_enable=$_weather_measured
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = false ] ||
+        fail "Save and enable is not disabled without consent"
+    tap_center_of_bounds "$_cws_valid_enable" ||
+        fail "could not tap the disabled no-consent Save and enable control"
+    sleep 1
+    _cws_consent=$(_weather_capture_consent after-no-consent-tap)
+    case "$_cws_consent" in
+        missing | disabled\|*) ;;
+        *) fail "valid coordinates without consent persisted '$_cws_consent'" ;;
+    esac
+    _weather_snapshot valid-unchecked
+
+    # 4. Force-stop/reopen: a disabled draft must not persist an opt-in.
+    _weather_restart draft-reset
+    _weather_open_weather draft-reset
+    _cws_consent=$(_weather_capture_consent draft-reset)
+    case "$_cws_consent" in
+        missing | disabled\|*) ;;
+        *) fail "the disabled draft persisted an opt-in '$_cws_consent'" ;;
+    esac
+    _weather_snapshot draft-reset
+    _weather_measure_edit_text 1 draft-reset-field-1 ||
+        fail "could not measure the reset label field"
+    if _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
+        fail "the unsaved weather label survived the force-stop"
+    fi
+    _weather_measure_edit_text 2 draft-reset-field-2 ||
+        fail "could not measure the reset latitude field"
+    if _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
+        fail "the unsaved weather latitude survived the force-stop"
+    fi
+    _weather_measure_control label 'Save and enable' draft-reset-enable 8 ||
+        fail "could not measure the force-stopped fresh Save and enable control"
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = false ] ||
+        fail "the Save and enable control is not disabled after the draft reset"
+    _weather_back_to_home_screen draft-reset-back
+    _weather_enter_from_home_screen draft-reset-enable
+
+    # 5. Consent plus valid coordinates enables the local store only.
+    _weather_measure_edit_text 1 enable-field-1 ||
+        fail "could not measure the enable label field"
+    _weather_type "$_weather_measured" 'Emulator%stest' enable-label
+    _weather_measure_edit_text 2 enable-field-2 ||
+        fail "could not measure the enable latitude field"
+    _weather_type "$_weather_measured" '60.0000' enable-latitude
+    _weather_measure_edit_text 3 enable-field-3 ||
+        fail "could not measure the enable longitude field"
+    _weather_type "$_weather_measured" '10.0000' enable-longitude
+    _weather_set_checkbox true enable
+    _weather_measure_control label 'Save and enable' enable-control 8 ||
+        fail "could not measure Save and enable with consent"
+    _cws_enable=$_weather_measured
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = true ] ||
+        fail "Save and enable is not enabled after consent and valid coordinates"
+    tap_center_of_bounds "$_cws_enable" ||
+        fail "could not tap the enabled Save and enable control"
+    _cws_enabled_message=
+    _cws_poll=1
+    while [ "$_cws_poll" -le 10 ]; do
+        sleep 1
+        if capture_ui_xml "weather-enabled-poll-$_cws_poll.xml" &&
+            grep -Fq 'Weather setup saved. No forecast is loaded in this version.' \
+                "$ARTIFACTS/weather-enabled-poll-$_cws_poll.xml"; then
+            _cws_enabled_message="$ARTIFACTS/weather-enabled-poll-$_cws_poll.xml"
+            break
+        fi
+        _cws_poll=$((_cws_poll + 1))
+    done
+    [ -n "$_cws_enabled_message" ] ||
+        fail "the real Weather screen did not report the saved opt-in"
+    _cws_consent=$(_weather_capture_consent enabled)
+    case "$_cws_consent" in
+        enabled\|*) ;;
+        *) fail "the enabled weather opt-in was not stored, found '$_cws_consent'" ;;
+    esac
+    printf '%s\n' "$_cws_consent" | grep -Fq '|Emulator test|60.0000|10.0000' ||
+        fail "the stored weather location is not the synthetic Emulator test location"
+    _weather_snapshot enabled
+    grep -Fq 'Disable and clear location' "$ARTIFACTS/weather-enabled.xml" ||
+        fail "the enabled Weather screen exposes no Disable control"
+    grep -Fq 'Emulator test' "$ARTIFACTS/weather-enabled.xml" ||
+        fail "the enabled Weather screen does not show the saved label"
+    adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
+        > "$ARTIFACTS/weather-backed-up-prefs.xml" 2>/dev/null || true
+    adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
+        > "$ARTIFACTS/weather-backed-up-datastore.pb" 2>/dev/null || true
+    if grep -Fq 'Emulator test' "$ARTIFACTS/weather-backed-up-prefs.xml" ||
+        grep -Fq 'Emulator test' "$ARTIFACTS/weather-backed-up-datastore.pb"; then
+        fail "the weather label leaked into a backed-up preference file"
+    fi
+    if grep -Fq '60.0000' "$ARTIFACTS/weather-backed-up-prefs.xml" ||
+        grep -Fq '60.0000' "$ARTIFACTS/weather-backed-up-datastore.pb"; then
+        fail "the weather coordinates leaked into a backed-up preference file"
+    fi
+    printf 'enabled_store=%s\nbacked_up_prefs=no-weather-location\n' \
+        "$_cws_consent" > "$ARTIFACTS/weather-enabled-store.txt"
+    _weather_back_to_home_screen enabled-back
+
+    # 6. Force-stop/reopen reloads the saved location and enabled state.
+    _weather_restart reload-enabled
+    _weather_open_weather reload-enabled
+    _cws_consent=$(_weather_capture_consent reload-enabled)
+    case "$_cws_consent" in
+        enabled\|*) ;;
+        *) fail "the enabled opt-in did not reload, found '$_cws_consent'" ;;
+    esac
+    printf '%s\n' "$_cws_consent" | grep -Fq '|Emulator test|60.0000|10.0000' ||
+        fail "the reloaded weather location is not the saved synthetic location"
+    _weather_snapshot enabled-reopened
+    _weather_measure_edit_text 1 reload-field-1 ||
+        fail "could not measure the reloaded label field"
+    if ! _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
+        fail "the reloaded Weather screen did not show the saved label"
+    fi
+    _weather_measure_edit_text 2 reload-field-2 ||
+        fail "could not measure the reloaded latitude field"
+    if ! _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
+        fail "the reloaded Weather screen did not show the saved latitude"
+    fi
+    _weather_measure_control label 'Disable and clear location' reload-disable 8 ||
+        fail "the reloaded Weather screen exposes no measured Disable control"
+    grep -Fq 'Disable and clear location' "$_weather_visible_xml" ||
+        fail "the reloaded Weather screen exposes no Disable control"
+
+    # 7. Disable persists and clears this location's weather cache file.
+    _cws_cache_name=$(weather_cache_filename '60.0000,10.0000') ||
+        fail "could not derive the weather cache file name"
+    [ -n "$_cws_cache_name" ] ||
+        fail "the weather cache file name is empty"
+    _cws_cache_rel="$WEATHER_CACHE_REL/$_cws_cache_name.weather"
+    _weather_seed_cache "$_cws_cache_rel" ||
+        fail "could not seed the synthetic weather cache-clear fixture"
+    printf '%s\n' "$_cws_cache_rel" > "$ARTIFACTS/weather-cache-seeded.txt"
+    _weather_measure_control label 'Disable and clear location' disabled-control 8 ||
+        fail "could not measure the enabled Disable control"
+    _cws_disable=$_weather_measured
+    tap_center_of_bounds "$_cws_disable" ||
+        fail "could not tap the measured Disable control"
+    _cws_disabled_message=
+    _cws_poll=1
+    while [ "$_cws_poll" -le 10 ]; do
+        sleep 1
+        if capture_ui_xml "weather-disabled-poll-$_cws_poll.xml" &&
+            grep -Fq 'Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.' \
+                "$ARTIFACTS/weather-disabled-poll-$_cws_poll.xml"; then
+            _cws_disabled_message="$ARTIFACTS/weather-disabled-poll-$_cws_poll.xml"
+            break
+        fi
+        _cws_poll=$((_cws_poll + 1))
+    done
+    [ -n "$_cws_disabled_message" ] ||
+        fail "the real Weather screen did not report the completed disable"
+    _cws_consent=$(_weather_capture_consent disabled)
+    case "$_cws_consent" in
+        disabled\|*) ;;
+        *) fail "the disabled weather opt-in was not stored, found '$_cws_consent'" ;;
+    esac
+    if _weather_cache_exists "$_cws_cache_rel"; then
+        fail "Disable did not clear the location's weather cache file"
+    fi
+    adb_cmd shell run-as "$PKG" ls -l "$WEATHER_CACHE_REL" \
+        > "$ARTIFACTS/weather-cache-after-disable.txt" 2>&1 || true
+    _weather_snapshot disabled
+    grep -Fq 'Save and enable' "$ARTIFACTS/weather-disabled.xml" ||
+        fail "the disabled Weather screen exposes no Save and enable control"
+    _weather_back_to_home_screen disabled-back
+
+    # 8. Disable survives restart; the final state stays disabled.
+    _weather_restart reload-disabled
+    _weather_open_weather reload-disabled
+    _cws_consent=$(_weather_capture_consent reload-disabled)
+    case "$_cws_consent" in
+        disabled\|*) ;;
+        *) fail "the disabled weather opt-in did not survive the restart, found '$_cws_consent'" ;;
+    esac
+    _weather_snapshot disabled-reopened
+    _weather_measure_edit_text 1 disabled-reopened-field-1 ||
+        fail "could not measure the cleared label field after the disabled restart"
+    if _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
+        fail "the disabled restart still shows the cleared weather label"
+    fi
+    _weather_measure_edit_text 2 disabled-reopened-field-2 ||
+        fail "could not measure the cleared latitude field after the disabled restart"
+    if _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
+        fail "the disabled restart still shows the cleared weather latitude"
+    fi
+    _weather_measure_control label 'Save and enable' disabled-reopened-enable 8 ||
+        fail "could not measure Save and enable after the disabled restart"
+    [ "$(ui_unique_label_enabled "$_weather_visible_xml" 'Save and enable')" = false ] ||
+        fail "Save and enable is not disabled after the disabled restart"
+    _weather_back_to_home_screen final-back
+    return_home weather-final
+
+    _cws_final=$(_weather_capture_consent final)
+    case "$_cws_final" in
+        disabled\|*) ;;
+        *) fail "the weather gate did not finish disabled, found '$_cws_final'" ;;
+    esac
+    printf 'Weather settings: the real Home screen Weather settings entry opened the real WeatherPreferences. A fresh store was off and Save and enable was disabled; invalid coordinates and valid coordinates without consent could not enable; a force-stop did not persist the disabled draft; consent plus the synthetic Emulator test location wrote only the app-private no_backup store and did not appear in backed-up prefs; a restart reloaded the label/coordinates/enabled state; Disable removed the seeded synthetic cache file and several restarts kept the disabled state. No provider link was opened, no network/API request was made, no location permission was requested, no workspace item was seeded or cleared, and the final consent is disabled.\n' \
+        > "$ARTIFACTS/weather.txt"
+    printf 'Screenshots: weather-fresh.png, weather-invalid.png, weather-valid-unchecked.png, weather-enabled.png, weather-enabled-reopened.png, weather-disabled.png, weather-disabled-reopened.png.\n' \
+        >> "$ARTIFACTS/weather.txt"
+    printf 'The seeded .weather file is a synthetic fixture for the cache-clear proof, not forecast data.\n' \
+        >> "$ARTIFACTS/weather.txt"
+}
 
 capture_drawer_attempt() (
     label=$1
@@ -3718,6 +4447,7 @@ complete_own_widget_setup
 verify_nothing_home
 capture_clean_home_theme
 capture_customization_settings
+capture_weather_settings
 exercise_device_settings_shortcuts
 capture_grid_settings
 capture_widgets_picker

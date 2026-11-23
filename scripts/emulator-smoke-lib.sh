@@ -1721,9 +1721,11 @@ ui_edit_text_bounds() (
         '
 )
 
-# Print the unique checkable node as "<x1> <y1> <x2> <y2>|<checked>". Missing,
-# duplicated or malformed checkable nodes print nothing, so the consent toggle
-# is never inferred from an unrelated view.
+# Print the dominant checkable node as "<x1> <y1> <x2> <y2>|<checked>".
+# Compose can expose both the toggleable Row and its inner Checkbox as
+# checkable. When every measured checkable node agrees on the checked state, the
+# largest one (the tappable row) is returned; a missing, malformed or mixed-state
+# set prints nothing so the consent toggle is never inferred from ambiguity.
 ui_unique_checkable_state() (
     xml=$1
     [ -s "$xml" ] || return 0
@@ -1750,10 +1752,25 @@ ui_unique_checkable_state() (
                 sub(/ +$/, "", s)
                 n = split(s, p, / +/)
                 if (n != 4) next
+                area = (p[3] - p[1]) * (p[4] - p[2])
+                if (area <= 0) next
+                if (count > 0) {
+                    if (checked != agreed) {
+                        mixed = 1
+                        next
+                    }
+                } else {
+                    agreed = checked
+                }
                 count++
-                line = p[1] " " p[2] " " p[3] " " p[4] "|" checked
+                if (area > best_area) {
+                    best_area = area
+                    line = p[1] " " p[2] " " p[3] " " p[4] "|" checked
+                }
             }
-            END { if (count == 1) print line }
+            END {
+                if (count > 0 && !mixed) print line
+            }
         '
 )
 
