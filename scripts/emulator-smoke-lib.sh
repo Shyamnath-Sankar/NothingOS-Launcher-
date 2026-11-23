@@ -1194,9 +1194,10 @@ ui_top_slider_bounds() (
 )
 
 # Print the integer percentage associated with the measured top slider. The
-# percentage must be a 50..150 multiple-of-10 text above/overlapping that exact
-# slider and horizontally overlapping it. Exactly one distinct value is
-# accepted; zero or several values print nothing so the caller never guesses.
+# percentage must be a 50..150 text above/overlapping that exact slider and
+# horizontally overlapping it. Exactly one distinct value is accepted; zero or
+# several values print nothing so the caller never guesses. The Play home icon
+# slider uses one-percentage-point steps, so 76 and 77 are valid values.
 ui_slider_percent() (
     xml=$1
     slider=$2
@@ -1246,7 +1247,7 @@ ui_slider_percent() (
                 value = text
                 sub(/%$/, "", value)
                 value = value + 0
-                if (value < 50 || value > 150 || value % 10 != 0) next
+                if (value < 50 || value > 150) next
                 if (p[2] < sy1 - 400) next
                 if (p[4] > sy2) next
                 if (p[3] <= sx1 || p[1] >= sx2) next
@@ -1349,6 +1350,148 @@ ui_bounds_top_y() (
         *[!0-9]*) return 0 ;;
     esac
     printf '%s\n' "$2"
+)
+
+# Print "<percent> <little-endian-float-hex>" for a float preference stored in
+# an androidx DataStore Preferences protobuf. The map entry is parsed by field
+# number, so other preferences may change without affecting this read; the whole
+# file is never byte-compared. Only the exact key is accepted, and the decoded
+# float must be inside the 0.5..1.5 home icon factor range. The percent compares
+# the visible label with the stored value; the exact float bytes prove that a
+# round-trip did not rewrite an arbitrary pre-existing factor. A missing key,
+# malformed protobuf or out-of-range value prints nothing so the caller fails
+# closed.
+datastore_float_factor() (
+    pb=$1
+    key=$2
+    [ -s "$pb" ] || return 0
+    [ -n "$key" ] || return 0
+    od -An -v -tu1 "$pb" | awk -v key="$key" '
+        function ord_of(ch,   i) {
+            for (i = 1; i < 256; i++) {
+                if (sprintf("%c", i) == ch) return i
+            }
+            return -1
+        }
+        function vint(   value, multiplier, byte, count) {
+            value = 0; multiplier = 1; count = 0
+            while (vp <= n && count < 10) {
+                byte = b[vp]; vp++; count++
+                value += (byte % 128) * multiplier
+                if (byte < 128) return value
+                multiplier *= 128
+            }
+            return -1
+        }
+        function decode_float(by,   sign, exponent, mantissa, decoded) {
+            sign = (by[4] >= 128) ? -1 : 1
+            exponent = ((by[4] % 128) * 2) + int(by[3] / 128)
+            mantissa = ((by[3] % 128) * 65536) + (by[2] * 256) + by[1]
+            if (exponent == 0) {
+                if (mantissa == 0) return 0
+                decoded = mantissa * 2 ^ (-149)
+            } else if (exponent == 255) {
+                return -1
+            } else {
+                decoded = (1 + mantissa / 8388608) * 2 ^ (exponent - 127)
+            }
+            return sign * decoded
+        }
+        function pref_percent(pstart, plen,   pend, tag, field, wt, len, by, value, percent) {
+            pend = pstart + plen - 1
+            vp = pstart
+            while (vp <= pend) {
+                tag = b[vp]; vp++
+                field = int(tag / 8); wt = tag % 8
+                if (wt == 0) {
+                    if (vint() < 0) return 0
+                } else if (wt == 1) {
+                    vp += 8
+                } else if (wt == 2) {
+                    len = vint()
+                    if (len < 0 || vp + len - 1 > pend) return 0
+                    vp += len
+                } else if (wt == 5) {
+                    if (field == 2 && vp + 3 <= pend) {
+                        by[1] = b[vp]; by[2] = b[vp + 1]
+                        by[3] = b[vp + 2]; by[4] = b[vp + 3]
+                        vp += 4
+                        value = decode_float(by)
+                        if (value < 0.5 || value > 1.5) return 0
+                        percent = int(value * 100 + 0.5)
+                        printf "%d %02x%02x%02x%02x\n", percent, by[1], by[2], by[3], by[4]
+                        return 1
+                    }
+                    vp += 4
+                } else {
+                    return 0
+                }
+            }
+            return 0
+        }
+        function entry_matches(estart, eend,   tag, field, wt, len, i, key_ok, pref_start, pref_len) {
+            key_ok = 1; pref_start = 0; pref_len = 0
+            vp = estart
+            while (vp <= eend) {
+                tag = b[vp]; vp++
+                field = int(tag / 8); wt = tag % 8
+                if (wt == 0) {
+                    if (vint() < 0) return 0
+                } else if (wt == 1) {
+                    vp += 8
+                } else if (wt == 2) {
+                    len = vint()
+                    if (len < 0 || vp + len - 1 > eend) return 0
+                    if (field == 1) {
+                        if (len != key_len) {
+                            key_ok = 0
+                        } else {
+                            for (i = 1; i <= len; i++) {
+                                if (b[vp + i - 1] != key_ord[i]) key_ok = 0
+                            }
+                        }
+                    } else if (field == 2) {
+                        pref_start = vp; pref_len = len
+                    }
+                    vp += len
+                } else if (wt == 5) {
+                    vp += 4
+                } else {
+                    return 0
+                }
+            }
+            if (!key_ok || pref_start == 0) return 0
+            return pref_percent(pref_start, pref_len)
+        }
+        {
+            for (i = 1; i <= NF; i++) b[++n] = $i + 0
+        }
+        END {
+            key_len = length(key)
+            for (i = 1; i <= key_len; i++) key_ord[i] = ord_of(substr(key, i, 1))
+            vp = 1
+            while (vp <= n) {
+                tag = b[vp]; vp++
+                field = int(tag / 8); wt = tag % 8
+                if (wt == 0) {
+                    if (vint() < 0) exit
+                } else if (wt == 1) {
+                    vp += 8
+                } else if (wt == 2) {
+                    len = vint()
+                    if (len < 0 || vp + len - 1 > n) exit
+                    entry_start = vp
+                    entry_end = vp + len - 1
+                    if (field == 1 && entry_matches(entry_start, entry_end)) exit
+                    vp = entry_end + 1
+                } else if (wt == 5) {
+                    vp += 4
+                } else {
+                    exit
+                }
+            }
+        }
+    '
 )
 
 # Print the bounds ("x1 y1 x2 y2") of the largest measured scrollable container

@@ -1158,9 +1158,10 @@ customization_controls_in_order() {
 # Runtime gate for the Play-only "Customize launcher" path. It uses the real
 # PreferenceActivity dashboard (no diagnostic extras), measured exact controls,
 # the real Browse-widgets launcher request and the real native picker, then
-# changes the actual top icon-size slider by one keyboard step and restores it.
-# Every unresolved label, slider, percentage, focus or binding fails closed with
-# the captured XML/PNG. No preference is written and no widget is bound.
+# changes the actual top icon-size slider by one legal one-percentage-point
+# keyboard step and restores it. Every unresolved label, slider, percentage,
+# focus or binding fails closed with the captured XML/PNG. No preference is
+# written directly and no widget is bound.
 capture_customization_settings() {
     _ccs_label=customization
 
@@ -1513,9 +1514,27 @@ capture_customization_settings() {
     _ccs_initial_percent=$_ccs_percent
     _ccs_initial_slider=$_ccs_slider
     case "$_ccs_initial_percent" in
-        50 | 60 | 70 | 80 | 90 | 100 | 110 | 120 | 130 | 140 | 150) ;;
-        *) fail "the actual top icon-size percentage '$_ccs_initial_percent' is not a 50-150 step of 10" ;;
+        '' | *[!0-9]*) fail "the actual top icon-size percentage '$_ccs_initial_percent' is not numeric" ;;
     esac
+    [ "$_ccs_initial_percent" -ge 50 ] && [ "$_ccs_initial_percent" -le 150 ] ||
+        fail "the actual top icon-size percentage '$_ccs_initial_percent' is outside the 50-150 range"
+    _ccs_ds_baseline=$(datastore_float_factor \
+        "$ARTIFACTS/customization-datastore-baseline.pb" 'home_icon_size_factor')
+    _ccs_ds_baseline_percent=
+    _ccs_ds_baseline_hex=
+    if [ -n "$_ccs_ds_baseline" ]; then
+        _ccs_ds_baseline_percent=${_ccs_ds_baseline%% *}
+        _ccs_ds_baseline_hex=${_ccs_ds_baseline#* }
+        [ "$_ccs_ds_baseline_percent" = "$_ccs_initial_percent" ] ||
+            fail "the icon-size label '$_ccs_initial_percent%' does not match the stored factor '$_ccs_ds_baseline_percent%'"
+        printf 'home_icon_size_factor_percent=%s hex=%s\n' \
+            "$_ccs_ds_baseline_percent" "$_ccs_ds_baseline_hex" \
+            > "$ARTIFACTS/customization-datastore-factor-baseline.txt"
+    else
+        printf 'home_icon_size_factor_percent=default-not-stored label=%s\n' \
+            "$_ccs_initial_percent" \
+            > "$ARTIFACTS/customization-datastore-factor-baseline.txt"
+    fi
 
     _ccs_focused=
     _ccs_tab=0
@@ -1543,11 +1562,11 @@ capture_customization_settings() {
 
     if [ "$_ccs_initial_percent" -lt 150 ]; then
         _ccs_step_key=KEYCODE_DPAD_RIGHT
-        _ccs_expected_percent=$((_ccs_initial_percent + 10))
+        _ccs_expected_percent=$((_ccs_initial_percent + 1))
         _ccs_restore_key=KEYCODE_DPAD_LEFT
     else
         _ccs_step_key=KEYCODE_DPAD_LEFT
-        _ccs_expected_percent=$((_ccs_initial_percent - 10))
+        _ccs_expected_percent=$((_ccs_initial_percent - 1))
         _ccs_restore_key=KEYCODE_DPAD_RIGHT
     fi
     adb_cmd shell input keyevent "$_ccs_step_key" \
@@ -1563,8 +1582,29 @@ capture_customization_settings() {
     [ "$_ccs_percent" = "$_ccs_expected_percent" ] ||
         fail "one keyboard step changed the icon-size percentage to '$_ccs_percent', expected '$_ccs_expected_percent'"
     _ccs_delta=$((_ccs_initial_percent - _ccs_percent))
-    [ "$_ccs_delta" -eq 10 ] || [ "$_ccs_delta" -eq -10 ] ||
-        fail "the icon-size keyboard step changed the percentage by $_ccs_delta, not exactly 10"
+    [ "$_ccs_delta" -eq 1 ] || [ "$_ccs_delta" -eq -1 ] ||
+        fail "the icon-size keyboard step changed the percentage by $_ccs_delta, not exactly 1"
+    _ccs_ds_step=
+    _ccs_ds_step_percent=
+    _ccs_ds_step_attempt=1
+    while [ "$_ccs_ds_step_attempt" -le 5 ]; do
+        adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
+            > "$ARTIFACTS/customization-datastore-after-step.pb" 2>/dev/null || true
+        _ccs_ds_step=$(datastore_float_factor \
+            "$ARTIFACTS/customization-datastore-after-step.pb" 'home_icon_size_factor')
+        _ccs_ds_step_percent=${_ccs_ds_step%% *}
+        [ "$_ccs_ds_step_percent" = "$_ccs_expected_percent" ] && break
+        _ccs_ds_step_attempt=$((_ccs_ds_step_attempt + 1))
+        [ "$_ccs_ds_step_attempt" -le 5 ] && sleep 1
+    done
+    [ -n "$_ccs_ds_step" ] ||
+        fail "the icon-size step did not persist a numeric home_icon_size_factor"
+    _ccs_ds_step_hex=${_ccs_ds_step#* }
+    [ "$_ccs_ds_step_percent" = "$_ccs_expected_percent" ] ||
+        fail "the icon-size step stored '$_ccs_ds_step_percent%' but displayed '$_ccs_expected_percent%'"
+    printf 'home_icon_size_factor_percent=%s hex=%s attempts=%s\n' \
+        "$_ccs_ds_step_percent" "$_ccs_ds_step_hex" "$_ccs_ds_step_attempt" \
+        > "$ARTIFACTS/customization-datastore-factor-after-step.txt"
     capture_screenshot_to customization-size-changed.png
 
     return_home customization-size-changed
@@ -1696,6 +1736,21 @@ capture_customization_settings() {
         > "$ARTIFACTS/customization-prefs-restored.xml" 2>/dev/null || true
     adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
         > "$ARTIFACTS/customization-datastore-restored.pb" 2>/dev/null || true
+    _ccs_ds_restored=$(datastore_float_factor \
+        "$ARTIFACTS/customization-datastore-restored.pb" 'home_icon_size_factor')
+    [ -n "$_ccs_ds_restored" ] ||
+        fail "the icon-size restore did not persist a numeric home_icon_size_factor"
+    _ccs_ds_restored_percent=${_ccs_ds_restored%% *}
+    _ccs_ds_restored_hex=${_ccs_ds_restored#* }
+    [ "$_ccs_ds_restored_percent" = "$_ccs_initial_percent" ] ||
+        fail "the icon-size restore stored '$_ccs_ds_restored_percent%' but the initial displayed value was '$_ccs_initial_percent%'"
+    if [ -n "$_ccs_ds_baseline_hex" ]; then
+        [ "$_ccs_ds_restored_hex" = "$_ccs_ds_baseline_hex" ] ||
+            fail "the icon-size round-trip did not restore the exact baseline stored factor"
+    fi
+    printf 'home_icon_size_factor_percent=%s hex=%s\n' \
+        "$_ccs_ds_restored_percent" "$_ccs_ds_restored_hex" \
+        > "$ARTIFACTS/customization-datastore-factor-restored.txt"
     if grep -aq 'lock_home_screen' "$ARTIFACTS/customization-datastore-restored.pb"; then
         printf 'lock_home_screen_marker=present (presence only; value not proven)\n' \
             > "$ARTIFACTS/customization-homelock-restored.txt"
@@ -1708,7 +1763,7 @@ capture_customization_settings() {
         adb_cmd shell run-as "$PKG" ls -l databases files/datastore \
             2>&1 || true
     } > "$ARTIFACTS/customization-private-files-restored.txt"
-    printf 'Customization: real dashboard category and Browse widgets were measured; the native picker opened only on explicit taps, Back/HOME repeated without it, and no binding changed. Actual top SeekBar %s%% -> %s%% -> %s%% via one keyboard step and one reverse step; HOME before/after PNGs are retained for pixel review. The restored HOME widget-host bounds and the Home/Lock wallpaper IDs plus normalized System wallpaper component were compared to the baseline. The lock_home_screen datastore entry is a presence marker only and is NOT a value-preservation proof.\n' \
+    printf 'Customization: real dashboard category and Browse widgets were measured; the native picker opened only on explicit taps, Back/HOME repeated without it, and no binding changed. Actual top SeekBar %s%% -> %s%% -> %s%% via one one-percentage-point keyboard step and one reverse step; HOME before/after PNGs are retained for pixel review. The stored home_icon_size_factor was read from the private datastore at baseline, after the step and after the restore and compared numerically to the displayed percentages; when a baseline factor was already stored, its exact float bytes were also compared after the restore (never a whole-file byte comparison). The restored HOME widget-host bounds and the Home/Lock wallpaper IDs plus normalized System wallpaper component were compared to the baseline. The lock_home_screen datastore entry is a presence marker only and is NOT a value-preservation proof.\n' \
         "$_ccs_initial_percent" "$_ccs_expected_percent" "$_ccs_restored_percent" \
         > "$ARTIFACTS/customization.txt"
     printf 'Screenshots: customization-home-baseline.png, customization-home-screen.png, customization-picker.png, customization-picker-second.png, customization-home-after-size.png, customization-home-size-restored.png.\n' \

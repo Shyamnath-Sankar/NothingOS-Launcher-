@@ -3758,6 +3758,23 @@ assert_eq 'an exact label absent from the hierarchy is unresolved' \
 assert_eq 'an out-of-range slider percentage is not guessed' \
     '' "$(ui_slider_percent "$cust_xml" '40 9999 1040 9999')"
 
+cust_one_point="$TMP_DIR/customization-one-point.xml"
+cat > "$cust_one_point" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="76%" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[900,500][1040,540]" />
+    <node index="1" text="" resource-id="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,560][1040,640]" />
+    <node index="2" text="77%" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[900,850][1040,890]" />
+    <node index="3" text="" resource-id="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,910][1040,990]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the actual 76 percent home icon label is measured' \
+    '76' "$(ui_slider_percent "$cust_one_point" '40 560 1040 640')"
+assert_eq 'the actual 77 percent home icon label is measured' \
+    '77' "$(ui_slider_percent "$cust_one_point" '40 910 1040 990')"
+
 cust_dupes="$TMP_DIR/customization-dupes.xml"
 cat > "$cust_dupes" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -3836,6 +3853,49 @@ cat > "$cust_focus_two" <<'EOF'
 EOF
 assert_eq 'two focused sliders are ambiguous and unresolved' \
     '' "$(ui_focused_slider_bounds "$cust_focus_two")"
+
+# DataStore Preferences fixtures: map entry { key = "home_icon_size_factor",
+# value = Preference { float } }. The encoded float bytes are the exact
+# little-endian IEEE-754 values for 0.76, 0.77, 0.80, 0.49 and 1.6. A raw text
+# file that merely contains the key must never be accepted.
+ds76="$TMP_DIR/preferences-76.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\134\217\102\077' > "$ds76"
+ds77="$TMP_DIR/preferences-77.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\270\036\105\077' > "$ds77"
+ds80="$TMP_DIR/preferences-80.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\315\314\114\077' > "$ds80"
+ds_two_entries="$TMP_DIR/preferences-76-and-lock.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\134\217\102\077\012\026\012\020\154\157\143\153\137\150\157\155\145\137\163\143\162\145\145\156\022\002\010\001' > "$ds_two_entries"
+ds_target_second="$TMP_DIR/preferences-lock-and-76.pb"
+printf '%b' '\012\026\012\020\154\157\143\153\137\150\157\155\145\137\163\143\162\145\145\156\022\002\010\001\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\134\217\102\077' > "$ds_target_second"
+ds_low="$TMP_DIR/preferences-49.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\110\341\372\076' > "$ds_low"
+ds_high="$TMP_DIR/preferences-160.pb"
+printf '%b' '\012\036\012\025\150\157\155\145\137\151\143\157\156\137\163\151\172\145\137\146\141\143\164\157\162\022\005\025\315\314\314\077' > "$ds_high"
+ds_fake="$TMP_DIR/preferences-fake.pb"
+printf 'home_icon_size_factor 0.80' > "$ds_fake"
+: > "$TMP_DIR/preferences-empty.pb"
+
+assert_eq 'the datastore parser reads an actual stored 76 factor' \
+    '76 5c8f423f' "$(datastore_float_factor "$ds76" 'home_icon_size_factor')"
+assert_eq 'the datastore parser reads an actual stored 77 factor' \
+    '77 b81e453f' "$(datastore_float_factor "$ds77" 'home_icon_size_factor')"
+assert_eq 'the datastore parser distinguishes a stored 80 from a 76 label' \
+    '80 cdcc4c3f' "$(datastore_float_factor "$ds80" 'home_icon_size_factor')"
+assert_eq 'the datastore parser reads only the exact key among other entries' \
+    '76 5c8f423f' "$(datastore_float_factor "$ds_two_entries" 'home_icon_size_factor')"
+assert_eq 'the datastore parser finds a matching key after an earlier entry' \
+    '76 5c8f423f' "$(datastore_float_factor "$ds_target_second" 'home_icon_size_factor')"
+assert_eq 'a stored factor below the range is rejected' \
+    '' "$(datastore_float_factor "$ds_low" 'home_icon_size_factor')"
+assert_eq 'a stored factor above the range is rejected' \
+    '' "$(datastore_float_factor "$ds_high" 'home_icon_size_factor')"
+assert_eq 'a raw text key is not misread as a stored factor' \
+    '' "$(datastore_float_factor "$ds_fake" 'home_icon_size_factor')"
+assert_eq 'a missing datastore key is unresolved' \
+    '' "$(datastore_float_factor "$ds76" 'drawer_icon_size_factor')"
+assert_eq 'an empty datastore file is unresolved' \
+    '' "$(datastore_float_factor "$TMP_DIR/preferences-empty.pb" 'home_icon_size_factor')"
 
 assert_eq 'the measured bounds top edge is extracted for ordering' \
     '920' "$(ui_bounds_top_y '84 920 409 973')"
@@ -3933,10 +3993,42 @@ assert_false 'the customization gate never claims a lock preference value proof'
     grep -Fq 'lock_home_screen=present' "$customization_body"
 assert_true 'the customization gate steps the focused slider with DPAD' \
     grep -Fq 'KEYCODE_DPAD_RIGHT' "$customization_body"
-assert_true 'the customization gate requires exactly one 10 percent step' \
-    grep -Fq '_ccs_delta' "$customization_body"
+assert_true 'the customization gate expects exactly one one-percentage-point step' \
+    grep -Fq '_ccs_expected_percent=$((_ccs_initial_percent + 1))' "$customization_body"
+assert_true 'the customization gate uses a one-percentage-point reverse step' \
+    grep -Fq '_ccs_expected_percent=$((_ccs_initial_percent - 1))' "$customization_body"
+assert_true 'the customization gate rejects any delta other than one point' \
+    grep -Fq '[ "$_ccs_delta" -eq 1 ] || [ "$_ccs_delta" -eq -1 ]' "$customization_body"
+assert_true 'the customization gate compares the numeric stored factor' \
+    grep -Fq 'datastore_float_factor' "$customization_body"
+assert_true 'the customization gate checks the stored factor after the step' \
+    grep -Fq 'customization-datastore-factor-after-step.txt' "$customization_body"
+assert_true 'the customization gate checks the restored stored factor' \
+    grep -Fq 'customization-datastore-factor-restored.txt' "$customization_body"
+assert_true 'the customization gate compares the exact stored float bytes' \
+    grep -Fq '_ccs_ds_restored_hex' "$customization_body"
+assert_false 'the customization gate never raw-compares the datastore file' \
+    grep -Eq 'cmp .*datastore.*\.pb' "$customization_body"
 assert_true 'the customization gate restores the original percentage' \
     grep -Fq 'restored' "$customization_body"
+
+HOME_SCREEN_PREFS="$ROOT_DIR/lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt"
+customize_block="$TMP_DIR/home-screen-customize.kt"
+sed -n '/customize_launcher_label/,/browse_widgets_label/p' \
+    "$HOME_SCREEN_PREFS" > "$customize_block"
+assert_true 'the Play home icon slider uses one-percentage-point steps' \
+    grep -Fq 'step = 0.01f' "$customize_block"
+assert_true 'the Play home icon slider keeps the full 50-150 range' \
+    grep -Fq 'valueRange = 0.5F..1.5F' "$customize_block"
+non_play_block="$TMP_DIR/home-screen-non-play.kt"
+sed -n '/if (!isPlayStoreFlavor()) {/,/show_labels/p' \
+    "$HOME_SCREEN_PREFS" > "$non_play_block"
+assert_true 'the non-Play icon slider keeps its inherited 0.1 step' \
+    grep -Fq 'step = 0.1f' "$non_play_block"
+assert_true 'the pure slider math regression test exists' \
+    test -f "$ROOT_DIR/tests/unit/java/app/lawnchair/ui/preferences/components/controls/SliderValueMathTest.kt"
+assert_true 'the slider math is extracted into a pure production file' \
+    test -f "$ROOT_DIR/lawnchair/src/app/lawnchair/ui/preferences/components/controls/SliderValueMath.kt"
 assert_true 'the customization gate retains HOME before/after PNG evidence' \
     grep -Fq 'customization-home-after-size.png' "$customization_body"
 assert_false 'the customization gate never writes a preference' \
