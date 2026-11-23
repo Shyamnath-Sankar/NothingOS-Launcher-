@@ -78,7 +78,8 @@ class WeatherSessionController(
     private val lock = Any()
     private var consent: WeatherConsentState = initialConsent
     private var visibility: WeatherVisibilityState = initialVisibility
-    private var revision: Long = 0L
+    private var generation: Long = initialConsent.generation
+    private var generationExhausted: Boolean = false
     private var job: Job? = null
 
     @Volatile
@@ -136,26 +137,46 @@ class WeatherSessionController(
         synchronized(lock) {
             consent = WeatherConsentState.DISABLED
             visibility = WeatherVisibilityState()
-            revision = nextRevision()
-            session = WeatherSessionPolicy.session(consent, visibility, consent.generation + revision)
-            job?.cancel()
-            job = null
-            onSessionChanged(session)
+            publishLocked()
         }
     }
 
     private fun transitionLocked() {
-        revision = nextRevision()
-        val next = WeatherSessionPolicy.session(
-            consent = consent,
-            visibility = visibility,
-            generation = consent.generation + revision,
-        )
+        publishLocked()
+        if (session.isActive) startLocked(session)
+    }
+
+    private fun publishLocked() {
+        val next = nextSessionLocked()
         session = next
         job?.cancel()
         job = null
         onSessionChanged(next)
-        if (next.isActive) startLocked(next)
+    }
+
+    /**
+     * The controller owns its own strictly increasing generation instead of
+     * adding the persisted consent generation to a separate revision, because
+     * that sum can collide when consent is reset by another writer. If the
+     * owned value is exhausted, every further transition stays disabled and
+     * no work starts; it never wraps to a negative or reused generation.
+     */
+    private fun nextSessionLocked(): WeatherSession {
+        if (generationExhausted || generation == Long.MAX_VALUE) {
+            generationExhausted = true
+            return WeatherSession(
+                enabled = false,
+                visible = false,
+                generation = Long.MAX_VALUE,
+                location = null,
+            )
+        }
+        generation += 1L
+        return WeatherSessionPolicy.session(
+            consent = consent,
+            visibility = visibility,
+            generation = generation,
+        )
     }
 
     private fun startLocked(target: WeatherSession) {
@@ -164,19 +185,12 @@ class WeatherSessionController(
                 work.load(target)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Throwable) {
+            } catch (_: Exception) {
                 WeatherLoadResult.Unavailable(reason = WeatherFailureReason.NETWORK)
             }
-            if (isCurrent(target)) resultSink.onResult(result)
+            synchronized(lock) {
+                if (session == target) resultSink.onResult(result)
+            }
         }
-    }
-
-    private fun isCurrent(target: WeatherSession): Boolean = synchronized(lock) {
-        session == target
-    }
-
-    private fun nextRevision(): Long = when (revision) {
-        Long.MAX_VALUE -> Long.MAX_VALUE
-        else -> revision + 1L
     }
 }

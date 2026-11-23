@@ -61,26 +61,45 @@ interface WeatherConsentStore {
 
 /**
  * Transactional, app-private JSON store. The file is written to a temporary
- * file and atomically moved into place under a process and file lock, and a
- * missing/corrupt/invalid record always reads back as explicitly disabled. The
- * directory is injected so this class never reaches for a Context, shares no
- * external storage and is testable on the JVM.
+ * file and atomically moved into place under a process and file lock.
+ *
+ * A missing record reads as [WeatherConsentState.DISABLED] with generation 0
+ * and may be initialized by a fresh enable. A corrupt, oversized or otherwise
+ * invalid record also reads as disabled for the fail-closed UI, but its
+ * generation is unknown, so it may not be overwritten by an enable; only a
+ * disable (the safe direction) is allowed until a future explicit recovery
+ * flow removes the corrupt record. Every write must name the exact current
+ * generation and advance it strictly, and a store already at
+ * [Long.MAX_VALUE] fails closed instead of wrapping negative.
+ *
+ * The directory is injected so this class never reaches for a Context, shares
+ * no external storage and is testable on the JVM.
  */
 class FileWeatherConsentStore(
     private val directory: File,
     private val maxFileBytes: Long = MAX_FILE_BYTES,
 ) : WeatherConsentStore {
     override fun read(): WeatherConsentState = withStoreLock(WeatherConsentState.DISABLED) {
-        readLocked()
+        when (val stored = readLocked()) {
+            is StoredConsent.Valid -> stored.state
+            StoredConsent.Missing, StoredConsent.Corrupt -> WeatherConsentState.DISABLED
+        }
     }
 
     override fun compareAndSet(
         expectedGeneration: Long,
         next: WeatherConsentState,
     ): WeatherConsentWriteResult = withStoreLock(WeatherConsentWriteResult.StorageFailure) {
-        val current = readLocked()
+        val stored = readLocked()
+        val current = when (stored) {
+            is StoredConsent.Valid -> stored.state
+            StoredConsent.Missing, StoredConsent.Corrupt -> WeatherConsentState.DISABLED
+        }
         if (current.generation != expectedGeneration) {
             return@withStoreLock WeatherConsentWriteResult.Conflict(current)
+        }
+        if (!isAcceptableNext(stored, expectedGeneration, next)) {
+            return@withStoreLock WeatherConsentWriteResult.StorageFailure
         }
         if (writeLocked(next)) {
             WeatherConsentWriteResult.Committed(next)
@@ -89,14 +108,25 @@ class FileWeatherConsentStore(
         }
     }
 
-    private fun readLocked(): WeatherConsentState {
+    private fun isAcceptableNext(
+        stored: StoredConsent,
+        expectedGeneration: Long,
+        next: WeatherConsentState,
+    ): Boolean {
+        if (expectedGeneration == Long.MAX_VALUE) return false
+        if (next.generation <= expectedGeneration) return false
+        if (stored == StoredConsent.Corrupt && next.enabled) return false
+        return true
+    }
+
+    private fun readLocked(): StoredConsent {
         val file = stateFile
-        if (!file.isFile) return WeatherConsentState.DISABLED
-        if (file.length() <= 0L || file.length() > maxFileBytes) return WeatherConsentState.DISABLED
+        if (!file.isFile) return StoredConsent.Missing
+        if (file.length() <= 0L || file.length() > maxFileBytes) return StoredConsent.Corrupt
         val text = runCatching {
             readBounded(file.inputStream(), maxFileBytes)?.toString(Charsets.UTF_8)
-        }.getOrNull() ?: return WeatherConsentState.DISABLED
-        return decode(text)
+        }.getOrNull() ?: return StoredConsent.Corrupt
+        return decode(text)?.let { StoredConsent.Valid(it) } ?: StoredConsent.Corrupt
     }
 
     private fun writeLocked(state: WeatherConsentState): Boolean = runCatching {
@@ -143,38 +173,46 @@ class FileWeatherConsentStore(
         }
     }.toString()
 
-    private fun decode(text: String): WeatherConsentState {
+    private fun decode(text: String): WeatherConsentState? {
         val root = runCatching { Json.parseToJsonElement(text) as? JsonObject }.getOrNull()
-            ?: return WeatherConsentState.DISABLED
-        if (root.keys != KEYS) return WeatherConsentState.DISABLED
-        val version = number(root, KEY_VERSION)?.toIntOrNull() ?: return WeatherConsentState.DISABLED
-        if (version != FORMAT_VERSION) return WeatherConsentState.DISABLED
-        val enabled = bool(root, KEY_ENABLED) ?: return WeatherConsentState.DISABLED
+            ?: return null
+        if (root.keys != KEYS) return null
+        val version = number(root, KEY_VERSION)?.toIntOrNull() ?: return null
+        if (version != FORMAT_VERSION) return null
+        val enabled = bool(root, KEY_ENABLED) ?: return null
         val generation = number(root, KEY_GENERATION)?.toLongOrNull()
-            ?: return WeatherConsentState.DISABLED
-        if (generation < 0L) return WeatherConsentState.DISABLED
+            ?: return null
+        if (generation < 0L) return null
         if (!enabled) {
             val noStoredLocation = listOf(KEY_LABEL, KEY_LATITUDE, KEY_LONGITUDE)
                 .all { root[it] is JsonNull }
-            if (!noStoredLocation) return WeatherConsentState.DISABLED
+            if (!noStoredLocation) return null
             return WeatherConsentState(
                 enabled = false,
                 location = null,
                 generation = generation,
             )
         }
-        val label = string(root, KEY_LABEL) ?: return WeatherConsentState.DISABLED
-        val latitude = string(root, KEY_LATITUDE) ?: return WeatherConsentState.DISABLED
-        val longitude = string(root, KEY_LONGITUDE) ?: return WeatherConsentState.DISABLED
+        val label = string(root, KEY_LABEL) ?: return null
+        val latitude = string(root, KEY_LATITUDE) ?: return null
+        val longitude = string(root, KEY_LONGITUDE) ?: return null
         val location = (
             WeatherConsentPolicy.parseLocation(label, latitude, longitude)
                 as? WeatherLocationInput.Valid
-            )?.location ?: return WeatherConsentState.DISABLED
+            )?.location ?: return null
         return WeatherConsentState(
             enabled = true,
             location = location,
             generation = generation,
         )
+    }
+
+    private sealed interface StoredConsent {
+        data object Missing : StoredConsent
+
+        data object Corrupt : StoredConsent
+
+        data class Valid(val state: WeatherConsentState) : StoredConsent
     }
 
     private fun number(root: JsonObject, key: String): String? {

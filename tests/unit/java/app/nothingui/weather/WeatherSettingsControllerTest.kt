@@ -26,6 +26,38 @@ import org.junit.Test
 
 class WeatherSettingsControllerTest {
 
+    @Test
+    fun loadSyncsThePersistedEnabledConsentToTheLifecycleObserver() = runBlocking {
+        val saved = WeatherConsentPolicy.enable(WeatherConsentState.DISABLED, location(oldKey))
+        val store = FakeConsentStore(saved)
+        val observed = mutableListOf<WeatherConsentState>()
+        val controller = WeatherSettingsController(
+            store = store,
+            consentObserver = { observed += it },
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+
+        controller.load()
+
+        assertEquals(listOf<WeatherConsentState>(saved), observed)
+        assertTrue(controller.state.value.isEnabled)
+    }
+
+    @Test
+    fun loadSyncsExplicitlyDisabledConsentToTheLifecycleObserver() = runBlocking {
+        val observed = mutableListOf<WeatherConsentState>()
+        val controller = WeatherSettingsController(
+            store = FakeConsentStore(),
+            consentObserver = { observed += it },
+            ioDispatcher = Dispatchers.Unconfined,
+        )
+
+        controller.load()
+
+        assertEquals(listOf(WeatherConsentState.DISABLED), observed)
+        assertFalse(controller.state.value.isEnabled)
+    }
+
     private val oldKey = "51.5074,-0.1278"
     private val newKey = "48.8566,2.3522"
 
@@ -111,7 +143,7 @@ class WeatherSettingsControllerTest {
         val state = controller.state.value
         assertTrue(state.saved.enabled)
         assertEquals("Home window", state.saved.location!!.label)
-        assertEquals(oldKey, state.saved.location.cacheKey)
+        assertEquals(oldKey, state.saved.location!!.cacheKey)
         assertEquals(WeatherSettingsMessage.ENABLED, state.message)
         assertEquals(1, controller.store.writes.size)
         assertTrue(controller.store.state.enabled)
@@ -165,6 +197,89 @@ class WeatherSettingsControllerTest {
         assertFalse(controller.observed.last().enabled)
         assertEquals(WeatherSettingsMessage.DISABLED, state.message)
         assertEquals(2, controller.store.writes.size)
+    }
+
+    @Test
+    fun aFailedDisableStaysOffInProcessAndRemainsRetryable() = runBlocking {
+        val controller = controller()
+        enable(controller)
+        val persisted = controller.store.state
+        controller.store.failAllWrites = true
+
+        controller.disable()
+
+        val failed = controller.state.value
+        assertFalse(failed.saved.enabled)
+        assertNull(failed.saved.location)
+        assertTrue(failed.revocationPending)
+        assertEquals(WeatherSettingsMessage.REVOKE_UNCONFIRMED, failed.message)
+        assertTrue(failed.canDisable)
+        assertFalse(failed.canEnable)
+        assertFalse(controller.observed.last().enabled)
+        assertEquals(persisted, controller.store.state)
+        assertTrue("cache must not be cleared before a durable revoke", controller.cache.clearedKeys.isEmpty())
+        assertEquals("Home", failed.draft.label)
+
+        controller.store.failAllWrites = false
+        controller.disable()
+
+        val retried = controller.state.value
+        assertFalse(retried.saved.enabled)
+        assertFalse(retried.revocationPending)
+        assertEquals(WeatherSettingsMessage.DISABLED, retried.message)
+        assertFalse(controller.store.state.enabled)
+        assertEquals(listOf(oldKey), controller.cache.clearedKeys)
+        assertEquals("", retried.draft.label)
+    }
+
+    @Test
+    fun aFailedEditRevocationStaysOffAndRetryCompletesIt() = runBlocking {
+        val controller = controller()
+        enable(controller)
+        val persisted = controller.store.state
+        controller.store.failAllWrites = true
+
+        controller.onDraftChanged(validDraft(label = "Work", latitudeText = "48.8566", longitudeText = "2.3522"))
+
+        val failed = controller.state.value
+        assertFalse(failed.saved.enabled)
+        assertTrue(failed.revocationPending)
+        assertEquals(WeatherSettingsMessage.REVOKE_UNCONFIRMED, failed.message)
+        assertEquals("Work", failed.draft.label)
+        assertFalse(controller.observed.last().enabled)
+        assertEquals(persisted, controller.store.state)
+        assertTrue(controller.cache.clearedKeys.isEmpty())
+
+        controller.store.failAllWrites = false
+        controller.disable()
+
+        assertFalse(controller.state.value.revocationPending)
+        assertFalse(controller.store.state.enabled)
+        assertEquals(listOf(oldKey), controller.cache.clearedKeys)
+    }
+
+    @Test
+    fun aRevokeConflictNeverReEnablesTheSessionAndStaysRetryable() = runBlocking {
+        val controller = controller()
+        enable(controller)
+        controller.store.conflictEveryWrite = true
+
+        controller.disable()
+
+        val conflicted = controller.state.value
+        assertFalse(conflicted.saved.enabled)
+        assertTrue(conflicted.revocationPending)
+        assertEquals(WeatherSettingsMessage.CONFLICT, conflicted.message)
+        assertFalse(controller.observed.last().enabled)
+        assertTrue(controller.store.state.enabled)
+        assertTrue(conflicted.canDisable)
+
+        controller.store.conflictEveryWrite = false
+        controller.disable()
+
+        assertFalse(controller.state.value.revocationPending)
+        assertFalse(controller.store.state.enabled)
+        assertEquals(WeatherSettingsMessage.DISABLED, controller.state.value.message)
     }
 
     @Test
@@ -245,6 +360,7 @@ class WeatherSettingsControllerTest {
     private suspend fun controller(store: FakeConsentStore = FakeConsentStore()): ControllerHarness {
         val harness = ControllerHarness(store)
         harness.controller.load()
+        harness.observed.clear()
         return harness
     }
 
@@ -300,6 +416,8 @@ class WeatherSettingsControllerTest {
     ) : WeatherConsentStore {
         val writes = mutableListOf<WeatherConsentState>()
         var failNextWrite = false
+        var failAllWrites = false
+        var conflictEveryWrite = false
 
         override fun read(): WeatherConsentState = state
 
@@ -310,6 +428,13 @@ class WeatherSettingsControllerTest {
             if (failNextWrite) {
                 failNextWrite = false
                 return WeatherConsentWriteResult.StorageFailure
+            }
+            if (failAllWrites) return WeatherConsentWriteResult.StorageFailure
+            if (conflictEveryWrite) {
+                if (state.generation < Long.MAX_VALUE) {
+                    state = state.copy(generation = state.generation + 1L)
+                }
+                return WeatherConsentWriteResult.Conflict(state)
             }
             if (state.generation != expectedGeneration) {
                 return WeatherConsentWriteResult.Conflict(state)

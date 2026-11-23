@@ -40,6 +40,7 @@ enum class WeatherSettingsMessage {
     INVALID_LOCATION,
     CONSENT_REQUIRED,
     STORAGE_FAILURE,
+    REVOKE_UNCONFIRMED,
     CONFLICT,
 }
 
@@ -51,16 +52,22 @@ data class WeatherSettingsUiState(
     val busy: Boolean = false,
     val loading: Boolean = false,
     val showValidationErrors: Boolean = false,
+    /**
+     * True while the in-process session is already off but the stored opt-in
+     * has not been confirmed disabled. The UI must keep the retry action
+     * available instead of claiming a durable disable.
+     */
+    val revocationPending: Boolean = false,
 ) {
     val isEnabled: Boolean
         get() = saved.enabled
 
     val canEnable: Boolean
-        get() = !loading && !saved.enabled && !busy && draft.consentChecked &&
-            validation is WeatherLocationInput.Valid
+        get() = !loading && !saved.enabled && !busy && !revocationPending &&
+            draft.consentChecked && validation is WeatherLocationInput.Valid
 
     val canDisable: Boolean
-        get() = !loading && saved.enabled && !busy
+        get() = !loading && !busy && (saved.enabled || revocationPending)
 }
 
 /**
@@ -92,6 +99,7 @@ class WeatherSettingsController(
             val saved = withContext(ioDispatcher) { store.read() }
             _state.value = initialState(saved)
             loaded = true
+            consentObserver(saved)
         }
     }
 
@@ -111,7 +119,9 @@ class WeatherSettingsController(
     suspend fun enable() {
         mutex.withLock {
             val snapshot = _state.value
-            if (snapshot.loading || snapshot.saved.enabled) return@withLock
+            if (snapshot.loading || snapshot.saved.enabled || snapshot.revocationPending) {
+                return@withLock
+            }
             when (val validation = snapshot.validation) {
                 is WeatherLocationInput.Invalid -> {
                     _state.update {
@@ -171,26 +181,37 @@ class WeatherSettingsController(
         }
     }
 
+    /**
+     * Stops the in-process session immediately and then asks the store to
+     * revoke the durable opt-in. A failed write is not reported as a completed
+     * disable: the screen stays off, [WeatherSettingsUiState.revocationPending]
+     * stays true and this method remains callable for an explicit retry.
+     */
     suspend fun disable() {
         mutex.withLock {
             val snapshot = _state.value
-            if (snapshot.loading) return@withLock
-            val current = snapshot.saved
-            if (!current.enabled) return@withLock
-            val stopped = WeatherConsentPolicy.disable(current)
+            if (snapshot.loading || snapshot.busy) return@withLock
+            val local = snapshot.saved
+            if (!local.enabled && !snapshot.revocationPending) return@withLock
+            val stopped = if (local.enabled) WeatherConsentPolicy.disable(local) else local
             consentObserver(stopped)
             _state.update {
                 it.copy(
                     saved = stopped,
-                    draft = WeatherSettingsDraft(),
-                    validation = validate(WeatherSettingsDraft()),
                     busy = true,
-                    message = WeatherSettingsMessage.DISABLED,
+                    message = null,
                     showValidationErrors = false,
+                    revocationPending = true,
                 )
             }
-            val outcome = withContext(ioDispatcher) { persistRevoked(current) }
-            finishRevoke(outcome = outcome, oldCacheKey = current.location?.cacheKey)
+            val persisted = withContext(ioDispatcher) { store.read() }
+            val outcome = withContext(ioDispatcher) { persistRevoked(persisted) }
+            finishRevoke(
+                outcome = outcome,
+                cacheKeys = cacheKeysOf(local, persisted),
+                successMessage = WeatherSettingsMessage.DISABLED,
+                clearDraftOnCommit = true,
+            )
         }
     }
 
@@ -206,40 +227,66 @@ class WeatherSettingsController(
                     saved = revoked,
                     draft = it.draft.copy(consentChecked = false),
                     busy = true,
-                    message = WeatherSettingsMessage.REVOKED_BY_EDIT,
+                    message = null,
                     showValidationErrors = true,
+                    revocationPending = true,
                 )
             }
-            val outcome = withContext(ioDispatcher) { persistRevoked(saved) }
-            finishRevoke(outcome = outcome, oldCacheKey = saved.location?.cacheKey)
+            val persisted = withContext(ioDispatcher) { store.read() }
+            val outcome = withContext(ioDispatcher) { persistRevoked(persisted) }
+            finishRevoke(
+                outcome = outcome,
+                cacheKeys = cacheKeysOf(saved, persisted),
+                successMessage = WeatherSettingsMessage.REVOKED_BY_EDIT,
+                clearDraftOnCommit = false,
+            )
         }
     }
 
     private suspend fun finishRevoke(
         outcome: WeatherConsentWriteResult,
-        oldCacheKey: String?,
+        cacheKeys: Set<String>,
+        successMessage: WeatherSettingsMessage,
+        clearDraftOnCommit: Boolean,
     ) {
         when (outcome) {
             is WeatherConsentWriteResult.Committed -> {
-                if (oldCacheKey != null) {
-                    withContext(ioDispatcher) { cacheStore?.clear(oldCacheKey) }
-                }
+                clearCaches(cacheKeys)
                 _state.update {
                     it.copy(
                         saved = outcome.state,
+                        draft = if (clearDraftOnCommit) WeatherSettingsDraft() else it.draft,
+                        validation = if (clearDraftOnCommit) validate(WeatherSettingsDraft()) else it.validation,
                         busy = false,
+                        message = successMessage,
+                        showValidationErrors = if (clearDraftOnCommit) false else it.showValidationErrors,
+                        revocationPending = false,
                     )
                 }
             }
 
             is WeatherConsentWriteResult.Conflict -> {
-                consentObserver(outcome.current)
-                _state.update {
-                    it.copy(
-                        saved = outcome.current,
-                        busy = false,
-                        message = WeatherSettingsMessage.CONFLICT,
-                    )
+                if (!outcome.current.enabled) {
+                    clearCaches(cacheKeys)
+                    _state.update {
+                        it.copy(
+                            saved = outcome.current,
+                            draft = if (clearDraftOnCommit) WeatherSettingsDraft() else it.draft,
+                            validation = if (clearDraftOnCommit) validate(WeatherSettingsDraft()) else it.validation,
+                            busy = false,
+                            message = successMessage,
+                            showValidationErrors = if (clearDraftOnCommit) false else it.showValidationErrors,
+                            revocationPending = false,
+                        )
+                    }
+                } else {
+                    _state.update {
+                        it.copy(
+                            busy = false,
+                            message = WeatherSettingsMessage.CONFLICT,
+                            revocationPending = true,
+                        )
+                    }
                 }
             }
 
@@ -247,12 +294,23 @@ class WeatherSettingsController(
                 _state.update {
                     it.copy(
                         busy = false,
-                        message = WeatherSettingsMessage.STORAGE_FAILURE,
+                        message = WeatherSettingsMessage.REVOKE_UNCONFIRMED,
+                        revocationPending = true,
                     )
                 }
             }
         }
     }
+
+    private suspend fun clearCaches(cacheKeys: Set<String>) {
+        for (key in cacheKeys) {
+            withContext(ioDispatcher) { cacheStore?.clear(key) }
+        }
+    }
+
+    private fun cacheKeysOf(
+        vararg states: WeatherConsentState,
+    ): Set<String> = states.mapNotNull { it.location?.cacheKey }.toSet()
 
     /**
      * A revoke is retried against the newest stored generation, so a disable or

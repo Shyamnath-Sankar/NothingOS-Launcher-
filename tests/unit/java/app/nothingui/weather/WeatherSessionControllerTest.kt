@@ -17,7 +17,9 @@
 package app.nothingui.weather
 
 import java.time.Instant
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -177,6 +179,71 @@ class WeatherSessionControllerTest {
     }
 
     @Test
+    fun aConsentGenerationResetStillAdvancesTheOwnedSessionGeneration() = runBlocking {
+        val harness = Harness()
+        harness.activate()
+        val before = harness.controller.current().generation
+
+        harness.controller.setConsent(
+            WeatherConsentState(enabled = true, location = otherLocation, generation = 0L),
+        )
+
+        assertTrue(harness.controller.current().generation > before)
+        harness.close()
+    }
+
+    @Test
+    fun generationExhaustionFailsClosedWithoutStartingWork() = runBlocking {
+        val harness = Harness(
+            initialConsent = WeatherConsentState(
+                enabled = true,
+                location = location,
+                generation = Long.MAX_VALUE,
+            ),
+        )
+
+        harness.controller.setHomeResumed(true)
+        harness.controller.setScreenOn(true)
+        harness.controller.setUserPresent(true)
+
+        assertFalse(harness.controller.current().isActive)
+        assertTrue(harness.work.starts.isEmpty())
+        harness.close()
+    }
+
+    @Test
+    fun aPauseQueuedBeforeDeliveryDropsTheCompletedResult() = runBlocking {
+        val dispatcher = QueuedDispatcher()
+        val harness = Harness(dispatcher)
+        harness.activate()
+        dispatcher.runAll()
+        assertEquals(1, harness.work.starts.size)
+
+        harness.work.complete(forecast())
+        harness.controller.setHomeResumed(false)
+        dispatcher.runAll()
+
+        assertTrue(harness.results.isEmpty())
+        harness.close()
+    }
+
+    @Test
+    fun anEditQueuedBeforeDeliveryDropsTheCompletedResult() = runBlocking {
+        val dispatcher = QueuedDispatcher()
+        val harness = Harness(dispatcher)
+        harness.activate()
+        dispatcher.runAll()
+        assertEquals(1, harness.work.starts.size)
+
+        harness.work.complete(forecast())
+        harness.controller.setConsent(WeatherConsentPolicy.enable(enabled, otherLocation))
+        dispatcher.runAll()
+
+        assertTrue(harness.results.isEmpty())
+        harness.close()
+    }
+
+    @Test
     fun stopCancelsEverythingAndLeavesTheSessionDisabled() = runBlocking {
         val harness = Harness()
         harness.activate()
@@ -203,14 +270,17 @@ class WeatherSessionControllerTest {
         cacheUpdated = true,
     )
 
-    private class Harness {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+    private class Harness(
+        dispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
+        initialConsent: WeatherConsentState = WeatherConsentState.DISABLED,
+    ) {
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val work = ControlledWork()
         val results = mutableListOf<WeatherLoadResult>()
         val controller = WeatherSessionController(
             work = work,
             scope = scope,
-            initialConsent = WeatherConsentState.DISABLED,
+            initialConsent = initialConsent,
             initialVisibility = WeatherVisibilityState(),
             resultSink = WeatherResultSink { results += it },
         )
@@ -233,6 +303,18 @@ class WeatherSessionControllerTest {
             WeatherConsentPolicy.parseLocation("Home", "51.5074", "-0.1278")
                 as WeatherLocationInput.Valid
             ).location
+    }
+
+    private class QueuedDispatcher : CoroutineDispatcher() {
+        private val queued = ArrayDeque<Runnable>()
+
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            queued.addLast(block)
+        }
+
+        fun runAll() {
+            while (queued.isNotEmpty()) queued.removeFirst().run()
+        }
     }
 
     private class ControlledWork : WeatherLoadWork {

@@ -184,13 +184,13 @@ fun WeatherSettingsContent(
                 )
                 ConsentToggle(
                     checked = state.draft.consentChecked || state.isEnabled,
-                    enabled = !state.isEnabled && !state.busy,
+                    enabled = !state.isEnabled && !state.busy && !state.revocationPending,
                     onCheckedChange = { checked ->
                         onDraftChange(state.draft.copy(consentChecked = checked))
                     },
                 )
-                if (state.isEnabled) {
-                    EnabledStatus(state = state)
+                if (state.isEnabled || state.revocationPending) {
+                    if (state.isEnabled) EnabledStatus(state = state)
                     Button(
                         onClick = onDisable,
                         enabled = state.canDisable,
@@ -199,7 +199,15 @@ fun WeatherSettingsContent(
                             .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Sm)
                             .heightIn(min = NothingUiSpacing.Xxxl),
                     ) {
-                        Text(stringResource(R.string.dotwel_weather_disable))
+                        Text(
+                            stringResource(
+                                if (state.revocationPending) {
+                                    R.string.dotwel_weather_disable_retry
+                                } else {
+                                    R.string.dotwel_weather_disable
+                                },
+                            ),
+                        )
                     }
                 } else {
                     Button(
@@ -234,70 +242,72 @@ private fun LocationFields(
     onDraftChange: (WeatherSettingsDraft) -> Unit,
 ) {
     val draft = state.draft
-    val enabled = !state.busy && !state.isEnabled
+    val enabled = !state.busy && !state.isEnabled && !state.revocationPending
     val showErrors = state.showValidationErrors
-    OutlinedTextField(
-        value = draft.label,
-        onValueChange = { onDraftChange(draft.copy(label = it)) },
-        enabled = enabled,
-        singleLine = true,
-        label = { Text(stringResource(R.string.dotwel_weather_location_label)) },
-        placeholder = { Text(stringResource(R.string.dotwel_weather_location_hint)) },
-        isError = showErrors && labelErrorRes(state.validation) != null,
-        supportingText = if (showErrors) {
-            labelErrorRes(state.validation)?.let { res ->
-                { Text(stringResource(res, WeatherConsentPolicy.MAX_LABEL_LENGTH)) }
-            }
-        } else {
-            null
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
-    )
-    OutlinedTextField(
-        value = draft.latitudeText,
-        onValueChange = { onDraftChange(draft.copy(latitudeText = it)) },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        label = { Text(stringResource(R.string.dotwel_weather_latitude_label)) },
-        isError = showErrors && WeatherLocationInputError.LATITUDE_INVALID in errors(state.validation),
-        supportingText = if (showErrors && WeatherLocationInputError.LATITUDE_INVALID in errors(state.validation)) {
-            { Text(stringResource(R.string.dotwel_weather_error_latitude)) }
-        } else {
-            null
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
-    )
-    OutlinedTextField(
-        value = draft.longitudeText,
-        onValueChange = { onDraftChange(draft.copy(longitudeText = it)) },
-        enabled = enabled,
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-        label = { Text(stringResource(R.string.dotwel_weather_longitude_label)) },
-        isError = showErrors && WeatherLocationInputError.LONGITUDE_INVALID in errors(state.validation),
-        supportingText = if (showErrors && WeatherLocationInputError.LONGITUDE_INVALID in errors(state.validation)) {
-            { Text(stringResource(R.string.dotwel_weather_error_longitude)) }
-        } else {
-            null
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
-    )
-    Text(
-        text = stringResource(R.string.dotwel_weather_coordinates_hint),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(
-            horizontal = NothingUiSpacing.Lg,
-            vertical = NothingUiSpacing.Xs,
-        ),
-    )
+    Column {
+        OutlinedTextField(
+            value = draft.label,
+            onValueChange = { onDraftChange(draft.copy(label = it)) },
+            enabled = enabled,
+            singleLine = true,
+            label = { Text(stringResource(R.string.dotwel_weather_location_label)) },
+            placeholder = { Text(stringResource(R.string.dotwel_weather_location_hint)) },
+            isError = showErrors && labelErrorRes(state.validation) != null,
+            supportingText = if (showErrors) {
+                labelErrorRes(state.validation)?.let { res ->
+                    { Text(stringResource(res, WeatherConsentPolicy.MAX_LABEL_LENGTH)) }
+                }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
+        )
+        OutlinedTextField(
+            value = draft.latitudeText,
+            onValueChange = { onDraftChange(draft.copy(latitudeText = it)) },
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            label = { Text(stringResource(R.string.dotwel_weather_latitude_label)) },
+            isError = showErrors && WeatherLocationInputError.LATITUDE_INVALID in errors(state.validation),
+            supportingText = if (showErrors && WeatherLocationInputError.LATITUDE_INVALID in errors(state.validation)) {
+                { Text(stringResource(R.string.dotwel_weather_error_latitude)) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
+        )
+        OutlinedTextField(
+            value = draft.longitudeText,
+            onValueChange = { onDraftChange(draft.copy(longitudeText = it)) },
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            label = { Text(stringResource(R.string.dotwel_weather_longitude_label)) },
+            isError = showErrors && WeatherLocationInputError.LONGITUDE_INVALID in errors(state.validation),
+            supportingText = if (showErrors && WeatherLocationInputError.LONGITUDE_INVALID in errors(state.validation)) {
+                { Text(stringResource(R.string.dotwel_weather_error_longitude)) }
+            } else {
+                null
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Xs),
+        )
+        Text(
+            text = stringResource(R.string.dotwel_weather_coordinates_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(
+                horizontal = NothingUiSpacing.Lg,
+                vertical = NothingUiSpacing.Xs,
+            ),
+        )
+    }
 }
 
 @Composable
@@ -384,6 +394,7 @@ private fun WeatherSettingsMessage.resource(): Int = when (this) {
     WeatherSettingsMessage.INVALID_LOCATION -> R.string.dotwel_weather_message_invalid
     WeatherSettingsMessage.CONSENT_REQUIRED -> R.string.dotwel_weather_message_consent
     WeatherSettingsMessage.STORAGE_FAILURE -> R.string.dotwel_weather_message_storage
+    WeatherSettingsMessage.REVOKE_UNCONFIRMED -> R.string.dotwel_weather_message_revoke_unconfirmed
     WeatherSettingsMessage.CONFLICT -> R.string.dotwel_weather_message_conflict
 }
 

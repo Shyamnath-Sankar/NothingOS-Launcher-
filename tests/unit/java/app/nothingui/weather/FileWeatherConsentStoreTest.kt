@@ -120,6 +120,91 @@ class FileWeatherConsentStoreTest {
     }
 
     @Test
+    fun aNextStateMustStrictlyIncreaseTheExpectedGeneration() {
+        val store = store()
+        val enabled = WeatherConsentPolicy.enable(WeatherConsentState.DISABLED, location)
+        store.compareAndSet(expectedGeneration = 0L, next = enabled)
+        val sameGeneration = enabled.copy(generation = enabled.generation)
+
+        val result = store.compareAndSet(
+            expectedGeneration = enabled.generation,
+            next = sameGeneration,
+        )
+
+        assertEquals(WeatherConsentWriteResult.StorageFailure, result)
+        assertEquals(enabled, store.read())
+    }
+
+    @Test
+    fun aLowerGenerationCannotReplaceANewerStoredDecision() {
+        val store = store()
+        val enabled = WeatherConsentPolicy.enable(WeatherConsentState.DISABLED, location)
+        store.compareAndSet(expectedGeneration = 0L, next = enabled)
+        val newer = WeatherConsentPolicy.disable(enabled)
+        store.compareAndSet(expectedGeneration = enabled.generation, next = newer)
+
+        val result = store.compareAndSet(
+            expectedGeneration = 0L,
+            next = WeatherConsentState.DISABLED,
+        )
+
+        assertEquals(WeatherConsentWriteResult.Conflict(newer), result)
+        assertEquals(newer, store.read())
+    }
+
+    @Test
+    fun generationExhaustionFailsClosedAndKeepsTheLastDecision() {
+        val store = store()
+        val exhausted = WeatherConsentState(
+            enabled = true,
+            location = location,
+            generation = Long.MAX_VALUE,
+        )
+        assertEquals(
+            WeatherConsentWriteResult.Committed(exhausted),
+            store.compareAndSet(expectedGeneration = 0L, next = exhausted),
+        )
+
+        val result = store.compareAndSet(
+            expectedGeneration = Long.MAX_VALUE,
+            next = WeatherConsentPolicy.disable(exhausted),
+        )
+
+        assertEquals(WeatherConsentWriteResult.StorageFailure, result)
+        assertEquals(exhausted, store.read())
+    }
+
+    @Test
+    fun aCorruptRecordCannotBeOverwrittenByAnEnableWithoutFreshConsent() {
+        val store = store()
+        store.directory().mkdirs()
+        val corrupt = "{\"version\":1,\"enabled\":true,\"label\":\"Home\",\"latitude\":\"999\",\"longitude\":\"0\",\"generation\":7}"
+        stateFile().writeText(corrupt)
+
+        val result = store.compareAndSet(
+            expectedGeneration = 0L,
+            next = WeatherConsentPolicy.enable(WeatherConsentState.DISABLED, location),
+        )
+
+        assertEquals(WeatherConsentWriteResult.StorageFailure, result)
+        assertEquals(corrupt, stateFile().readText())
+        assertEquals(WeatherConsentState.DISABLED, store.read())
+    }
+
+    @Test
+    fun aCorruptRecordCanStillBeDurablyDisabled() {
+        val store = store()
+        store.directory().mkdirs()
+        stateFile().writeText("not json")
+        val disabled = WeatherConsentState(enabled = false, location = null, generation = 1L)
+
+        val result = store.compareAndSet(expectedGeneration = 0L, next = disabled)
+
+        assertEquals(WeatherConsentWriteResult.Committed(disabled), result)
+        assertEquals(disabled, store.read())
+    }
+
+    @Test
     fun anUnwritableDirectoryIsReportedAsStorageFailureAndNeverClaimsSuccess() {
         val notADirectory = temporaryFolder.newFile("blocked")
         val store = FileWeatherConsentStore(notADirectory)
