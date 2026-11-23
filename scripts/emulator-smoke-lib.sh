@@ -998,6 +998,320 @@ ui_clickable_label_bounds() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of the only exact text/content-description
+# node carrying $2. Duplicate entries, a missing label or malformed bounds print
+# nothing, so a caller cannot silently pick one of two ambiguous dashboard rows.
+ui_unique_label_bounds() (
+    xml=$1
+    label=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$label" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v label="$label" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                if (text != label && desc != label) next
+                b = attr($0, "bounds")
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                count++
+                bounds = b
+            }
+            END {
+                if (count == 1) emit(bounds)
+            }
+        '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the only clickable node representing the
+# exact label/description $2. A directly clickable node wins; otherwise the
+# nearest clickable ancestor is used. Two distinct clickable candidates, no
+# candidate or a label with no clickable owner prints nothing, so an ambiguous
+# settings entry is never tapped.
+ui_unique_clickable_label_bounds() (
+    xml=$1
+    label=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$label" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v label="$label" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                if (b in seen) return
+                seen[b] = 1
+                order[++count] = b
+            }
+            function valid(b) {
+                return b ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                bounds = attr($0, "bounds")
+                clickable = attr($0, "clickable")
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                if (!selfclose) {
+                    sp++
+                    stack[sp] = (clickable == "true" && valid(bounds)) ? bounds : ""
+                }
+                if (text != label && desc != label) next
+                if (clickable == "true" && valid(bounds)) {
+                    emit(bounds)
+                    next
+                }
+                for (i = sp; i >= 1; i--) {
+                    if (stack[i] != "") {
+                        emit(stack[i])
+                        break
+                    }
+                }
+            }
+            END {
+                if (count == 1) {
+                    s = order[1]
+                    gsub(/\[/, " ", s)
+                    gsub(/\]/, " ", s)
+                    gsub(/,/, " ", s)
+                    sub(/^[[:space:]]+/, "", s)
+                    sub(/[[:space:]]+$/, "", s)
+                    n = split(s, p, /[[:space:]]+/)
+                    if (n == 4) print p[1], p[2], p[3], p[4]
+                }
+            }
+        '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the topmost real slider. The class is the
+# exact Compose/UIAutomator `android.widget.SeekBar`; a screen with no exposed
+# SeekBar prints nothing so the caller fails closed instead of guessing a row or
+# a thumb coordinate. Two sliders sharing the same top edge are ambiguous.
+ui_top_slider_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y1_of(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return -1
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[2] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "class") != "android.widget.SeekBar") next
+                b = attr($0, "bounds")
+                y = y1_of(b)
+                if (y < 0) next
+                if (best == "" || y < best_y) {
+                    best = b
+                    best_y = y
+                    top_count = 1
+                } else if (y == best_y) {
+                    top_count++
+                }
+            }
+            END {
+                if (best == "" || top_count != 1) exit
+                s = best
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+        '
+)
+
+# Print the integer percentage associated with the measured top slider. The
+# percentage must be a 50..150 multiple-of-10 text above/overlapping that exact
+# slider and horizontally overlapping it. Exactly one distinct value is
+# accepted; zero or several values print nothing so the caller never guesses.
+ui_slider_percent() (
+    xml=$1
+    slider=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$slider" ] || return 0
+    set -- $slider
+    [ "$#" -eq 4 ] || return 0
+    want="[$1,$2][$3,$4]"
+    sx1=$1
+    sy1=$2
+    sx2=$3
+    sy2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" -v sx1="$sx1" -v sy1="$sy1" -v sx2="$sx2" -v sy2="$sy2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function coords(b, out,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return 0
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return 0
+                out[1] = p[1] + 0
+                out[2] = p[2] + 0
+                out[3] = p[3] + 0
+                out[4] = p[4] + 0
+                return 1
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                b = attr($0, "bounds")
+                if (attr($0, "class") == "android.widget.SeekBar" && b == want) {
+                    target = 1
+                }
+                text = attr($0, "text")
+                sub(/[[:space:]]+$/, "", text)
+                if (text !~ /^[0-9][0-9]?[0-9]?%$/) next
+                if (!coords(b, p)) next
+                value = text
+                sub(/%$/, "", value)
+                value = value + 0
+                if (value < 50 || value > 150 || value % 10 != 0) next
+                if (p[2] < sy1 - 400) next
+                if (p[4] > sy2) next
+                if (p[3] <= sx1 || p[1] >= sx2) next
+                seen[value] = 1
+                vcount++
+            }
+            END {
+                if (!target) exit
+                if (vcount != 1) exit
+                for (v in seen) print v
+            }
+        '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the only focused real SeekBar. No focused
+# slider, a focused non-slider, malformed bounds or two focused sliders print
+# nothing.
+ui_focused_slider_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (attr($0, "class") != "android.widget.SeekBar") next
+                if (attr($0, "focused") != "true") next
+                b = attr($0, "bounds")
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                count++
+                bounds = b
+            }
+            END {
+                if (count != 1) exit
+                s = bounds
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+        '
+)
+
+# Print one "x1 y1 x2 y2" line per measured widget-host node on HOME. Matches
+# only the inherited launcher host class or an explicit app-widget resource id,
+# never an arbitrary large container. Missing hosts print nothing.
+ui_widget_host_bounds() (
+    xml=$1
+    [ -s "$xml" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                if (cls !~ /AppWidgetHostView$/ &&
+                    rid !~ /(^|\/)(app_widget|widget_host|appwidget)$/) next
+                b = attr($0, "bounds")
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+        '
+)
+
 # Print the bounds ("x1 y1 x2 y2") of the largest measured scrollable container
 # on a settings screen, clipped to the safe viewport above the optional
 # navigation-bar top. The settings screens use a Compose verticalScroll Column,

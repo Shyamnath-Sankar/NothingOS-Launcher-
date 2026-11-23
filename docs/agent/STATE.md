@@ -3,31 +3,67 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 settings customization entry — PRE-CI review correction for the Play-only
-  Browse widgets route. `LawnchairLauncher` no longer touches hidden `Activity.isResumed`; it now
-  uses `BaseActivity.hasBeenResumed()`. The pending request is a bounded one-shot: it retries only
-  on a foreground/NORMAL transition end, is cancelled on a real `onPause` instead of replaying on a
-  later unrelated resume, requires window focus (and top-resumed in multi-window), and new requests
-  carry their own id so rotation/replay cannot duplicate while a fresh request is still accepted.
-  PENDING CI AND RUNTIME; no pixel proof.**
+- current_phase: **P8 settings customization entry — scripts/fixtures-only runtime gate for the
+  Play customize dashboard, Browse widgets route and actual top icon-size slider. This run did not
+  change app UI, manifest, workflow, dependency or permission; it added a bounded
+  `capture_customization_settings` step plus pure measured-control/slider fixtures. PENDING CI AND
+  RUNTIME; no pixel proof.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `bfef563` (`test(launcher): cover one-shot widget picker request states`) on top of
-  `0f0510c` (`fix(launcher): bound one-shot widget picker request lifecycle`), `724a139`, and the
-  known tested fallback `1732f5b` (CI209). CI211 for the earlier `724a139` remains pending actual
-  CI; this correction is newer and unbuilt.
+- head: this run's scripts/docs commit on top of `36e9355` (`docs(agent): record widget picker
+  lifecycle correction pending CI`), `bfef563`, `0f0510c`, `724a139`, and the known tested fallback
+  `1732f5b` (CI209). CI211 for the earlier `724a139` remains independent and was not touched.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI result for `0f0510c` / `bfef563` yet.** This run ran only two source guards,
-  `sh -n` and `git diff --check`; no Gradle, Android build, emulator, JUnit, APK or pixel check.
-  Do not claim the corrected lifecycle, the Settings row or the native picker until CI/runtime
-  inspects them.
-- next: next CI should confirm compile/style/Play debug APK and the new unit test. Follow-up runtime
-  must confirm: the Settings tap brings the launcher home, the picker opens once only when home is
-  focused and NORMAL, rotation does not duplicate it, leaving home cancels a pending request, and no
-  picker opens while Settings or another app is foreground (including multi-window). Release/
-  hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip, non-Play, large-screen and
-  performance audits stay open.
+- ci: **No CI result for the current head yet.** This run ran only shell scripts: `sh -n`,
+  `emulator-smoke-test.sh` (715 ok), `emulator-smoke-drawer-test.sh` (38 ok), the wallpaper/polish
+  guards and `git diff --check`; no Gradle, Android build, emulator, JUnit, APK or pixel check.
+  The new runtime step is unexecuted until CI runs it.
+- next: next actual CI/emulator run must confirm the real dashboard labels, measured category tap,
+  top SeekBar percentage, explicit Browse picker, Back/HOME non-reopen and one-step icon-size
+  persistence/revert. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
+  non-Play, large-screen and performance audits stay open.
 
-## done (this run — pre-CI review correction, PENDING CI AND RUNTIME)
+## done (this run — measured customization dashboard/Browse/icon-size runtime gate, PENDING CI)
+
+- **New bounded runtime step:** `scripts/emulator-smoke.sh` now calls
+  `capture_customization_settings` immediately after `capture_clean_home_theme` and before
+  `exercise_device_settings_shortcuts` / `capture_widgets_picker`, so it runs after the own-HOME
+  baseline and before any third-party widget placement. It opens the real `PreferenceActivity`
+  with no diagnostic extras, requires one exact `Customize launcher` label and one unique clickable
+  `Icon size and home screen` entry, taps the measured candidate, and requires the top
+  `Customize launcher` group, actual `android.widget.SeekBar` percentage and unique `Browse widgets`
+  control in measured top-to-bottom order.
+- **Browse proof:** the measured `Browse widgets` control opens the existing native picker helper;
+  the resumed component is recorded (exact launcher or another launcher-package picker activity),
+  XML/PNG and `dumpsys appwidget` are kept, Back must resume the exact launcher activity, and the
+  launcher-owned binding list must match the baseline. Reopening Settings must keep the exact
+  Settings activity with no automatic picker; a second explicit Browse tap must open the picker
+  again; Back plus two ordinary HOME repeats must not reopen it.
+- **Actual slider proof:** the top SeekBar is located from XML (never a guessed coordinate), its
+  unique 50–150 step-of-10 percentage is read, TAB focus is bounded to 12 steps, and the exact top
+  SeekBar must report `focused="true"`. One `DPAD_RIGHT` (<150) or `DPAD_LEFT` (150) step must change
+  the actual percentage by exactly 10; HOME PNG/XML are captured before and after, the value is
+  re-read after reopening Settings, one reverse key restores the original, and the final binding
+  list must equal the baseline. Home widget-host bounds, private datastore/prefs presence, workspace
+  DB availability and raw wallpaper dumps are retained; the PNGs are icon-pixel evidence for parent
+  review, not claimed cell bounds.
+- **Pure helpers added:** `ui_unique_label_bounds`, `ui_unique_clickable_label_bounds`,
+  `ui_top_slider_bounds`, `ui_slider_percent`, `ui_focused_slider_bounds` and
+  `ui_widget_host_bounds`. Missing/duplicate labels, missing/duplicate top sliders, non-SeekBar or
+  unfocused controls, ambiguous/out-of-range percentages and malformed bounds all fail closed.
+- **No faked state:** no preference write, direct widget bind, database/sqlite edit, picker activity
+  start, reset, seed, clear-data, `setWallpaperComponent` or hardcoded tap coordinate was added.
+  App UI, manifest, permissions, workflow, dependencies, SDK, signing and applicationId are
+  untouched.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **715 ok**; `emulator-smoke-drawer-test.sh` **38 ok**;
+  `nothingui-polish-guard.sh` OK; `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no
+  APK); `sh -n` clean on every edited script; `git diff --check` clean.
+- **Blocked/unknown:** the real dashboard labels, picker route, SeekBar class/focus and percent
+  persistence are **not** proven until the next actual API 37 CI/emulator run. If the real picker is
+  a separate launcher-package activity, the exact-launcher expectation after Back still applies.
+  No workflow, release, merge or completion claim.
+
+## done (previous run — pre-CI review correction, PENDING CI AND RUNTIME)
 
 - **Defect 1 fixed:** the two hidden `Activity.isResumed` accesses in `tryOpenPendingWidgetPicker`
   were replaced with the documented public `BaseActivity.hasBeenResumed()` flag; window focus is now

@@ -18,6 +18,11 @@
 #     captures home.png as the actual-home visual evidence
 #   - captures the clean HOME in system dark/light (UI XML + screenshot) before
 #     any third-party widget is added, then restores the previous night mode
+#   - opens the real Play customization dashboard (no diagnostic extra), measures
+#     the unique Customize launcher / Icon size and home screen entries, opens
+#     the real Browse widgets picker on explicit taps only, and steps the actual
+#     top icon-size SeekBar by one focused keyboard step and back, capturing
+#     HOME before/after PNGs and an unchanged widget-binding baseline
 #   - opens the real Home screen grid preferences through the existing
 #     lawnchair://settings/home-screen-grid deep link, captures grid-settings.xml
 #     + .png, and requires the preview, Columns/Rows/Dock icons controls and a
@@ -161,6 +166,28 @@ wait_for_foreground() (
             return 0
         fi
         attempt=$((attempt + 1))
+        sleep 1
+    done
+    return 1
+)
+
+# Poll the real resumed component, bounded, until exactly <package>/<launcher>.
+# A picker or Settings activity in the same package does not satisfy this.
+wait_for_launcher_activity() (
+    _wfla_label=$1
+    _wfla_attempts=${2:-10}
+    _wfla_attempt=1
+    while [ "$_wfla_attempt" -le "$_wfla_attempts" ]; do
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/activities-$_wfla_label-$_wfla_attempt.txt" 2>&1 || true
+        if foreground_is_component \
+            "$ARTIFACTS/activities-$_wfla_label-$_wfla_attempt.txt" \
+            "$PKG" "$LAUNCHER_ACTIVITY"; then
+            cp "$ARTIFACTS/activities-$_wfla_label-$_wfla_attempt.txt" \
+                "$ARTIFACTS/activities-$_wfla_label.txt"
+            return 0
+        fi
+        _wfla_attempt=$((_wfla_attempt + 1))
         sleep 1
     done
     return 1
@@ -1111,6 +1138,546 @@ capture_clean_home_theme() {
     [ -z "$_ccht_failure" ] || fail "$_ccht_failure"
     return_home clean-home
     verify_nothing_home
+}
+
+# Runtime gate for the Play-only "Customize launcher" path. It uses the real
+# PreferenceActivity dashboard (no diagnostic extras), measured exact controls,
+# the real Browse-widgets launcher request and the real native picker, then
+# changes the actual top icon-size slider by one keyboard step and restores it.
+# Every unresolved label, slider, percentage, focus or binding fails closed with
+# the captured XML/PNG. No preference is written and no widget is bound.
+capture_customization_settings() {
+    _ccs_label=customization
+
+    # Immutable HOME baseline before any Settings interaction.
+    return_home customization-baseline
+    wait_for_launcher_idle "$ARTIFACTS/customization-home-idle.txt" 10 ||
+        fail "launcher was not idle before the customization baseline"
+    capture_ui_xml customization-home-baseline.xml ||
+        fail "customization HOME baseline XML capture failed"
+    capture_screenshot_to customization-home-baseline.png
+    [ -s "$ARTIFACTS/customization-home-baseline.png" ] ||
+        fail "customization HOME baseline screenshot capture failed"
+    primary_home_is_ready "$ARTIFACTS/customization-home-baseline.xml" ||
+        fail "customization baseline is not the existing primary HOME"
+    ui_widget_host_bounds "$ARTIFACTS/customization-home-baseline.xml" \
+        > "$ARTIFACTS/customization-widget-host-bounds-baseline.txt"
+    [ -s "$ARTIFACTS/customization-widget-host-bounds-baseline.txt" ] ||
+        fail "customization baseline exposed no measured widget-host bounds"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/customization-appwidget-baseline.txt" 2>&1 || true
+    appwidget_launcher_instances "$ARTIFACTS/customization-appwidget-baseline.txt" "$PKG" \
+        > "$ARTIFACTS/customization-appwidget-instances-baseline.txt"
+    [ -s "$ARTIFACTS/customization-appwidget-instances-baseline.txt" ] ||
+        fail "customization baseline exposed no launcher-owned widget bindings"
+    adb_cmd shell dumpsys wallpaper \
+        > "$ARTIFACTS/customization-wallpaper-baseline.txt" 2>&1 || true
+    {
+        printf 'home_lock_source=datastore-if-available\n'
+        adb_cmd shell run-as "$PKG" ls -l databases files/datastore \
+            2>&1 || true
+    } > "$ARTIFACTS/customization-private-files-baseline.txt"
+    if adb_cmd shell run-as "$PKG" cat databases/launcher.db \
+        > "$ARTIFACTS/customization-workspace-baseline.db" 2> "$ARTIFACTS/customization-workspace-baseline.err"; then
+        [ -s "$ARTIFACTS/customization-workspace-baseline.db" ] &&
+            printf 'workspace_db=present\n' \
+                > "$ARTIFACTS/customization-workspace-baseline.txt" ||
+            printf 'workspace_db=empty\n' \
+                > "$ARTIFACTS/customization-workspace-baseline.txt"
+    else
+        printf 'workspace_db=unavailable\n' \
+            > "$ARTIFACTS/customization-workspace-baseline.txt"
+    fi
+    adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
+        > "$ARTIFACTS/customization-prefs-baseline.xml" 2>/dev/null || true
+    adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
+        > "$ARTIFACTS/customization-datastore-baseline.pb" 2>/dev/null || true
+    if grep -aq 'lock_home_screen' "$ARTIFACTS/customization-datastore-baseline.pb"; then
+        printf 'lock_home_screen=present\n' \
+            > "$ARTIFACTS/customization-homelock-baseline.txt"
+    else
+        printf 'lock_home_screen=unavailable\n' \
+            > "$ARTIFACTS/customization-homelock-baseline.txt"
+    fi
+
+    # 1. Real dashboard, no diagnostic sample extra.
+    if ! _ccs_out=$(adb_cmd shell am start -W -f 0x18000000 \
+        -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_ccs_out" \
+            > "$ARTIFACTS/customization-dashboard-launch.txt"
+        fail "could not open the real customization dashboard"
+    fi
+    printf '%s\n' "$_ccs_out" \
+        > "$ARTIFACTS/customization-dashboard-launch.txt"
+    case "$_ccs_out" in
+        *"Error:"* | *"Error type"* | *Exception*)
+            fail "customization dashboard launch reported an error"
+            ;;
+    esac
+    printf '%s\n' "$_ccs_out" | grep -q 'Status: ok' ||
+        fail "customization dashboard launch did not report Status: ok"
+    sleep 2
+    capture_ui_xml customization-dashboard.xml ||
+        fail "customization dashboard UI XML capture failed"
+    if grep -Fq 'DOTWEL' "$ARTIFACTS/customization-dashboard.xml"; then
+        fail "customization dashboard rendered the diagnostic sample"
+    fi
+    _ccs_customize=$(ui_unique_label_bounds \
+        "$ARTIFACTS/customization-dashboard.xml" 'Customize launcher')
+    _ccs_category=$(ui_unique_clickable_label_bounds \
+        "$ARTIFACTS/customization-dashboard.xml" 'Icon size and home screen')
+    [ -n "$_ccs_customize" ] ||
+        fail "the dashboard has no unique Customize launcher entry"
+    [ -n "$_ccs_category" ] ||
+        fail "the dashboard has no unique clickable Icon size and home screen entry"
+    capture_screenshot_to customization-dashboard.png
+    [ -s "$ARTIFACTS/customization-dashboard.png" ] ||
+        fail "customization dashboard screenshot capture failed"
+    tap_center_of_bounds "$_ccs_category" ||
+        fail "could not tap the measured Icon size and home screen entry"
+
+    _ccs_home_xml=
+    _ccs_poll=1
+    while [ "$_ccs_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-home-screen-attempt-$_ccs_poll.xml"
+        if capture_ui_xml "customization-home-screen-attempt-$_ccs_poll.xml"; then
+            _ccs_customize=$(ui_unique_label_bounds "$_ccs_candidate" 'Customize launcher')
+            _ccs_slider=$(ui_top_slider_bounds "$_ccs_candidate")
+            _ccs_percent=$(ui_slider_percent "$_ccs_candidate" "$_ccs_slider")
+            _ccs_browse=$(ui_unique_clickable_label_bounds "$_ccs_candidate" 'Browse widgets')
+            if [ -n "$_ccs_customize" ] && [ -n "$_ccs_slider" ] &&
+                [ -n "$_ccs_percent" ] && [ -n "$_ccs_browse" ]; then
+                _ccs_home_xml=$_ccs_candidate
+                break
+            fi
+        fi
+        _ccs_poll=$((_ccs_poll + 1))
+    done
+    [ -n "$_ccs_home_xml" ] ||
+        fail "the measured Icon size and home screen entry did not expose the top Customize launcher group, icon-size percentage and Browse widgets"
+    cp "$_ccs_home_xml" "$ARTIFACTS/customization-home-screen.xml"
+    capture_screenshot_to customization-home-screen.png
+    [ -s "$ARTIFACTS/customization-home-screen.png" ] ||
+        fail "customization Home screen screenshot capture failed"
+    set -- "$_ccs_customize"
+    _ccs_customize_y=$2
+    set -- "$_ccs_slider"
+    _ccs_slider_y=$2
+    set -- "$_ccs_browse"
+    _ccs_browse_y=$2
+    if [ "$_ccs_customize_y" -ge "$_ccs_slider_y" ] ||
+        [ "$_ccs_slider_y" -ge "$_ccs_browse_y" ]; then
+        fail "the customization controls are not in the top Customize launcher group order"
+    fi
+    printf 'customize=%s slider=%s percent=%s browse=%s\n' \
+        "$_ccs_customize" "$_ccs_slider" "$_ccs_percent" "$_ccs_browse" \
+        > "$ARTIFACTS/customization-home-screen-controls.txt"
+
+    # 2. First explicit Browse widgets tap opens the real native picker.
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/customization-appwidget-before-browse.txt" 2>&1 || true
+    tap_center_of_bounds "$_ccs_browse" ||
+        fail "could not tap the measured Browse widgets entry"
+    _ccs_picker=
+    _ccs_picker_poll=1
+    while [ "$_ccs_picker_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-picker-attempt-$_ccs_picker_poll.xml"
+        if capture_ui_xml "customization-picker-attempt-$_ccs_picker_poll.xml" &&
+            widget_picker_is_ready "$_ccs_candidate" "$ARTIFACTS/customization-home-screen.xml"; then
+            _ccs_picker=$_ccs_candidate
+            break
+        fi
+        _ccs_picker_poll=$((_ccs_picker_poll + 1))
+    done
+    [ -n "$_ccs_picker" ] ||
+        fail "Browse widgets did not open the real native widget picker"
+    cp "$_ccs_picker" "$ARTIFACTS/customization-picker.xml"
+    capture_screenshot_to customization-picker.png
+    [ -s "$ARTIFACTS/customization-picker.png" ] ||
+        fail "customization picker screenshot capture failed"
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/customization-picker-activities.txt" 2>&1 || true
+    foreground_is "$ARTIFACTS/customization-picker-activities.txt" "$PKG" ||
+        fail "the customization picker is not owned by the launcher package"
+    printf 'resumed=%s\n' \
+        "$(resumed_component "$ARTIFACTS/customization-picker-activities.txt")" \
+        > "$ARTIFACTS/customization-picker-resumed.txt"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/customization-appwidget-during-browse.txt" 2>&1 || true
+
+    # 3. Back closes the picker and returns HOME without binding anything.
+    adb_cmd shell input keyevent KEYCODE_BACK \
+        > "$ARTIFACTS/customization-picker-back.txt" 2>&1 ||
+        fail "could not press Back from the customization picker"
+    wait_for_launcher_activity customization-after-browse 10 ||
+        fail "Back from the customization picker did not resume the exact launcher activity"
+    sleep 1
+    capture_ui_xml customization-home-after-browse-back.xml ||
+        fail "HOME XML after the customization picker Back capture failed"
+    capture_screenshot_to customization-home-after-browse-back.png
+    [ -s "$ARTIFACTS/customization-home-after-browse-back.png" ] ||
+        fail "HOME screenshot after the customization picker Back capture failed"
+    primary_home_is_ready "$ARTIFACTS/customization-home-after-browse-back.xml" ||
+        fail "Back from the customization picker did not restore the primary HOME"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/customization-appwidget-after-browse.txt" 2>&1 || true
+    appwidget_launcher_instances "$ARTIFACTS/customization-appwidget-after-browse.txt" "$PKG" \
+        > "$ARTIFACTS/customization-appwidget-instances-after-browse.txt"
+    sort "$ARTIFACTS/customization-appwidget-instances-baseline.txt" \
+        > "$ARTIFACTS/customization-appwidget-instances-baseline.sorted"
+    sort "$ARTIFACTS/customization-appwidget-instances-after-browse.txt" \
+        > "$ARTIFACTS/customization-appwidget-instances-after-browse.sorted"
+    cmp -s "$ARTIFACTS/customization-appwidget-instances-baseline.sorted" \
+        "$ARTIFACTS/customization-appwidget-instances-after-browse.sorted" ||
+        fail "opening and closing Browse widgets changed the launcher widget bindings"
+    if widget_picker_is_ready "$ARTIFACTS/customization-home-after-browse-back.xml" \
+        "$ARTIFACTS/customization-home-screen.xml"; then
+        fail "the native picker is still visible after Back"
+    fi
+
+    # 4. Reopen Settings: no automatic picker, and a second explicit tap works.
+    if ! _ccs_out=$(adb_cmd shell am start -W -f 0x18000000 \
+        -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_ccs_out" \
+            > "$ARTIFACTS/customization-reopen-launch.txt"
+        fail "could not reopen the real customization dashboard"
+    fi
+    printf '%s\n' "$_ccs_out" \
+        > "$ARTIFACTS/customization-reopen-launch.txt"
+    printf '%s\n' "$_ccs_out" | grep -q 'Status: ok' ||
+        fail "reopened customization dashboard did not report Status: ok"
+    sleep 2
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/customization-reopen-activities.txt" 2>&1 || true
+    foreground_is_component "$ARTIFACTS/customization-reopen-activities.txt" \
+        "$PKG" "$PREFERENCES_ACTIVITY" ||
+        fail "reopened customization Settings is not the exact foreground activity"
+    capture_ui_xml customization-dashboard-reopen.xml ||
+        fail "reopened customization dashboard XML capture failed"
+    sleep 2
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/customization-reopen-stable-activities.txt" 2>&1 || true
+    foreground_is_component "$ARTIFACTS/customization-reopen-stable-activities.txt" \
+        "$PKG" "$PREFERENCES_ACTIVITY" ||
+        fail "reopened customization Settings lost the exact foreground to an automatic picker"
+    capture_ui_xml customization-dashboard-reopen-stable.xml ||
+        fail "reopened customization dashboard stable XML capture failed"
+    if widget_picker_is_ready "$ARTIFACTS/customization-dashboard-reopen-stable.xml" \
+        "$ARTIFACTS/customization-home-screen.xml"; then
+        fail "reopening Settings opened the native picker without a tap"
+    fi
+    _ccs_customize=$(ui_unique_label_bounds \
+        "$ARTIFACTS/customization-dashboard-reopen-stable.xml" 'Customize launcher')
+    _ccs_category=$(ui_unique_clickable_label_bounds \
+        "$ARTIFACTS/customization-dashboard-reopen-stable.xml" 'Icon size and home screen')
+    [ -n "$_ccs_customize" ] && [ -n "$_ccs_category" ] ||
+        fail "reopened customization dashboard lost a unique Customize launcher or category entry"
+    tap_center_of_bounds "$_ccs_category" ||
+        fail "could not tap the measured customization category after reopening"
+    _ccs_home_xml=
+    _ccs_poll=1
+    while [ "$_ccs_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-home-screen-reopen-attempt-$_ccs_poll.xml"
+        if capture_ui_xml "customization-home-screen-reopen-attempt-$_ccs_poll.xml"; then
+            _ccs_slider=$(ui_top_slider_bounds "$_ccs_candidate")
+            _ccs_browse=$(ui_unique_clickable_label_bounds "$_ccs_candidate" 'Browse widgets')
+            if [ -n "$_ccs_slider" ] && [ -n "$_ccs_browse" ]; then
+                _ccs_home_xml=$_ccs_candidate
+                break
+            fi
+        fi
+        _ccs_poll=$((_ccs_poll + 1))
+    done
+    [ -n "$_ccs_home_xml" ] ||
+        fail "the reopened customization category did not expose the icon-size slider and Browse widgets"
+    cp "$_ccs_home_xml" "$ARTIFACTS/customization-home-screen-reopen.xml"
+    capture_screenshot_to customization-home-screen-reopen.png
+    _ccs_browse=$(ui_unique_clickable_label_bounds \
+        "$ARTIFACTS/customization-home-screen-reopen.xml" 'Browse widgets')
+    [ -n "$_ccs_browse" ] ||
+        fail "the reopened customization Home screen lost the unique Browse widgets entry"
+    tap_center_of_bounds "$_ccs_browse" ||
+        fail "the second explicit Browse widgets tap was not measured"
+    _ccs_picker=
+    _ccs_picker_poll=1
+    while [ "$_ccs_picker_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-picker-second-attempt-$_ccs_picker_poll.xml"
+        if capture_ui_xml "customization-picker-second-attempt-$_ccs_picker_poll.xml" &&
+            widget_picker_is_ready "$_ccs_candidate" "$ARTIFACTS/customization-home-screen-reopen.xml"; then
+            _ccs_picker=$_ccs_candidate
+            break
+        fi
+        _ccs_picker_poll=$((_ccs_picker_poll + 1))
+    done
+    [ -n "$_ccs_picker" ] ||
+        fail "the second explicit Browse widgets tap did not reopen the native picker (a handled flag blocked it)"
+    cp "$_ccs_picker" "$ARTIFACTS/customization-picker-second.xml"
+    capture_screenshot_to customization-picker-second.png
+    adb_cmd shell input keyevent KEYCODE_BACK \
+        > "$ARTIFACTS/customization-picker-second-back.txt" 2>&1 ||
+        fail "could not press Back from the second customization picker"
+    wait_for_launcher_activity customization-after-browse-second 10 ||
+        fail "Back from the second customization picker did not resume the exact launcher activity"
+    sleep 1
+    capture_ui_xml customization-home-after-browse-second-back.xml ||
+        fail "HOME XML after the second picker Back capture failed"
+    if widget_picker_is_ready "$ARTIFACTS/customization-home-after-browse-second-back.xml" \
+        "$ARTIFACTS/customization-home-screen-reopen.xml"; then
+        fail "the native picker is still visible after the second Back"
+    fi
+    adb_cmd shell input keyevent KEYCODE_HOME \
+        > "$ARTIFACTS/customization-home-repeat-key.txt" 2>&1 ||
+        fail "could not send the ordinary HOME key after the second picker"
+    sleep 2
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/customization-home-repeat-activities.txt" 2>&1 || true
+    foreground_is_component "$ARTIFACTS/customization-home-repeat-activities.txt" \
+        "$PKG" "$LAUNCHER_ACTIVITY" ||
+        fail "ordinary HOME after the second picker did not resume the exact launcher"
+    capture_ui_xml customization-home-after-home-repeat.xml ||
+        fail "HOME XML after the ordinary HOME repeat capture failed"
+    if widget_picker_is_ready "$ARTIFACTS/customization-home-after-home-repeat.xml" \
+        "$ARTIFACTS/customization-home-screen-reopen.xml"; then
+        fail "an ordinary HOME repeat reopened the native picker without a tap"
+    fi
+    adb_cmd shell input keyevent KEYCODE_HOME \
+        > "$ARTIFACTS/customization-home-repeat-second-key.txt" 2>&1 ||
+        fail "could not send the second ordinary HOME key"
+    sleep 2
+    capture_ui_xml customization-home-after-home-repeat-second.xml ||
+        fail "HOME XML after the second ordinary HOME repeat capture failed"
+    if widget_picker_is_ready "$ARTIFACTS/customization-home-after-home-repeat-second.xml" \
+        "$ARTIFACTS/customization-home-screen-reopen.xml"; then
+        fail "a second ordinary HOME repeat reopened the native picker without a tap"
+    fi
+
+    # 5. Actual top icon-size slider: keyboard focus, one legal 10% step, HOME
+    # persistence and an exact one-step restore.
+    if ! _ccs_out=$(adb_cmd shell am start -W -f 0x18000000 \
+        -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_ccs_out" \
+            > "$ARTIFACTS/customization-size-launch.txt"
+        fail "could not open Settings for the icon-size slider check"
+    fi
+    printf '%s\n' "$_ccs_out" > "$ARTIFACTS/customization-size-launch.txt"
+    printf '%s\n' "$_ccs_out" | grep -q 'Status: ok' ||
+        fail "Settings launch for the icon-size slider did not report Status: ok"
+    sleep 2
+    capture_ui_xml customization-size-dashboard.xml ||
+        fail "icon-size dashboard XML capture failed"
+    _ccs_category=$(ui_unique_clickable_label_bounds \
+        "$ARTIFACTS/customization-size-dashboard.xml" 'Icon size and home screen')
+    [ -n "$_ccs_category" ] ||
+        fail "the icon-size dashboard lost the unique measured category"
+    tap_center_of_bounds "$_ccs_category" ||
+        fail "could not tap the measured icon-size category"
+    _ccs_home_xml=
+    _ccs_poll=1
+    while [ "$_ccs_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-size-screen-attempt-$_ccs_poll.xml"
+        if capture_ui_xml "customization-size-screen-attempt-$_ccs_poll.xml"; then
+            _ccs_slider=$(ui_top_slider_bounds "$_ccs_candidate")
+            _ccs_percent=$(ui_slider_percent "$_ccs_candidate" "$_ccs_slider")
+            if [ -n "$_ccs_slider" ] && [ -n "$_ccs_percent" ]; then
+                _ccs_home_xml=$_ccs_candidate
+                break
+            fi
+        fi
+        _ccs_poll=$((_ccs_poll + 1))
+    done
+    [ -n "$_ccs_home_xml" ] ||
+        fail "the icon-size screen exposed no actual top SeekBar with a unique measured percentage"
+    cp "$_ccs_home_xml" "$ARTIFACTS/customization-size-before.xml"
+    capture_screenshot_to customization-size-before.png
+    _ccs_initial_percent=$_ccs_percent
+    _ccs_initial_slider=$_ccs_slider
+    case "$_ccs_initial_percent" in
+        50 | 60 | 70 | 80 | 90 | 100 | 110 | 120 | 130 | 140 | 150) ;;
+        *) fail "the actual top icon-size percentage '$_ccs_initial_percent' is not a 50-150 step of 10" ;;
+    esac
+
+    _ccs_focused=
+    _ccs_tab=0
+    while [ "$_ccs_tab" -lt 12 ]; do
+        _ccs_tab=$((_ccs_tab + 1))
+        adb_cmd shell input keyevent KEYCODE_TAB \
+            > "$ARTIFACTS/customization-size-tab-$_ccs_tab.txt" 2>&1 ||
+            fail "could not send TAB $_ccs_tab for the icon-size slider"
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-size-tab-$_ccs_tab.xml"
+        if capture_ui_xml "customization-size-tab-$_ccs_tab.xml"; then
+            _ccs_focused=$(ui_focused_slider_bounds "$_ccs_candidate")
+            if [ -n "$_ccs_focused" ]; then
+                break
+            fi
+        fi
+    done
+    [ -n "$_ccs_focused" ] ||
+        fail "no actual focused SeekBar appeared within 12 bounded TAB steps; refusing to guess a thumb coordinate"
+    [ "$_ccs_focused" = "$_ccs_initial_slider" ] ||
+        fail "TAB focused the slider at $_ccs_focused instead of the actual top icon-size slider $_ccs_initial_slider"
+    printf 'tab_steps=%s focused=%s initial_percent=%s\n' \
+        "$_ccs_tab" "$_ccs_focused" "$_ccs_initial_percent" \
+        > "$ARTIFACTS/customization-size-focus.txt"
+
+    if [ "$_ccs_initial_percent" -lt 150 ]; then
+        _ccs_step_key=KEYCODE_DPAD_RIGHT
+        _ccs_expected_percent=$((_ccs_initial_percent + 10))
+        _ccs_restore_key=KEYCODE_DPAD_LEFT
+    else
+        _ccs_step_key=KEYCODE_DPAD_LEFT
+        _ccs_expected_percent=$((_ccs_initial_percent - 10))
+        _ccs_restore_key=KEYCODE_DPAD_RIGHT
+    fi
+    adb_cmd shell input keyevent "$_ccs_step_key" \
+        > "$ARTIFACTS/customization-size-step-key.txt" 2>&1 ||
+        fail "could not send $_ccs_step_key to the focused icon-size slider"
+    sleep 1
+    capture_ui_xml customization-size-changed.xml ||
+        fail "icon-size changed XML capture failed"
+    _ccs_slider=$(ui_top_slider_bounds "$ARTIFACTS/customization-size-changed.xml")
+    _ccs_percent=$(ui_slider_percent "$ARTIFACTS/customization-size-changed.xml" "$_ccs_slider")
+    [ -n "$_ccs_percent" ] ||
+        fail "the icon-size slider percentage was unresolved after one keyboard step"
+    [ "$_ccs_percent" = "$_ccs_expected_percent" ] ||
+        fail "one keyboard step changed the icon-size percentage to '$_ccs_percent', expected '$_ccs_expected_percent'"
+    _ccs_delta=$((_ccs_initial_percent - _ccs_percent))
+    [ "$_ccs_delta" -eq 10 ] || [ "$_ccs_delta" -eq -10 ] ||
+        fail "the icon-size keyboard step changed the percentage by $_ccs_delta, not exactly 10"
+    capture_screenshot_to customization-size-changed.png
+
+    return_home customization-size-changed
+    sleep 1
+    capture_ui_xml customization-home-after-size.xml ||
+        fail "HOME XML after the icon-size change capture failed"
+    capture_screenshot_to customization-home-after-size.png
+    [ -s "$ARTIFACTS/customization-home-after-size.png" ] ||
+        fail "HOME screenshot after the icon-size change capture failed"
+    primary_home_is_ready "$ARTIFACTS/customization-home-after-size.xml" ||
+        fail "the icon-size change did not leave the primary HOME intact"
+
+    if ! _ccs_out=$(adb_cmd shell am start -W -f 0x18000000 \
+        -n "$PKG/$PREFERENCES_ACTIVITY" 2>&1); then
+        printf '%s\n' "$_ccs_out" \
+            > "$ARTIFACTS/customization-size-reopen-launch.txt"
+        fail "could not reopen Settings to prove the icon-size persistence"
+    fi
+    printf '%s\n' "$_ccs_out" > "$ARTIFACTS/customization-size-reopen-launch.txt"
+    printf '%s\n' "$_ccs_out" | grep -q 'Status: ok' ||
+        fail "reopened Settings for the icon-size persistence did not report Status: ok"
+    sleep 2
+    capture_ui_xml customization-size-reopen-dashboard.xml ||
+        fail "icon-size reopen dashboard XML capture failed"
+    _ccs_category=$(ui_unique_clickable_label_bounds \
+        "$ARTIFACTS/customization-size-reopen-dashboard.xml" 'Icon size and home screen')
+    [ -n "$_ccs_category" ] ||
+        fail "the reopened icon-size dashboard lost the unique measured category"
+    tap_center_of_bounds "$_ccs_category" ||
+        fail "could not tap the measured icon-size category after reopening"
+    _ccs_home_xml=
+    _ccs_poll=1
+    while [ "$_ccs_poll" -le 8 ]; do
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-size-reopen-attempt-$_ccs_poll.xml"
+        if capture_ui_xml "customization-size-reopen-attempt-$_ccs_poll.xml"; then
+            _ccs_slider=$(ui_top_slider_bounds "$_ccs_candidate")
+            _ccs_percent=$(ui_slider_percent "$_ccs_candidate" "$_ccs_slider")
+            if [ -n "$_ccs_slider" ] && [ -n "$_ccs_percent" ]; then
+                _ccs_home_xml=$_ccs_candidate
+                break
+            fi
+        fi
+        _ccs_poll=$((_ccs_poll + 1))
+    done
+    [ -n "$_ccs_home_xml" ] ||
+        fail "the reopened icon-size screen exposed no actual top SeekBar with a percentage"
+    cp "$_ccs_home_xml" "$ARTIFACTS/customization-size-reopen.xml"
+    capture_screenshot_to customization-size-reopen.png
+    [ "$_ccs_percent" = "$_ccs_expected_percent" ] ||
+        fail "the persisted icon-size percentage reopened as '$_ccs_percent', expected '$_ccs_expected_percent'"
+
+    _ccs_focused=
+    _ccs_tab=0
+    while [ "$_ccs_tab" -lt 12 ]; do
+        _ccs_tab=$((_ccs_tab + 1))
+        adb_cmd shell input keyevent KEYCODE_TAB \
+            > "$ARTIFACTS/customization-size-restore-tab-$_ccs_tab.txt" 2>&1 ||
+            fail "could not send restore TAB $_ccs_tab for the icon-size slider"
+        sleep 1
+        _ccs_candidate="$ARTIFACTS/customization-size-restore-tab-$_ccs_tab.xml"
+        if capture_ui_xml "customization-size-restore-tab-$_ccs_tab.xml"; then
+            _ccs_focused=$(ui_focused_slider_bounds "$_ccs_candidate")
+            if [ -n "$_ccs_focused" ]; then
+                break
+            fi
+        fi
+    done
+    [ -n "$_ccs_focused" ] ||
+        fail "no actual focused SeekBar appeared for the bounded restore TAB search"
+    [ "$_ccs_focused" = "$_ccs_slider" ] ||
+        fail "restore TAB focused $_ccs_focused instead of the actual top icon-size slider $_ccs_slider"
+    adb_cmd shell input keyevent "$_ccs_restore_key" \
+        > "$ARTIFACTS/customization-size-restore-key.txt" 2>&1 ||
+        fail "could not send $_ccs_restore_key to restore the icon-size slider"
+    sleep 1
+    capture_ui_xml customization-size-restored.xml ||
+        fail "icon-size restored XML capture failed"
+    _ccs_restored_slider=$(ui_top_slider_bounds "$ARTIFACTS/customization-size-restored.xml")
+    _ccs_restored_percent=$(ui_slider_percent "$ARTIFACTS/customization-size-restored.xml" "$_ccs_restored_slider")
+    [ "$_ccs_restored_percent" = "$_ccs_initial_percent" ] ||
+        fail "the reverse keyboard step restored '$_ccs_restored_percent', expected '$_ccs_initial_percent'"
+    capture_screenshot_to customization-size-restored.png
+
+    return_home customization-size-restored
+    sleep 1
+    capture_ui_xml customization-home-size-restored.xml ||
+        fail "HOME XML after the icon-size restore capture failed"
+    capture_screenshot_to customization-home-size-restored.png
+    [ -s "$ARTIFACTS/customization-home-size-restored.png" ] ||
+        fail "HOME screenshot after the icon-size restore capture failed"
+    primary_home_is_ready "$ARTIFACTS/customization-home-size-restored.xml" ||
+        fail "the icon-size restore did not leave the primary HOME intact"
+    ui_widget_host_bounds "$ARTIFACTS/customization-home-size-restored.xml" \
+        > "$ARTIFACTS/customization-widget-host-bounds-restored.txt"
+    [ -s "$ARTIFACTS/customization-widget-host-bounds-restored.txt" ] ||
+        fail "the restored HOME exposed no measured widget-host bounds"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/customization-appwidget-restored.txt" 2>&1 || true
+    appwidget_launcher_instances "$ARTIFACTS/customization-appwidget-restored.txt" "$PKG" \
+        > "$ARTIFACTS/customization-appwidget-instances-restored.txt"
+    sort "$ARTIFACTS/customization-appwidget-instances-restored.txt" \
+        > "$ARTIFACTS/customization-appwidget-instances-restored.sorted"
+    cmp -s "$ARTIFACTS/customization-appwidget-instances-baseline.sorted" \
+        "$ARTIFACTS/customization-appwidget-instances-restored.sorted" ||
+        fail "the icon-size round-trip changed the launcher widget bindings"
+    adb_cmd shell dumpsys wallpaper \
+        > "$ARTIFACTS/customization-wallpaper-restored.txt" 2>&1 || true
+    adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
+        > "$ARTIFACTS/customization-prefs-restored.xml" 2>/dev/null || true
+    adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
+        > "$ARTIFACTS/customization-datastore-restored.pb" 2>/dev/null || true
+    if grep -aq 'lock_home_screen' "$ARTIFACTS/customization-datastore-restored.pb"; then
+        printf 'lock_home_screen=present\n' \
+            > "$ARTIFACTS/customization-homelock-restored.txt"
+    else
+        printf 'lock_home_screen=unavailable\n' \
+            > "$ARTIFACTS/customization-homelock-restored.txt"
+    fi
+    {
+        printf 'home_lock_source=datastore-if-available\n'
+        adb_cmd shell run-as "$PKG" ls -l databases files/datastore \
+            2>&1 || true
+    } > "$ARTIFACTS/customization-private-files-restored.txt"
+    printf 'Customization: real dashboard category and Browse widgets were measured; the native picker opened only on explicit taps, Back/HOME repeated without it, and no binding changed. Actual top SeekBar %s%% -> %s%% -> %s%% via one keyboard step and one reverse step; HOME before/after PNGs are retained for pixel review.\n' \
+        "$_ccs_initial_percent" "$_ccs_expected_percent" "$_ccs_restored_percent" \
+        > "$ARTIFACTS/customization.txt"
+    printf 'Screenshots: customization-home-baseline.png, customization-home-screen.png, customization-picker.png, customization-picker-second.png, customization-home-after-size.png, customization-home-size-restored.png.\n' \
+        >> "$ARTIFACTS/customization.txt"
 }
 
 wait_for_launcher_idle() (
@@ -3060,6 +3627,7 @@ capture_screenshot
 complete_own_widget_setup
 verify_nothing_home
 capture_clean_home_theme
+capture_customization_settings
 exercise_device_settings_shortcuts
 capture_grid_settings
 capture_widgets_picker

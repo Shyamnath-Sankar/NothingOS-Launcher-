@@ -3694,6 +3694,178 @@ assert_true 'transition logs carry cumulative posted/drawn counters' \
 assert_false 'the frame draw never logs per frame' \
     grep -Fq 'logTransition' "$draw_body"
 
+# --- customization measured-control fixtures --------------------------------
+
+cust_xml="$TMP_DIR/customization-dashboard.xml"
+cat > "$cust_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="Customize launcher" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,100][500,150]" />
+    <node index="1" text="" resource-id="" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="true" enabled="true" bounds="[20,150][1060,240]">
+      <node index="0" text="Icon size and home screen" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,160][900,220]" />
+    </node>
+    <node index="2" text="Browse widgets" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="true" enabled="true" bounds="[40,300][1000,400]" />
+    <node index="3" text="100%" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[900,500][1040,540]" />
+    <node index="4" text="" resource-id="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,560][1040,640]" />
+    <node index="5" text="70%" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[900,850][1040,890]" />
+    <node index="6" text="" resource-id="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,910][1040,990]" />
+    <node index="7" text="" resource-id="com.launchernos.dotwellabs.debug:id/app_widget" class="com.android.launcher3.widget.LauncherAppWidgetHostView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[40,1200][500,1500]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the only exact Customize launcher label is measured' \
+    '40 100 500 150' "$(ui_unique_label_bounds "$cust_xml" 'Customize launcher')"
+assert_eq 'the unique clickable category uses its measured clickable ancestor' \
+    '20 150 1060 240' "$(ui_unique_clickable_label_bounds "$cust_xml" 'Icon size and home screen')"
+assert_eq 'the unique direct Browse widgets control is measured' \
+    '40 300 1000 400' "$(ui_unique_clickable_label_bounds "$cust_xml" 'Browse widgets')"
+assert_eq 'the top SeekBar is measured instead of the lower slider' \
+    '40 560 1040 640' "$(ui_top_slider_bounds "$cust_xml")"
+assert_eq 'the top slider percentage is uniquely associated' \
+    '100' "$(ui_slider_percent "$cust_xml" '40 560 1040 640')"
+assert_eq 'the measured widget host bounds are retained' \
+    '40 1200 500 1500' "$(ui_widget_host_bounds "$cust_xml")"
+assert_eq 'an exact label absent from the hierarchy is unresolved' \
+    '' "$(ui_unique_label_bounds "$cust_xml" 'Home screen')"
+assert_eq 'an out-of-range slider percentage is not guessed' \
+    '' "$(ui_slider_percent "$cust_xml" '40 9999 1040 9999')"
+
+cust_dupes="$TMP_DIR/customization-dupes.xml"
+cat > "$cust_dupes" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="Customize launcher" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" clickable="false" bounds="[40,100][500,150]" />
+    <node index="1" text="Customize launcher" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" clickable="false" bounds="[40,200][500,250]" />
+    <node index="2" text="Browse widgets" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" clickable="true" bounds="[40,300][1000,400]" />
+    <node index="3" text="Browse widgets" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" clickable="true" bounds="[40,450][1000,550]" />
+    <node index="4" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" bounds="[40,600][1040,680]" />
+    <node index="5" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" bounds="[40,600][1040,680]" />
+    <node index="6" text="100%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,540][1040,580]" />
+    <node index="7" text="110%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,550][1040,590]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'duplicate exact labels are ambiguous and unresolved' \
+    '' "$(ui_unique_label_bounds "$cust_dupes" 'Customize launcher')"
+assert_eq 'duplicate clickable entries are ambiguous and unresolved' \
+    '' "$(ui_unique_clickable_label_bounds "$cust_dupes" 'Browse widgets')"
+assert_eq 'two sliders sharing the top edge are ambiguous' \
+    '' "$(ui_top_slider_bounds "$cust_dupes")"
+
+cust_ambiguous="$TMP_DIR/customization-ambiguous.xml"
+cat > "$cust_ambiguous" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="100%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,500][1040,540]" />
+    <node index="1" text="110%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,510][1040,550]" />
+    <node index="2" text="40%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,520][1040,560]" />
+    <node index="3" text="160%" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" bounds="[900,530][1040,570]" />
+    <node index="4" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" bounds="[40,560][1040,640]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'several percentages above the slider are ambiguous' \
+    '' "$(ui_slider_percent "$cust_ambiguous" '40 560 1040 640')"
+
+cust_focus="$TMP_DIR/customization-focus.xml"
+cat > "$cust_focus" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" focused="true" bounds="[40,560][1040,640]" />
+    <node index="1" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" focused="false" bounds="[40,910][1040,990]" />
+    <node index="2" text="Browse widgets" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" focused="true" bounds="[40,300][1000,400]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'only the actual focused SeekBar is accepted' \
+    '40 560 1040 640' "$(ui_focused_slider_bounds "$cust_focus")"
+
+cust_focus_none="$TMP_DIR/customization-focus-none.xml"
+cat > "$cust_focus_none" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" focused="false" bounds="[40,560][1040,640]" />
+    <node index="1" text="Browse widgets" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" focused="true" bounds="[40,300][1000,400]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a focused non-slider is not a focused SeekBar' \
+    '' "$(ui_focused_slider_bounds "$cust_focus_none")"
+
+cust_focus_two="$TMP_DIR/customization-focus-two.xml"
+cat > "$cust_focus_two" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" focused="true" bounds="[40,560][1040,640]" />
+    <node index="1" text="" class="android.widget.SeekBar" package="com.launchernos.dotwellabs.debug" focused="true" bounds="[40,910][1040,990]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'two focused sliders are ambiguous and unresolved' \
+    '' "$(ui_focused_slider_bounds "$cust_focus_two")"
+
+# --- static regression on the customization runtime gate --------------------
+
+customization_body="$TMP_DIR/capture_customization_settings.sh"
+sed -n '/^capture_customization_settings() {/,/^}/p' "$SMOKE" > "$customization_body"
+
+assert_true 'the customization gate opens the real PreferenceActivity' \
+    grep -Fq -- '-n "$PKG/$PREFERENCES_ACTIVITY"' "$customization_body"
+assert_false 'the customization gate passes no diagnostic sample extra' \
+    grep -Fq 'THEME_SAMPLE_EXTRA' "$customization_body"
+assert_true 'the customization gate requires the unique dashboard entries' \
+    grep -Fq "'Icon size and home screen'" "$customization_body"
+assert_true 'the customization gate requires the top slider and percentage' \
+    grep -Fq 'ui_top_slider_bounds' "$customization_body"
+assert_true 'the customization gate requires a unique Browse widgets control' \
+    grep -Fq "'Browse widgets'" "$customization_body"
+assert_true 'the customization gate opens the real native picker helper' \
+    grep -Fq 'widget_picker_is_ready' "$customization_body"
+assert_true 'the customization gate proves Back returns the primary HOME' \
+    grep -Fq 'primary_home_is_ready' "$customization_body"
+assert_true 'the customization gate repeats an explicit Browse tap' \
+    grep -Fq 'second explicit Browse widgets tap' "$customization_body"
+assert_true 'the customization gate sends ordinary HOME repeats' \
+    grep -Fq 'KEYCODE_HOME' "$customization_body"
+assert_true 'the customization gate bounds TAB focus to 12 steps' \
+    grep -Fq 'while [ "$_ccs_tab" -lt 12 ]' "$customization_body"
+assert_true 'the customization gate requires an actually focused SeekBar' \
+    grep -Fq 'ui_focused_slider_bounds' "$customization_body"
+assert_true 'the customization gate steps the focused slider with DPAD' \
+    grep -Fq 'KEYCODE_DPAD_RIGHT' "$customization_body"
+assert_true 'the customization gate requires exactly one 10 percent step' \
+    grep -Fq '_ccs_delta' "$customization_body"
+assert_true 'the customization gate restores the original percentage' \
+    grep -Fq 'restored' "$customization_body"
+assert_true 'the customization gate retains HOME before/after PNG evidence' \
+    grep -Fq 'customization-home-after-size.png' "$customization_body"
+assert_false 'the customization gate never writes a preference' \
+    grep -Eq 'settings put|putString|putBoolean|editSp|commit\(\)|\.apply\(\)' \
+    "$customization_body"
+assert_false 'the customization gate never binds a widget directly' \
+    grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' \
+    "$customization_body"
+assert_false 'the customization gate never guesses a tap coordinate' \
+    grep -Eq 'input tap [0-9]' "$customization_body"
+
+customize_state_line=$(grep -n '^capture_customization_settings$' "$SMOKE" | sed -n '1s/:.*//p')
+clean_line=$(grep -n '^capture_clean_home_theme$' "$SMOKE" | sed -n '1s/:.*//p')
+widgets_call_line=$(grep -n '^capture_widgets_picker$' "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$clean_line" ] && [ -n "$customize_state_line" ] &&
+    [ -n "$widgets_call_line" ] &&
+    [ "$clean_line" -lt "$customize_state_line" ] &&
+    [ "$customize_state_line" -lt "$widgets_call_line" ]; then
+    pass 'the customization gate runs after the own-home baseline and before third-party placement'
+else
+    fail 'the customization gate runs after the own-home baseline and before third-party placement'
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1
