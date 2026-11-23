@@ -3,26 +3,83 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather HOME lifecycle/consent owner phase — implemented and locally verified,
-  PENDING CI. Visible weather rendering and the real provider remain unconnected.** This run adds a
-  launcher-owned `WeatherHomeOwner` around the existing `WeatherSessionController`, a process-wide
-  `WeatherHomeRuntime` shared with settings, and the real `LawnchairLauncher` lifecycle hookup.
-  Production still uses the explicit no-network `NoNetworkWeatherWork`; no repository, transport,
-  worker, alarm or device location exists. CI254's full-green milestone is the starting point.
+- current_phase: **Weather HOME lifecycle review correction — implemented and locally verified,
+  PENDING CI. Visible weather rendering and the real provider remain unconnected.** This run
+  corrects the lifecycle/consent review on top of `0a0ce97`: screen-off clears both the screen and
+  user-present gates and drops the queued read, screen-on re-queries `PowerManager` and
+  `KeyguardManager`, weather hides at a transition start and returns only after a completed NORMAL,
+  a stale persisted enable cannot overwrite a newer in-process edit, and the process owner survives
+  activity recreation. Production still uses `NoNetworkWeatherWork`; no repository, transport,
+  worker, alarm or device location exists. CI254's full-green milestone remains the starting point.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `780b088` (Android hookup); the owner + tests are `7c96b40`; base `b36d0f0`.
+- head: `b4a985b` (screen-off/retry test); code fixes `e3aa964` and `1da882c`, guard `10055d2`;
+  base `0a0ce97`. The STATE commit follows this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **CI254 was FULL GREEN and independently audited: 243 tests total, 132 weather tests.** That
   audit confirmed real settings consent JSON generation 1 persisted across restart, and disable
   generation 2 / null fields / empty cache persisted across restart and final off; the focused red
-  accent was verified as focus, not error. No CI result exists yet for `780b088`; the next API 37 CI
-  is the only proof of this run's lifecycle wiring.
+  accent was verified as focus, not error. **No CI result exists for `e3aa964`, `1da882c` or
+  `b4a985b`.** The next API 37 CI is the compile gate for the launcher hookup and the runtime proof.
 - next: **visible weather rendering**, then **repository wiring** (real provider behind the owner's
   injected work), then **live provider**, then **runtime audits**. Release, hosting and merge stay
-  paused. PrivateSpace, settings round-trip, non-Play, large-screen and performance audits stay open.
-  Do not claim a forecast is connected or the launcher is complete.
+  paused. PrivateSpace, settings round-trip, non-Play, large-screen, backup/restore and performance
+  audits stay open. Do not claim a forecast is connected or the launcher is complete.
 
-## done (this run — Weather HOME lifecycle/consent owner, PENDING CI)
+## done (this run — HOME lifecycle review correction, PENDING CI)
+
+- **Screen-off gates:** `WeatherHomeOwner.setScreenInteractive(false)` now clears its own
+  `userPresent` value as well as `screenInteractive`, invalidates the read epoch and cancels the read
+  job, and calls `controller.setScreenOn(false)` plus `controller.setUserPresent(false)`. A queued
+  read dropped this way is retried only after HOME is confirmed, the screen is interactive and a
+  genuine user-present signal arrives. `onScreenOff()` is the explicit hookup method.
+- **Screen-on recheck:** the launcher's `ACTION_SCREEN_ON` and `ACTION_USER_PRESENT` receiver paths
+  now call `refreshWeatherScreenState()`, which queries `PowerManager.isInteractive` and
+  `KeyguardManager.isKeyguardLocked` every time. A missing keyguard manager fails closed as locked,
+  and `ACTION_SCREEN_OFF` calls `onScreenOff()` directly instead of querying a possibly racing
+  power state.
+- **Transition start:** a new `weatherStateListener` calls `WeatherHomeSurfaceState.onTransitionStart`
+  at `onStateTransitionStart`, so weather hides immediately when leaving NORMAL. A transition toward
+  NORMAL stays hidden until `onStateTransitionComplete(NORMAL)`; a canceled or reversed transition
+  leaves `homeConfirmed` false. `WeatherHomeWiring.isHomeVisible` now also requires
+  `!transitionInProgress`.
+- **Consent race:** `WeatherHomeConsentPolicy.choose` accepts every persisted disable, accepts a
+  persisted enable only when it is strictly newer, and keeps the in-process state for an older enable
+  or a same-generation enable/location conflict. The owner delegates to that policy instead of
+  overwriting a newer in-process edit with older persisted coordinates.
+- **Activity recreation:** `stopWeatherHome` unregisters the state listener and screen receiver and
+  hides the HOME surface but never calls `shutdown()`, so the process-wide owner survives a
+  recreated activity. `WeatherHomeRuntime` passes `applicationContext`, keeps no activity, and
+  replaces an explicitly closed owner instead of reusing it.
+- **Actual hookup guard:** new `scripts/nothingui-weather-guard.sh` statically checks the real
+  launcher/owner/runtime/settings wiring (screen-off handling, system recheck, transition start,
+  no shutdown on pause, no closed-owner reuse, no provider/transport/location construction and
+  `NoNetworkWeatherWork`). `scripts/nothingui-weather-guard-test.sh` proves the guard passes the real
+  source and rejects each mutated regression.
+- **Preserved:** `NoNetworkWeatherWork` is still the production work seam; no repository, HTTP
+  transport, worker, alarm, device location, permission, manifest, SDK, applicationId, signing,
+  workflow, dependency, non-Play layout or private-widget change was made. Existing accepted
+  HOME/widgets/settings/layout/theme/wallpaper code is untouched.
+- **Verification actually run (offline JVM/shell only; no Gradle, Android build or emulator):**
+  compiled the weather domain/consent/cache/controller/owner/lifecycle sources and the two HOME test
+  classes with kotlinc 2.4.21 against JUnit 4.13.2, kotlinx-coroutines 1.11.0 and
+  kotlinx-serialization 1.13.0 (jars in `/tmp/opencode` only; no project dependency added). JUnit ran
+  **30 tests, OK (0 failures)** across `WeatherHomeOwnerTest` and `WeatherHomeLifecycleTest`, and the
+  screen-off test asserts the queued read is canceled and retried after unlock. `WeatherHomeRuntime`
+  plus `WeatherPrivateStorage` compiled against the local `android-37.0/android.jar`. ktlint 1.8.0
+  reports zero violations on all five changed Kotlin files and the new test files; `git diff
+  --check` is clean. `sh scripts/nothingui-weather-guard.sh` passes and
+  `sh scripts/nothingui-weather-guard-test.sh` reports **9 ok, 0 not ok** including all mutated
+  regressions.
+- **Missing evidence / not claimed:** no Gradle/Play compile, no Spotless-in-Gradle, no API 37
+  emulator and no runtime proof for these commits. `LawnchairLauncher.kt` is checked statically, not
+  compiled locally. The pure tests use fake stores/work/dispatchers; they prove policy, cancellation
+  and fencing, not the real Compose or device lifecycle. No forecast is connected.
+
+## done (previous run — Weather HOME lifecycle/consent owner, superseded by this correction)
+
+- **Superseded:** the claims below describe the pre-correction implementation. The screen-off,
+  screen-on/keyguard, transition-start and stale-consent behavior in the section above is the
+  authoritative current behavior.
 
 - **Launcher-owned owner:** new pure-JVM `WeatherHomeOwner` wraps the existing
   `WeatherSessionController` and is the single bridge for HOME visibility and the settings consent
