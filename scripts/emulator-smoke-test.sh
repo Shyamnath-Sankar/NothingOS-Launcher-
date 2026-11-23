@@ -3069,6 +3069,33 @@ assert_false 'a still-absent lock after a changed Home is not preservation' \
 assert_false 'a shared lock may not take the new Home ID' \
     wallpaper_lock_preserved 41 - 42
 
+wallpaper_dump_component="$TMP_DIR/wallpaper-dump-component.txt"
+cat > "$wallpaper_dump_component" <<'EOF'
+System wallpaper state:
+ User 0: id=41: mWhich=1: mSystemWasBoth=false
+   mWallpaperComponent=ComponentInfo{com.launchernos.dotwellabs.debug/app.nothingui.wallpaper.DotFieldWallpaperService}
+Lock wallpaper state:
+ User 0: id=12: mWhich=2: mSystemWasBoth=false
+   mWallpaperComponent=ComponentInfo{com.example.other/.LockWallpaperService}
+EOF
+assert_eq 'the active System wallpaper component is normalized' \
+    'com.launchernos.dotwellabs.debug/app.nothingui.wallpaper.DotFieldWallpaperService' \
+    "$(wallpaper_component_from_dump "$wallpaper_dump_component")"
+assert_eq 'a null System component is equivalent absence' \
+    '' "$(wallpaper_component_from_dump "$wallpaper_dump")"
+wallpaper_dump_component_lockonly="$TMP_DIR/wallpaper-dump-component-lockonly.txt"
+cat > "$wallpaper_dump_component_lockonly" <<'EOF'
+System wallpaper state:
+ User 0: id=41: mWhich=1
+Lock wallpaper state:
+ User 0: id=12: mWhich=2
+   mWallpaperComponent=ComponentInfo{com.example.other/.LockWallpaperService}
+EOF
+assert_eq 'a component only in the Lock section is not the active wallpaper' \
+    '' "$(wallpaper_component_from_dump "$wallpaper_dump_component_lockonly")"
+assert_eq 'an unmeasurable component dump prints nothing' \
+    '' "$(wallpaper_component_from_dump "$wallpaper_dump_none")"
+
 # The wallpaper preview must reveal the below-the-fold credit, licence and
 # controls through the measured settings scroll before asserting them. The
 # initial unscrolled XML is not evidence for offscreen content.
@@ -3810,6 +3837,61 @@ EOF
 assert_eq 'two focused sliders are ambiguous and unresolved' \
     '' "$(ui_focused_slider_bounds "$cust_focus_two")"
 
+assert_eq 'the measured bounds top edge is extracted for ordering' \
+    '920' "$(ui_bounds_top_y '84 920 409 973')"
+assert_eq 'a bounds string with fewer than four numbers is unresolved' \
+    '' "$(ui_bounds_top_y '84 920 409')"
+assert_eq 'a bounds string with a non-numeric token is unresolved' \
+    '' "$(ui_bounds_top_y '84 top 409 973')"
+assert_eq 'an empty bounds string is unresolved' \
+    '' "$(ui_bounds_top_y '')"
+
+# CI211 settings-theme-dark.xml shape: the label node has a clickable ancestor
+# whose measured bounds are the actual tap target. The known parent/label
+# numbers (category 42 1009 1038 1198, label 84 920 409 973) keep the fixture
+# aligned with the real settings dashboard ancestry.
+cust_ci211="$TMP_DIR/customization-ci211-settings-theme-dark.xml"
+cat > "$cust_ci211" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="" class="android.view.ViewGroup" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="true" enabled="true" bounds="[42,1009][1038,1198]">
+      <node index="0" text="Icon size and home screen" resource-id="" class="android.widget.TextView" package="com.launchernos.dotwellabs.debug" content-desc="" clickable="false" enabled="true" bounds="[84,920][409,973]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the CI211 theme-dark label uses its measured clickable ancestor' \
+    '42 1009 1038 1198' \
+    "$(ui_unique_clickable_label_bounds "$cust_ci211" 'Icon size and home screen')"
+
+# Execute the actual production order-check function under `sh -eu` with real
+# 4-number measured strings. A quoted bounds string must not leave an unbound
+# positional, and a genuinely out-of-order layout must fail.
+customization_order_body="$TMP_DIR/customization_controls_in_order.sh"
+sed -n '/^customization_controls_in_order() {/,/^}/p' "$SMOKE" > "$customization_order_body"
+assert_true 'the production order-check function is extractable' \
+    test -s "$customization_order_body"
+run_customization_order() {
+    sh -eu -c '. "$1"; . "$2"; customization_controls_in_order "$3" "$4" "$5"' \
+        sh "$LIB" "$customization_order_body" "$1" "$2" "$3"
+}
+if run_customization_order '84 920 409 973' '84 1000 1000 1080' '84 1200 1000 1300'; then
+    pass 'the executed order check accepts real 4-number measured bounds under sh -eu'
+else
+    fail 'the executed order check accepts real 4-number measured bounds under sh -eu'
+fi
+if run_customization_order '84 1200 409 1300' '84 1000 1000 1080' '84 920 1000 973'; then
+    fail 'the executed order check rejects a reversed control order under sh -eu'
+else
+    pass 'the executed order check rejects a reversed control order under sh -eu'
+fi
+if run_customization_order '84 920 409' '84 1000 1000 1080' '84 1200 1000 1300'; then
+    fail 'the executed order check rejects an unresolved bounds string under sh -eu'
+else
+    pass 'the executed order check rejects an unresolved bounds string under sh -eu'
+fi
+
 # --- static regression on the customization runtime gate --------------------
 
 customization_body="$TMP_DIR/capture_customization_settings.sh"
@@ -3837,6 +3919,18 @@ assert_true 'the customization gate bounds TAB focus to 12 steps' \
     grep -Fq 'while [ "$_ccs_tab" -lt 12 ]' "$customization_body"
 assert_true 'the customization gate requires an actually focused SeekBar' \
     grep -Fq 'ui_focused_slider_bounds' "$customization_body"
+assert_true 'the customization gate calls the measured order helper' \
+    grep -Fq 'customization_controls_in_order' "$customization_body"
+assert_false 'the customization gate never sets a quoted bounds positional' \
+    grep -Eq 'set -- "?\$_ccs_(customize|slider|browse)"' "$customization_body"
+assert_true 'the customization gate compares restored widget-host bounds' \
+    grep -Fq 'customization-widget-host-bounds-baseline.sorted' "$customization_body"
+assert_true 'the customization gate compares Home/Lock wallpaper IDs' \
+    grep -Fq 'wallpaper_ids_from_dump' "$customization_body"
+assert_true 'the customization gate compares the normalized wallpaper component' \
+    grep -Fq 'wallpaper_component_from_dump' "$customization_body"
+assert_false 'the customization gate never claims a lock preference value proof' \
+    grep -Fq 'lock_home_screen=present' "$customization_body"
 assert_true 'the customization gate steps the focused slider with DPAD' \
     grep -Fq 'KEYCODE_DPAD_RIGHT' "$customization_body"
 assert_true 'the customization gate requires exactly one 10 percent step' \

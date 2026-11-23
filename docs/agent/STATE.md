@@ -3,26 +3,68 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 settings customization entry — scripts/fixtures-only runtime gate for the
-  Play customize dashboard, Browse widgets route and actual top icon-size slider. This run did not
-  change app UI, manifest, workflow, dependency or permission; it added a bounded
-  `capture_customization_settings` step plus pure measured-control/slider fixtures. PENDING CI AND
-  RUNTIME; no pixel proof.**
+- current_phase: **P8 settings customization entry — scripts-only pre-CI review correction on
+  `32093c5`: fixed the quoted-bounds `set -u` abort in the customization order check, added an
+  executed order regression, compared restored widget-host bounds and wallpaper IDs/component, and
+  corrected the CI211 facts. PENDING CI AND RUNTIME; no pixel proof.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this run's scripts/docs commit on top of `36e9355` (`docs(agent): record widget picker
-  lifecycle correction pending CI`), `bfef563`, `0f0510c`, `724a139`, and the known tested fallback
-  `1732f5b` (CI209). CI211 for the earlier `724a139` remains independent and was not touched.
+- head: this run's scripts/docs commit on top of `32093c5` (`test(smoke): gate Play customization
+  dashboard and icon size`), `36e9355`, `bfef563`, `0f0510c`, `22ebdfe`, `724a139`, `6653d47`,
+  `7f3c236`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI result for the current head yet.** This run ran only shell scripts: `sh -n`,
-  `emulator-smoke-test.sh` (715 ok), `emulator-smoke-drawer-test.sh` (38 ok), the wallpaper/polish
-  guards and `git diff --check`; no Gradle, Android build, emulator, JUnit, APK or pixel check.
-  The new runtime step is unexecuted until CI runs it.
-- next: next actual CI/emulator run must confirm the real dashboard labels, measured category tap,
-  top SeekBar percentage, explicit Browse picker, Back/HOME non-reopen and one-step icon-size
-  persistence/revert. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
+- ci: **CI211 ran at actual head `6653d47` (the earlier Play dashboard entry, source 82), not at
+  `724a139`, and passed in 18m17s with style and 96 tests. Its actual dashboard dark/light captures
+  and installed APK SHA-256
+  `51e05b442b2a1b5bf3be080830c486109aeea9e1a16290011f462486995e5397` are recorded. Its live
+  wallpaper run showed Home ID 3 -> 4, Lock 0, hidden drawn 130, resumed drawn 130, later hidden
+  drawn 202. The later source 83 (`32093c5`) added the Browse/gate code, which is NOT in that built
+  APK, so no CI has approved the new Browse/gate yet. `1732f5b` (CI209) remains the valid fallback;
+  CI211 tested the new dashboard, not the new gate.**
+- next: next actual CI must build the `32093c5`+ head and confirm the real dashboard labels,
+  measured category tap, top SeekBar percentage, explicit Browse picker, Back/HOME non-reopen and
+  one-step icon-size persistence/revert, plus the new widget-bounds and wallpaper ID/component
+  comparisons. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
   non-Play, large-screen and performance audits stay open.
 
-## done (this run — measured customization dashboard/Browse/icon-size runtime gate, PENDING CI)
+## done (this run — scripts-only pre-CI review correction, PENDING CI)
+
+- **Gate abort fixed:** the `set -- "$_ccs_customize"` / `$2` pattern in
+  `capture_customization_settings` created one positional from a 4-number bounds string and aborted
+  under `set -u`. The order check now calls new production
+  `customization_controls_in_order`, which extracts each top edge through new pure
+  `ui_bounds_top_y`. That helper accepts only exactly four non-negative integers and prints nothing
+  otherwise, so malformed or quoted bounds fail closed instead of leaving an unbound positional.
+- **Executed regression, not a source grep:** `scripts/emulator-smoke-test.sh` extracts the actual
+  production `customization_controls_in_order` function and runs it under `sh -eu` with real
+  4-number measured strings. It passes the correct top-to-bottom order, fails a reversed order, and
+  fails a 3-number string; the old quoted-`set` code would have aborted on the correct case.
+- **Widget preservation now compared:** the restored HOME `ui_widget_host_bounds` lines are
+  CR-stripped, sorted and `cmp`-ed against the baseline. A changed host count or geometry now fails
+  the icon-size round-trip instead of only being retained as an artifact.
+- **Wallpaper preservation now compared:** the baseline and restored `dumpsys wallpaper` captures
+  are parsed with the existing `wallpaper_ids_from_dump` using explicit user `0`; Home/Lock IDs must
+  be equal. New pure `wallpaper_component_from_dump` reads only the System section and prints the
+  normalized `pkg/class` (or nothing). Baseline and restored components are compared, so equivalent
+  absence is accepted when the initial static wallpaper exposes no component, and a DotField
+  assumption is never made. Whole dumps with timers are never compared.
+- **Lock preference claim removed:** the datastore check only finds the `lock_home_screen` key. Its
+  artifact is now `lock_home_screen_marker=present (presence only; value not proven)` /
+  `unavailable`, and the summary explicitly says this is NOT a value-preservation proof.
+- **Known-format fixture:** added a `settings-theme-dark.xml`-shaped fixture with standard node
+  ancestry and the known category `42 1009 1038 1198` / label `84 920 409 973` numbers, asserting
+  the measured clickable ancestor is returned. The actual CI211 artifact is not in this coding job.
+- **Unchanged:** full real UI step/revert gate, focused-slider and measured-percentage guards,
+  Browse taps, Back/HOME repeats, bindings, app/source UI, manifest, workflow, dependencies,
+  permissions, SDK, signing and applicationId. No Gradle, Android build, emulator, runtime or pixel
+  claim.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **734 ok, 0 not ok**; `emulator-smoke-drawer-test.sh` all pass;
+  `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no APK);
+  `nothingui-polish-guard.sh` OK; `sh -n` clean on all three edited scripts;
+  `git diff --check` clean. The new runtime gate still has **no CI/runtime approval**; the 734
+  shell fixtures are not runtime evidence.
+
+## done (previous run — measured customization dashboard/Browse/icon-size runtime gate, PENDING CI)
 
 - **New bounded runtime step:** `scripts/emulator-smoke.sh` now calls
   `capture_customization_settings` immediately after `capture_clean_home_theme` and before

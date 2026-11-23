@@ -729,6 +729,30 @@ wallpaper_ids_from_dump() (
     ' "$dump"
 )
 
+# Print the normalized active System wallpaper component (pkg/class) from a
+# dumpsys wallpaper capture, or nothing when the System state exposes no
+# component. Only the System section is read, so a Lock/Fallback entry cannot be
+# mistaken for the active wallpaper, and surrounding whitespace/timer text is
+# never part of the comparison. Two empty results therefore compare as
+# "equivalent absence" rather than as a DotField assumption.
+wallpaper_component_from_dump() (
+    dump=$1
+    [ -s "$dump" ] || return 0
+    awk '
+        BEGIN { in_system = 0 }
+        /^[[:space:]]*System wallpaper state:/ { in_system = 1; next }
+        /^[[:space:]]*(Lock|Fallback) wallpaper state:/ { in_system = 0; next }
+        in_system && /mWallpaperComponent=ComponentInfo\{/ {
+            line = $0
+            sub(/^.*mWallpaperComponent=ComponentInfo\{/, "", line)
+            sub(/\}.*$/, "", line)
+            gsub(/[[:space:]]/, "", line)
+            if (line != "") print line
+            exit
+        }
+    ' "$dump"
+)
+
 # A Home-only FLAG_SYSTEM change may share the lock image with the prior Home
 # wallpaper. A recorded lock ID must not move. When the prior lock was shared
 # or absent (reported as "-"), the old Home image is preserved only if it
@@ -1310,6 +1334,21 @@ ui_widget_host_bounds() (
                 if (n == 4) print p[1], p[2], p[3], p[4]
             }
         '
+)
+
+# Print the top edge (y1) of a measured "x1 y1 x2 y2" bounds line. Anything other
+# than exactly four non-negative integers prints nothing, so a quoted bounds
+# string that was not split into four numbers can never become an unbound
+# positional under `set -u`.
+ui_bounds_top_y() (
+    bounds=$1
+    [ -n "$bounds" ] || return 0
+    set -- $bounds
+    [ "$#" -eq 4 ] || return 0
+    case "$1$2$3$4" in
+        *[!0-9]*) return 0 ;;
+    esac
+    printf '%s\n' "$2"
 )
 
 # Print the bounds ("x1 y1 x2 y2") of the largest measured scrollable container

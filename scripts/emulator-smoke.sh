@@ -1140,6 +1140,21 @@ capture_clean_home_theme() {
     verify_nothing_home
 }
 
+# Succeed only when the measured controls are top-to-bottom: the Customize
+# launcher label, then the top icon-size slider, then Browse widgets. Each
+# bounds string is split through ui_bounds_top_y, so a quoted 4-number string is
+# never treated as one positional and cannot abort under `set -u`. Malformed or
+# unresolved bounds fail closed.
+customization_controls_in_order() {
+    _ccio_customize_y=$(ui_bounds_top_y "$1")
+    _ccio_slider_y=$(ui_bounds_top_y "$2")
+    _ccio_browse_y=$(ui_bounds_top_y "$3")
+    [ -n "$_ccio_customize_y" ] && [ -n "$_ccio_slider_y" ] && [ -n "$_ccio_browse_y" ] ||
+        return 1
+    [ "$_ccio_customize_y" -lt "$_ccio_slider_y" ] &&
+        [ "$_ccio_slider_y" -lt "$_ccio_browse_y" ]
+}
+
 # Runtime gate for the Play-only "Customize launcher" path. It uses the real
 # PreferenceActivity dashboard (no diagnostic extras), measured exact controls,
 # the real Browse-widgets launcher request and the real native picker, then
@@ -1172,6 +1187,14 @@ capture_customization_settings() {
         fail "customization baseline exposed no launcher-owned widget bindings"
     adb_cmd shell dumpsys wallpaper \
         > "$ARTIFACTS/customization-wallpaper-baseline.txt" 2>&1 || true
+    _ccs_wall_ids_baseline=$(wallpaper_ids_from_dump \
+        "$ARTIFACTS/customization-wallpaper-baseline.txt" 0) ||
+        fail "could not parse the baseline Home/Lock wallpaper IDs"
+    _ccs_wall_component_baseline=$(wallpaper_component_from_dump \
+        "$ARTIFACTS/customization-wallpaper-baseline.txt")
+    printf 'ids=%s component=%s\n' \
+        "$_ccs_wall_ids_baseline" "${_ccs_wall_component_baseline:-none}" \
+        > "$ARTIFACTS/customization-wallpaper-baseline-summary.txt"
     {
         printf 'home_lock_source=datastore-if-available\n'
         adb_cmd shell run-as "$PKG" ls -l databases files/datastore \
@@ -1193,10 +1216,10 @@ capture_customization_settings() {
     adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
         > "$ARTIFACTS/customization-datastore-baseline.pb" 2>/dev/null || true
     if grep -aq 'lock_home_screen' "$ARTIFACTS/customization-datastore-baseline.pb"; then
-        printf 'lock_home_screen=present\n' \
+        printf 'lock_home_screen_marker=present (presence only; value not proven)\n' \
             > "$ARTIFACTS/customization-homelock-baseline.txt"
     else
-        printf 'lock_home_screen=unavailable\n' \
+        printf 'lock_home_screen_marker=unavailable\n' \
             > "$ARTIFACTS/customization-homelock-baseline.txt"
     fi
 
@@ -1260,16 +1283,9 @@ capture_customization_settings() {
     capture_screenshot_to customization-home-screen.png
     [ -s "$ARTIFACTS/customization-home-screen.png" ] ||
         fail "customization Home screen screenshot capture failed"
-    set -- "$_ccs_customize"
-    _ccs_customize_y=$2
-    set -- "$_ccs_slider"
-    _ccs_slider_y=$2
-    set -- "$_ccs_browse"
-    _ccs_browse_y=$2
-    if [ "$_ccs_customize_y" -ge "$_ccs_slider_y" ] ||
-        [ "$_ccs_slider_y" -ge "$_ccs_browse_y" ]; then
+    customization_controls_in_order \
+        "$_ccs_customize" "$_ccs_slider" "$_ccs_browse" ||
         fail "the customization controls are not in the top Customize launcher group order"
-    fi
     printf 'customize=%s slider=%s percent=%s browse=%s\n' \
         "$_ccs_customize" "$_ccs_slider" "$_ccs_percent" "$_ccs_browse" \
         > "$ARTIFACTS/customization-home-screen-controls.txt"
@@ -1646,6 +1662,13 @@ capture_customization_settings() {
         > "$ARTIFACTS/customization-widget-host-bounds-restored.txt"
     [ -s "$ARTIFACTS/customization-widget-host-bounds-restored.txt" ] ||
         fail "the restored HOME exposed no measured widget-host bounds"
+    tr -d '\r' < "$ARTIFACTS/customization-widget-host-bounds-baseline.txt" |
+        sort > "$ARTIFACTS/customization-widget-host-bounds-baseline.sorted"
+    tr -d '\r' < "$ARTIFACTS/customization-widget-host-bounds-restored.txt" |
+        sort > "$ARTIFACTS/customization-widget-host-bounds-restored.sorted"
+    cmp -s "$ARTIFACTS/customization-widget-host-bounds-baseline.sorted" \
+        "$ARTIFACTS/customization-widget-host-bounds-restored.sorted" ||
+        fail "the icon-size round-trip changed the measured HOME widget-host bounds"
     adb_cmd shell dumpsys appwidget \
         > "$ARTIFACTS/customization-appwidget-restored.txt" 2>&1 || true
     appwidget_launcher_instances "$ARTIFACTS/customization-appwidget-restored.txt" "$PKG" \
@@ -1657,15 +1680,27 @@ capture_customization_settings() {
         fail "the icon-size round-trip changed the launcher widget bindings"
     adb_cmd shell dumpsys wallpaper \
         > "$ARTIFACTS/customization-wallpaper-restored.txt" 2>&1 || true
+    _ccs_wall_ids_restored=$(wallpaper_ids_from_dump \
+        "$ARTIFACTS/customization-wallpaper-restored.txt" 0) ||
+        fail "could not parse the restored Home/Lock wallpaper IDs"
+    [ "$_ccs_wall_ids_restored" = "$_ccs_wall_ids_baseline" ] ||
+        fail "the icon-size round-trip changed the Home/Lock wallpaper IDs"
+    _ccs_wall_component_restored=$(wallpaper_component_from_dump \
+        "$ARTIFACTS/customization-wallpaper-restored.txt")
+    [ "$_ccs_wall_component_restored" = "$_ccs_wall_component_baseline" ] ||
+        fail "the icon-size round-trip changed the active wallpaper component"
+    printf 'ids=%s component=%s\n' \
+        "$_ccs_wall_ids_restored" "${_ccs_wall_component_restored:-none}" \
+        > "$ARTIFACTS/customization-wallpaper-restored-summary.txt"
     adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
         > "$ARTIFACTS/customization-prefs-restored.xml" 2>/dev/null || true
     adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
         > "$ARTIFACTS/customization-datastore-restored.pb" 2>/dev/null || true
     if grep -aq 'lock_home_screen' "$ARTIFACTS/customization-datastore-restored.pb"; then
-        printf 'lock_home_screen=present\n' \
+        printf 'lock_home_screen_marker=present (presence only; value not proven)\n' \
             > "$ARTIFACTS/customization-homelock-restored.txt"
     else
-        printf 'lock_home_screen=unavailable\n' \
+        printf 'lock_home_screen_marker=unavailable\n' \
             > "$ARTIFACTS/customization-homelock-restored.txt"
     fi
     {
@@ -1673,7 +1708,7 @@ capture_customization_settings() {
         adb_cmd shell run-as "$PKG" ls -l databases files/datastore \
             2>&1 || true
     } > "$ARTIFACTS/customization-private-files-restored.txt"
-    printf 'Customization: real dashboard category and Browse widgets were measured; the native picker opened only on explicit taps, Back/HOME repeated without it, and no binding changed. Actual top SeekBar %s%% -> %s%% -> %s%% via one keyboard step and one reverse step; HOME before/after PNGs are retained for pixel review.\n' \
+    printf 'Customization: real dashboard category and Browse widgets were measured; the native picker opened only on explicit taps, Back/HOME repeated without it, and no binding changed. Actual top SeekBar %s%% -> %s%% -> %s%% via one keyboard step and one reverse step; HOME before/after PNGs are retained for pixel review. The restored HOME widget-host bounds and the Home/Lock wallpaper IDs plus normalized System wallpaper component were compared to the baseline. The lock_home_screen datastore entry is a presence marker only and is NOT a value-preservation proof.\n' \
         "$_ccs_initial_percent" "$_ccs_expected_percent" "$_ccs_restored_percent" \
         > "$ARTIFACTS/customization.txt"
     printf 'Screenshots: customization-home-baseline.png, customization-home-screen.png, customization-picker.png, customization-picker-second.png, customization-home-after-size.png, customization-home-size-restored.png.\n' \
