@@ -3,31 +3,71 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P6 original dot-field live wallpaper implemented for PR19 — Play-only
-  `WallpaperService`, explicit system-preview action in the AMOLED settings, pure unit-tested
-  lifecycle/geometry policy, focused guards and a preview-only emulator check. Actual system
-  confirmation, HOME dots, destination choice, pause/resume draw gate and Lock/widget proofs remain
-  CI runtime gates.**
+- current_phase: **P6 original dot-field live wallpaper — PR19 independent-review correction merged
+  into the branch: preview smoke now preserves the shared logcat history and proves the engine from a
+  fail-closed post-baseline slice with `visibility=true` only, and the engine gates/enqueues/cancels
+  frames and waits for an in-flight draw under one lock. Actual system confirmation, HOME dots,
+  destination choice, the pause/resume draw gate and Lock/widget proofs remain CI runtime gates.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this STATE commit on top of `2e494d8` (`test(smoke): retain the post-preview engine log`).
-  Feature `8bbc25e`, guards `25398e2`, preview smoke `2f225c0`, phase fix `f659bbb`, docs `8f4906c`.
-  The known-good fallback remains `2f619da`, CI181 `6824907` the last verified runtime fallback,
-  CI195 the withheld candidate.
+- head: this STATE commit on top of `69b3541` (`fix(smoke): keep logcat history and require fresh
+  visible evidence`); the service lock protocol is `71a7c90`. Feature `8bbc25e`, guards `25398e2`,
+  preview smoke `2f225c0`, phase fix `f659bbb`, docs `8f4906c`.
+  The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded candidate
+  history and are not the fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No new CI result exists for this head.** Only source/fixture/syntax checks were run locally
-  (no Gradle, no emulator, no APK). The new JUnit policy test, spotless, the Play debug build and the
-  extended API 37 smoke are CI gates.
+- ci: **No new CI result exists for this head.** Only shell fixtures/source guards, `sh -n` and
+  `git diff --check` were run locally (no Gradle, no emulator, no APK). The JUnit policy test,
+  spotless, the Play debug build and the extended API 37 smoke remain CI gates.
 - next: a fresh CI must run spotless, the unit tests (including `DotFieldWallpaperPolicyTest`),
   assemble the Play debug APK and run the API 37 emulator smoke. The smoke must prove the measured
-  `Preview live wallpaper` action opens the real system picker, retain preview pixels and
-  `DotFieldWallpaper` transition logs, and require Back to leave Home/Lock IDs unchanged. Then decide
-  whether to accept the system confirmation on the disposable emulator to prove actual HOME dots,
-  normal destination selection, widget bindings, Lock preservation and the DEBUG pause/resume draw
-  gate; otherwise leave apply/pause explicitly pending rather than faking success.
-  Release/hosting/merge stay paused. Weather remains owned by the launcher and pending a separate
-  phase; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay open.
+  `Preview live wallpaper` action opens the real system picker, retain preview pixels, keep the
+  whole-run logcat for crash/ANR checks, and accept only a fresh post-baseline `DotFieldWallpaper`
+  `visibility=true` transition. Then decide whether to accept the system confirmation on the
+  disposable emulator to prove actual HOME dots, normal destination selection, widget bindings,
+  Lock preservation and the DEBUG pause/resume draw gate; otherwise leave apply/pause explicitly
+  pending rather than faking success. Release/hosting/merge stay paused. Weather remains owned by
+  the launcher and pending a separate phase; PrivateSpace, settings-roundtrip, non-Play, large-screen
+  and performance audits stay open.
 
-## done (this run — original dot-field live wallpaper, preview-only runtime gate pending)
+## done (this run — PR19 review correction: logcat boundary and frame lifecycle)
+
+- **Issue 1 — logcat history:** `_cwg_preview_live_wallpaper` no longer calls `logcat -c`. It saves a
+  read-only `live-wallpaper-logcat-before.txt` baseline before the measured tap, captures the full
+  `live-wallpaper-logcat.txt` as before, and derives preview-only
+  `live-wallpaper-logcat-preview.txt` with the new pure `live_wallpaper_preview_log_after` helper.
+  The helper requires the baseline to remain an exact prefix of the full capture; a missing baseline,
+  empty/rotated buffer or non-numeric count fails closed. The full logcat is untouched for the final
+  crash/ANR checks in `emulator-smoke.sh`.
+- **Issue 2 — visibility, not surface:** `live_wallpaper_became_visible` now requires the engine's
+  own `visibility=true` line in the fresh preview-only slice. `surface=created` alone, hidden-only,
+  empty and unrelated logs fail closed. No rendered frame is claimed from visibility alone; the
+  test description and docs were corrected.
+- **Issue 3 — one frame protocol:** `DotFieldWallpaperService` now uses a single `ReentrantLock` plus
+  an idle `Condition`. Gate (`policy.canDraw`), `framePending = true`, counter and enqueue happen in
+  one `withLock`; teardown removes queued callbacks and awaits `drawing` on the condition.
+  `beginFrame`/`finishFrame` publish `drawing` and `signalAll` under the same lock. Visibility
+  false, surface destruction and engine destruction all call `cancelAndAwaitIdle`, so none can
+  return with a queued frame or a draw still in flight. `await()` releases the lock (no join while
+  locked). No new dependency, no per-frame allocation and no per-frame logging; DEBUG transition
+  lines now carry cumulative `posted`/`drawn`/`pending`/`drawing` counters.
+- **Regression checks actually run:** new shell fixtures cover the append boundary, a stale
+  pre-baseline visibility line, a rotated buffer, a missing baseline and surface-only rejection.
+  Source checks in `emulator-smoke-test.sh` assert the preview body has no `logcat -c`, uses the
+  baseline/slice, and inspect the exact lock placement (`withLock` gate+enqueue, `idle.await`,
+  `idle.signalAll`, all three teardown call sites, counters, no per-frame `logTransition`).
+  `nothingui-wallpaper-guard.sh` also requires the lock/condition structure and the baseline/slice
+  wiring.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no APK);
+  `nothingui-polish-guard.sh` OK; `emulator-smoke-test.sh` all pass (**618 ok**);
+  `emulator-smoke-drawer-test.sh` all pass; `sh -n` clean on every edited script;
+  `git diff --check` clean. No workflow, manifest, permission, SDK, signing, applicationId or
+  dependency was touched; static wallpaper, HOME, widgets and theme behavior are unchanged.
+- **Blocked/unknown:** no local JUnit, APK, merged manifest or emulator result exists. The
+  `ReentrantLock` protocol is source-checked, not concurrency-tested; apply and pause/resume remain
+  explicitly unproven until CI runs the real preview. No merge, release or completion claim.
+
+## done (previous run — original dot-field live wallpaper, preview-only runtime gate pending)
 
 - **Original art, not a redesign:** a deterministic monochrome dot field is drawn on a Canvas at a
   visible frame cadence of about 15 fps with a restrained 14 s breathe/drift cycle and a sparse

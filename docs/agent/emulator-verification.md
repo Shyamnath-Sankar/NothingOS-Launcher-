@@ -371,16 +371,23 @@ equals the current Home wallpaper ID. Lock is never targeted and protected image
 read.
 
 Before those static applies, `_cwg_preview_live_wallpaper` measures the separate `Preview live
-wallpaper` action with the same bounded settings scroll, clears logcat, and taps it. It accepts only
-a real platform wallpaper-picker hierarchy (`com.android.wallpaper`,
+wallpaper` action with the same bounded settings scroll and taps it. It never clears the shared
+logcat buffer: it keeps a read-only `live-wallpaper-logcat-before.txt` baseline and derives
+`live-wallpaper-logcat-preview.txt` as only the appended tail, failing closed unless the baseline is
+still an exact prefix of `live-wallpaper-logcat.txt` (a rotated buffer cannot be sliced safely). It
+accepts only a real platform wallpaper-picker hierarchy (`com.android.wallpaper`,
 `com.android.wallpaper.livepicker` or `com.google.android.apps.wallpaper`) with a measured confirm/
 cancel control; the settings gallery, HOME, empty and unknown captures fail closed. It retains
-`live-wallpaper-preview-<n>.xml` and `live-wallpaper-preview.png`, `live-wallpaper-dumpsys.txt` and
-`live-wallpaper-logcat.txt`, and requires a DEBUG-only `DotFieldWallpaper` `visibility=true` or
-`surface=created` transition. Back must leave both Home/Lock IDs unchanged; the post-Back logcat is
-retained as `live-wallpaper-logcat-after-back.txt` for the paused/destroyed transition. The system confirmation
-and the post-selection pause/resume draw gate are deliberately not automated here; they remain a
-separate runtime gate.
+`live-wallpaper-preview-<n>.xml` and `live-wallpaper-preview.png` and `live-wallpaper-dumpsys.txt`,
+and requires the engine's own fresh `visibility=true` transition in the preview-only slice.
+Surface creation alone, a hidden-only line and a stale pre-baseline visibility line are not
+accepted; the fresh transition does not itself prove a rendered frame. Back must leave both Home/
+Lock IDs unchanged; the post-Back logcat is retained as
+`live-wallpaper-logcat-after-back.txt` for the paused/destroyed transition. The engine removes
+queued callbacks and waits for an in-flight draw under one lock on hidden, surface destruction and
+engine destruction, and DEBUG transition lines include cumulative posted/drawn/pending/drawing
+counters (no per-frame logging). The system confirmation and the post-selection pause/resume draw
+gate are deliberately not automated here; they remain a separate runtime gate.
 
 ## Locked private-space validation
 
