@@ -3,34 +3,80 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather smoke CI250 post-enable/disable offscreen evidence fixed; scripts and
-  fixtures committed, PENDING ACTUAL RUNTIME STORE/RELOAD/DISABLE PROOF.** CI250 compile/style/units
-  were green and runtime now passed fresh/off, invalid, no-consent and draft-reset and clicked the
-  actual enabled Save, then `_weather_enabled_poll` waited for the exact success message in one
-  unscrolled XML and failed. Its 10 real XML captures showed the enabled status with `Emulator test`
-  and `60.0000,10.0000` plus `Disable and clear location` clipped at `1901..1920`, while the success
-  line was below the fold. CI250 therefore never read the store after enable; durable enabled state
-  is **not yet confirmed** and no new runtime result exists for this fix. The gate now captures
-  consent JSON/state and a top PNG/XML immediately after Enable/Disable, polls the durable expected
-  state on every bounded attempt, reveals the exact success line by scrolling the measured
-  container, requires the real enabled (`Disable and clear location`) or disabled (`Save and enable`)
-  identity in that revealed XML, and retains poll/message/failure XML+PNG. The valid-longitude red
-  outline is treated as unproven theme focus: focused and measured-hint-blurred captures are kept and
-  no semantic longitude error may appear, without a production UI change from colour alone.
+- current_phase: **Weather smoke CI252 post-enable false-missing probe fixed in scripts and
+  fixtures, PENDING ACTUAL RUNTIME. Durable enable is NOT yet verified.** CI252's compile/style/units
+  were green; its 21m26 runtime failed the post-enable app-private probe, reporting `missing` while
+  the enabled UI was actually shown. An independent shell reproduction proved the cause: adb joins
+  shell arguments, so `run-as PKG sh -c "test -f path"` reaches the device as `sh -c test -f path`,
+  the inner `sh -c` runs only `test`, and `test` exits 1 even for an existing file. The cache
+  existence check and cache seed had the same misquote. No new runtime result exists for this fix;
+  the next API 37 CI is the only proof of the durable store and the real UI.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `927657b` (this run's smoke fix); the previous runtime wiring was `c4ad8e9` on top of
-  helper/fixture `e9becce` and checkpoint `ed4e9e2`.
+- head: `f3b9b9c` (this run's shell-boundary fix); prior CI250 work is `927657b` on the `c56e4cb`
+  state doc, itself on `c4ad8e9`/`e9becce`/`ed4e9e2`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **actual CI250 compile/style/units were green; its runtime failed only the post-enable
-  offscreen success-message check.** No new CI or runtime result exists for this fix; the next API 37
-  runtime must confirm the durable enabled store, reload and Disable, not these shell fixtures.
-- next: the next API 37 CI must show the enabled poll confirming the durable store and the
-  measured/lower success line, then reload the saved label/coordinates, disable, clear the seeded
-  cache, survive restarts and finish disabled. Release, hosting and merge stay paused; visible HOME
-  lifecycle/network wiring, PrivateSpace, settings round-trip, non-Play, large-screen and performance
-  audits stay open.
+- ci: **CI252 compile/style/units were green and its 21m26 runtime failed only the post-enable
+  app-private probe.** No new CI or runtime result exists for `f3b9b9c`; durable enabled state,
+  reload, disable, cache clearing and final-off remain unproven by this run.
+- next: the next API 37 CI must prove the enabled poll reads the real durable store, shows the
+  measured/lower success line, reloads the saved label/coordinates, disables, clears the seeded
+  cache, survives restarts and finishes disabled. Release, hosting and merge stay paused; visible
+  HOME lifecycle/network wiring, PrivateSpace, settings round-trip, non-Play, large-screen and
+  performance audits stay open.
 
-## done (this run — CI250 post-enable/disable offscreen evidence, PENDING ACTUAL RUNTIME)
+## done (this run — CI252 adb-join false-missing probe and real blur proof, PENDING ACTUAL RUNTIME)
+
+- **Exact CI252 false negative, reproduced independently in the shell:** compile/style/units were
+  green and the runtime failed after a real enable with `missing` from the store probe although the
+  enabled UI was visible. `adb shell` joins its arguments, so the old
+  `run-as "$PKG" sh -c "test -f '$WEATHER_CONSENT_REL'"` became
+  `run-as PKG sh -c test -f path`; the device shell then ran `sh -c test` with `$0=-f`, `$1=path`,
+  so `test` had no operand and returned 1 for an existing file. A local fake adb + fake run-as
+  reproduced `rc=1` for the old form and `rc=0` for the direct form.
+- **Direct probe, not another `sh -c`:** new `_weather_probe_private_file` calls
+  `adb_cmd shell run-as "$PKG" test -f "$path"` with every argument intact. It returns `present`
+  only for exit 0 with empty stderr, `absent` only for exit 1 with empty stderr, and `error` for
+  every other run-as/transport outcome. `_weather_capture_consent` maps `absent` to `missing` and
+  `error` to `probe-error`, and every existing enabled/disabled/fresh case fails closed on that
+  token instead of treating it as an absent file. Every probe retains its path, exit, stderr and a
+  private directory listing in `weather-probe-<tag>.txt`/`.err`.
+- **Cache audit fixed too:** `_weather_cache_exists` now uses the same probe and fails the run on a
+  run-as/transport error rather than letting an `if` test pass falsely; the disable assertion passes
+  a `cache-after-disable` evidence tag.
+- **Seed quoting fixed:** `_weather_seed_cache` builds one fully quoted device command with
+  `weather_app_shell_command`/`shell_single_quote`, passes it to `adb shell` as a single argument,
+  and pipes the fixture on stdin, so `mkdir -p` and `cat > file` both run as the app UID under the
+  app data directory. It then probes the file and `cmp`s the exact bytes read back through
+  `run-as cat`; a wrong-UID/outer-shell write cannot satisfy it.
+- **Real blur proof:** the longitude step now asserts the focused capture reports
+  `Longitude focused=true`, measures and taps the latitude EditText (another measured input),
+  dismisses the IME, and asserts `Longitude focused=false`, `Latitude focused=true` and an
+  unchanged latitude draft before naming `weather-valid-longitude-blurred.png`. Tapping the
+  non-focusable hint had left Longitude focused, so it never proved a blur. New
+  `ui_labelled_edit_text_focused` returns only the measured `focused` attribute and prints nothing
+  for a missing/ambiguous field; the existing `ui_labelled_edit_text_state` output format and every
+  accepted bound/typing check are unchanged. The red outline stays unproven theme focus; no
+  production UI, validation or theme code changed.
+- **Preserved:** every fresh/off, invalid, no-consent, draft-reset, real enabled Save, reload,
+  Disable, cache-clear, app-private consent, no-backup, restart and final-off assertion remains.
+  No fabricated JSON, `pm clear`, uninstall, preference write, direct bind or bypass was added.
+- **No prohibited change:** no Gradle/Android build, emulator, workflow, dependency, permission,
+  SDK, applicationId, signing, API/provider, Home hookup, private-widget, merge, release or hosting
+  change. Existing accepted Home/widgets/layout/theme/wallpaper/non-Play code is untouched.
+- **Verification actually run (shell only; no Gradle, Android build or emulator):**
+  `sh scripts/emulator-smoke-test.sh` **891 ok, 0 not ok, all passed**, including executable
+  adb-join misquote/present/absent/error/seed-clear fixtures, the focused/blurred field helper
+  fixtures and the updated static gate assertions; `sh scripts/emulator-smoke-drawer-test.sh` all
+  passed; `nothingui-wallpaper-guard.sh`, `nothingui-polish-guard.sh`, `nothingui-home-guard.sh`,
+  `nothingui-widget-guard.sh` and `nothingui-icon-render-guard.sh` all OK (compiled wallpaper
+  sentinel skipped, no APK); `sh -n` is clean on all three edited scripts; `git diff --check` is
+  clean.
+- **Missing evidence / not claimed:** no new runtime proof, screenshot, APK or CI result for
+  `f3b9b9c`. The fake adb/run-as fixtures prove the quoting and fail-closed control flow, not the
+  real device shell. Durable enabled state, the real success line, reload, disable and final-off
+  remain for the next CI runtime.
+
+## done (previous run — CI250 post-enable/disable offscreen evidence, PENDING ACTUAL RUNTIME)
 
 - **Exact CI250 false negative:** compile/style/units were green and the runtime passed
   fresh/off, invalid, no-consent and draft-reset and clicked the actual enabled Save, then
