@@ -3,30 +3,80 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **PR19 routine style-only correction on `36e7f8e`. CI226 proved
-  `build-debug-apk` green (20m11) and `unit` green (13m23); `check-style` failed (2m37) with only
-  three ktlint `standard:function-signature` wrapping findings in `OkHttpWeatherTransport.kt`,
-  `WeatherCache.kt` and `WeatherThrottle.kt`. The repository ktlint 1.8.0 + compose rules 0.6.8
-  standalone formatter was applied to those three weather files only; the diff is whitespace-only.
-  PLAY SLIDER CORRECTION FROM `b5a9918` AND THE WEATHER CANCELLATION/THROTTLE TESTS ARE PRESERVED.
-  NEW FORMAT COMMIT PENDING CI.**
+- current_phase: **Narrow weather finish/correction on checkpoint `23759f4`; source and tests are
+  committed as `5e70fcf` with offline JVM green and PENDING CI.** The Compose `LocationFields`
+  multiple-emitter finding is fixed by emitting through one `Column`. Weather settings now syncs the
+  loaded persisted consent to the observer, keeps a failed or conflicted disable fail-closed with an
+  honest unconfirmed-revocation retry, and never re-enables the session on a revoke conflict. Session
+  results are delivered under the transition lock with a controller-owned monotonic generation
+  (overflow fails closed). The consent CAS requires a strictly increasing generation and refuses an
+  enable over a corrupt record. Privacy/UI copy now states that this version stores consent only and
+  makes no network request or forecast yet.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `e218504` (`fix(weather): apply repository ktlint formatting`) on top of `36e7f8e` docs /
-  `f90a68e` source, which are on top of `c9a30c6` / `b0250b4` / `b5a9918`.
+- head: `5e70fcf` (`fix(weather): fail closed on unconfirmed revocation and stale sessions`) on top of
+  checkpoint `23759f4` from timed-out run 90.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI226 on `36e7f8e`: build-debug-apk PASSED (20m11), unit PASSED (13m23), check-style
-  FAILED (2m37)** only on the three formatting findings above. CI222 on `b5a9918` remains the last
-  full green run (22m56). `e218504` has not been through CI yet and is PENDING CI.
-- next: the next actual API 37 CI must turn `check-style` green, keep the Play build and unit jobs
-  green, keep the slider, binding, wallpaper and drawer gates green, and run the weather JVM tests.
-  A future owner still must add the real opt-in UI, privacy notice and visible HOME lifecycle gate,
-  construct `MetWeatherRepository` with a `FileWeatherThrottleStore` (required) and
-  `FileWeatherCacheStore`, and cancel the load coroutine plus revoke the generation at HOME
-  pause/screen-off. Weather stays unwired with no live API requests. Release, hosting and merge
-  stay paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay
-  open.
+- ci: **not queried in this offline run; `5e70fcf` is PENDING CI.** Dispatch context reports CI228
+  was full green with 177 tests across 26 suites (66 weather) before run 90; that result is now
+  historical, not evidence for this commit. The main-branch workflow wrapper correction `3ef7ad6`
+  (whole process group cleanup, 30-minute attempt cap, 45-job bound) was **not edited here** and
+  should bound the next attempt. Run 90 timed out after leaving the `23759f4` checkpoint with the
+  `WeatherPreferences` UI still pending format/CI.
+- next: the next API 37 CI must compile the real Compose screen with the repository ktlint
+  1.8.0 + compose 0.6.8 rules, run the weather JVM tests, and keep the Play build, unit, slider,
+  binding, wallpaper and drawer gates green. A later phase still owns the visible HOME lifecycle
+  hookup, the network repository wiring and pixels; weather stays unwired and no live MET request
+  was made here. Release, hosting and merge stay paused; PrivateSpace, settings-roundtrip, non-Play,
+  large-screen and performance audits stay open.
 
-## done (this run — CI226 style-only ktlint wrapping, PENDING CI)
+## done (this run — weather fail-closed correction and Compose emitter fix, PENDING CI)
+
+- **Compose fix:** `WeatherPreferences.kt` now wraps the label/latitude/longitude fields in a single
+  `Column`, so `LocationFields` emits one container instead of four top-level composables. The exact
+  repository formatter (standalone ktlint 1.8.0 plus merged compose rules 0.6.8 including the
+  `common-ktlint` classes) reports zero violations on all 12 production weather files, all 14 weather
+  test files and `WeatherPreferences.kt`.
+- **Settings/consent correction:** `load()` now calls `consentObserver(saved)` exactly once after a
+  successful read, so a recreated settings/lifecycle boundary learns a persisted enabled or disabled
+  decision. Disable/edit revocation still stops the in-process session immediately, but a storage
+  failure or exhausted conflict keeps `revocationPending = true`, keeps `saved` disabled, shows
+  `REVOKE_UNCONFIRMED`/`CONFLICT`, never claims a durable disable, never clears the old cache, and
+  leaves `disable()` callable. Retry re-reads the stored state and revokes from durable truth, so it
+  works even when the local state is already disabled but disk still says enabled. A conflict whose
+  stored state is already disabled is accepted as a confirmed revocation; a conflict with a stored
+  enabled record never calls the observer with that enabled state.
+- **Session correction:** result delivery and the current-session equality check now happen in one
+  `synchronized(lock)` block, so a pause/edit cannot interleave between the check and the sink. The
+  controller owns a monotonic generation instead of `consent.generation + revision`; a consent reset
+  cannot reuse a prior generation, and `Long.MAX_VALUE` exhaustion publishes a disabled session and
+  starts no work. Work exceptions catch `Exception`, not `Throwable`, while cancellation still
+  propagates.
+- **Store correction:** `FileWeatherConsentStore` distinguishes missing, corrupt and valid records
+  internally. A CAS requires the exact current generation and a strictly greater next generation; a
+  store at `Long.MAX_VALUE` fails closed. Missing records may be initialized by a fresh enable, but
+  an enable may not overwrite a corrupt record (a disable may, the safe direction). Corruption
+  semantics are documented on the class.
+- **Truthful copy:** privacy, forecast, consent, enabled-status and enabled-message strings now say
+  this version only stores the label/rounded coordinates/consent locally, makes no network request
+  and shows no forecast; the MET Norway connection and visible-HOME loading are described as a later
+  version. The retry-disable action and the honest unconfirmed-revocation message were added.
+- **Untouched:** no Gradle/Android/emulator build, live MET request, dependency, manifest,
+  permission, SDK, applicationId, signing, workflow, hosting, merge, private widget or non-weather
+  production change. The audited `6335e8c` Home/settings/widgets/layouts/non-Play work is preserved.
+- **Verification actually run (offline JVM/shell only; no Gradle, no Android build, no emulator):**
+  compiled the weather production sources and all weather tests with kotlinc 2.4.21 against JUnit
+  4.13.2, kotlinx-coroutines 1.11.0, kotlinx-serialization 1.13.0, OkHttp 5.5.1 and Okio 3.16.0
+  (downloaded to `/tmp` only; no project dependency added). JUnit ran **132 tests, OK (0 failures)**
+  across 14 weather test classes. Fourteen new regressions were added; five key regressions were also
+  run against the old `HEAD` source, where the two session tests (generation reset, overflow) and
+  three store tests (same-generation CAS, generation exhaustion, enable over corruption) failed for
+  the intended reasons. `strings.xml` parses, `git diff --check` is clean, and the formatter reports
+  zero violations.
+- **Missing evidence / not claimed:** no local Gradle/Compose compile, no Spotless-in-Gradle run, no
+  API 37 emulator, no actual screen pixels and no CI result for `5e70fcf`. The JVM count is not a
+  full-suite count and the Compose screen remains a CI compile/pixel gate.
+
+## done (previous run — CI226 style-only ktlint wrapping, PENDING CI)
 
 - **Exact CI226 facts:** the `build-debug-apk` job passed in 20m11 and the `unit` job passed in
   13m23. `check-style` failed in 2m37, reporting only three
