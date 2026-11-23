@@ -3,27 +3,53 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 settings customization entry (small UI increment) — Play-only top
-  `Customize launcher` dashboard group links to the existing Home Screen route, and the existing
-  home icon-size slider is MOVED (Play only) into a top `Customize launcher` group on that screen.
-  The slider is not duplicated: non-Play keeps it in the lower Icons group. Browse widgets is
-  deliberately NOT added (no fake button, no crash); widget settings remain reachable through the
-  existing Home Screen route. PENDING CI; no runtime/pixel proof.**
+- current_phase: **P8 settings customization entry (small UI increment) — Browse widgets is now a
+  Play-only row in the top `Customize launcher` group on the Home Screen settings screen, after the
+  existing icon-size slider. It launches this app's own launcher explicitly with ACTION_MAIN /
+  CATEGORY_HOME and an app-owned one-shot extra; the launcher consumes the extra once and opens the
+  existing native widget picker only after it is resumed on NORMAL home. PENDING CI AND RUNTIME; no
+  pixel proof.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `7f3c236` (`feat(preferences): surface Play customize launcher entry and icon size`) on top
-  of the previous runtime-gate head `1732f5b`; CI208 preview baseline remains `2eba66e`. Known-good
-  fallback remains `2f619da` (CI196).
+- head: `724a139` (`feat(preferences): open native widget picker from Play customize group`) on top
+  of `7f3c236` and the runtime-gate head `1732f5b`. **Corrected: the known tested fallback is
+  `1732f5b` (CI209), not `2f619da` (CI196).** CI211 is still pending actual CI; the CI208 preview
+  baseline remains `2eba66e`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI result yet for `7f3c236`.** The previous head's runtime apply/pause gate is still
-  unproven. This run ran only `git diff --check` (clean); no Gradle, Android build, emulator, APK or
-  test. Do not claim the new section renders or compiles until CI inspects it.
-- next: next CI should confirm compile/style/Play debug APK with the new strings and gated groups.
-  Follow-up (not this run): implement Browse widgets against the native widget picker only after a
-  safe launcher-activity path is agreed; keep it launchable from Settings with normal lifecycle and
-  no new manifest/activity/permission. Release/hosting/merge stay paused; Weather, PrivateSpace,
-  settings-roundtrip, non-Play, large-screen and performance audits stay open.
+- ci: **No CI result yet for `724a139`.** CI211 is pending actual CI. The CI209 evidence that is
+  actually known: 96 tests passed; live wallpaper Home ID 3→4, Lock ID 0; pause counter 128 and
+  resume counter 128. This run ran only two source guards, `git diff --check` and an XML parse; no
+  Gradle, Android build, emulator, APK or pixel check. Do not claim the new row renders or that the
+  picker opens until CI/runtime inspects it.
+- next: next CI should confirm compile/style/Play debug APK with the new strings, helper and gated
+  row. Follow-up runtime must confirm: the Settings tap brings the launcher home, the picker opens
+  once, rotation/recreation does not replay it, and no picker opens while Settings or another app
+  is foreground. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
+  non-Play, large-screen and performance audits stay open.
 
-## done (this run — Play-customize dashboard entry, PENDING CI)
+## done (this run — Play Browse widgets route, PENDING CI AND RUNTIME)
+
+- **New helper, one-shot request:** `app/nothingui/launcher/WidgetPickerRequest.kt` builds an
+  explicit `LawnchairLauncher` intent with `ACTION_MAIN`, `CATEGORY_HOME`,
+  `FLAG_ACTIVITY_NEW_TASK` and an app-owned boolean extra; `consume()` removes the extra so the same
+  Intent object cannot replay it.
+- **Settings row:** the Play-only top `Customize launcher` group in `HomeScreenPreferences.kt` now
+  has a `ClickablePreference` (`browse_widgets_label` / `browse_widgets_description`) directly after
+  the existing icon-size slider. It only starts the explicit launcher intent; it does not call
+  `Launcher.getLauncher(context)` on the Settings context and does not fake a picker.
+- **Launcher lifecycle:** `LawnchairLauncher` consumes the extra in `onCreate`/`onNewIntent`,
+  persists handled/pending in saved instance state, and opens via a `dragLayer.post` only when
+  `isResumed`, not finishing/destroyed, and `stateManager.state == NORMAL`. The pending flag is
+  cleared only when the real `openWidgetPicker()` is invoked, so ordinary resumes do not re-open it.
+- **Untouched:** the existing gesture `onNewIntent` handling, Home popup/binding/grid/defaults,
+  widget binding, manifest/activity/permission/dependency/SDK/workflow/signing/applicationId,
+  wallpaper, non-Play layout and private widget code/artifacts. Two base strings were added.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `scripts/nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no APK);
+  `scripts/nothingui-polish-guard.sh` OK; `lawnchair/res/values/strings.xml` parses;
+  `git diff --check` clean. The route, timing, once-only behaviour and rendering are NOT proven
+  until CI/runtime.
+
+## done (previous run — Play-customize dashboard entry, PENDING CI)
 
 - **Dashboard:** a Play-only `Customize launcher` `PreferenceGroup` is added above the main group.
   Its single `PreferenceCategory` (`Icon size and home screen`, description `Icon size, labels and
@@ -38,9 +64,8 @@ when no task input is given, and continues from "next".
 - **Strings:** three base additions — `customize_launcher_label`, `customize_launcher_description`,
   `icon_size_and_home_screen_label`. No unused import was added; both files already imported the
   helpers used.
-- **Browse widgets explicitly deferred:** no button was added. Opening `Launcher.openWidgetPicker()`
-  from the Settings activity needs a safe launcher-instance/normal-lifecycle path that is not proven
-  here, so per instruction this increment leaves it unimplemented rather than faking it.
+- **Browse widgets explicitly deferred in that run:** no button was added then. The safe
+  launcher-activity path is implemented in the newer section above; it is still PENDING CI/runtime.
 - **Scope preserved:** no permissions, manifest, activity, dependency, SDK, workflow, signing,
   applicationId, theme, wallpaper, widget binding, HOME behavior or non-Play layout change.
 - **Verification actually run:** `git diff --check` clean only. No Gradle/Android build, emulator,
