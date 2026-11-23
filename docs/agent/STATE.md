@@ -3,35 +3,69 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P6 original dot-field live wallpaper — CI205 compile/style repair only: the new
-  service now imports the real `com.android.launcher3.BuildConfig` (not the nonexistent
-  `app.lawnchair.BuildConfig`), and the two `DotFieldWallpaperPolicy` expression bodies are joined to
-  one line as the formatter requires. Service/engine behavior, rendering, manifest/permissions, themes,
-  HOME, widgets and static wallpaper are untouched. Runtime gates remain open.**
+- current_phase: **P6 original dot-field live wallpaper — CI206 measured-viewport harness fix only:
+  `_cwg_measure_control` now measures the at-limit known `android.widget.ScrollView` as a fallback
+  viewport when the strict `scrollable="true"` reading is absent. App/service/UI, permissions,
+  manifest, workflows and dependencies are untouched. Runtime preview/apply/pause gates remain open.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this STATE commit on top of `92a3469` (`docs(agent): correct the fallback to CI196`); the
-  feature is `8bbc25e`, guards `25398e2`, smoke `2f225c0`, phase fix `f659bbb`, service lock
-  `71a7c90`, logcat/frame correction `69b3541`.
+- head: this STATE commit on top of `ef83036` (`fix(smoke): measure the at-limit known ScrollView
+  viewport`); earlier feature `8bbc25e`, guards `25398e2`, smoke `2f225c0`, phase fix `f659bbb`,
+  service lock `71a7c90`, logcat/frame correction `69b3541`, CI205 repair `ba53a24`.
   The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded candidate
   history and are not the fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI205 was red; no new CI result exists for this repair head.** Unit job 137516923479 failed
-  to compile `DotFieldWallpaperService.kt` (lines 26 and 241: unresolved `BuildConfig`); style job
-  137516923552 reported only the two `DotFieldWallpaperPolicy.kt` expression-wrap violations.
-  Locally only shell guards, `sh -n` and `git diff --check` were run (no Gradle, no ktlint binary,
-  no emulator, no APK). The JUnit test did **not** execute; do not claim test success.
-- next: a fresh normal CI must recompile the unit job (compile fix + `DotFieldWallpaperPolicyTest`),
-  pass spotless/style, assemble the Play debug APK and run the API 37 emulator smoke. The smoke must prove the measured
-  `Preview live wallpaper` action opens the real system picker, retain preview pixels, keep the
-  whole-run logcat for crash/ANR checks, and accept only a fresh post-baseline `DotFieldWallpaper`
-  `visibility=true` transition. Then decide whether to accept the system confirmation on the
-  disposable emulator to prove actual HOME dots, normal destination selection, widget bindings,
-  Lock preservation and the DEBUG pause/resume draw gate; otherwise leave apply/pause explicitly
-  pending rather than faking success. Release/hosting/merge stay paused. Weather remains owned by
-  the launcher and pending a separate phase; PrivateSpace, settings-roundtrip, non-Play, large-screen
-  and performance audits stay open.
+- ci: **CI206 style and actual 96 tests in 16 suites with 0 failures/errors/skips passed and the
+  Play debug APK was built.** The runtime then stopped in `_cwg_measure_control` while measuring the
+  `Preview live wallpaper` control. No new CI result exists for this harness repair head.
+  Locally only bounded shell fixtures/source guards, `sh -n` and `git diff --check` were run (no
+  Gradle, no Android build, no emulator, no APK); do not claim the runtime preview passed.
+- next: a fresh normal CI must rebuild the Play debug APK and rerun the API 37 emulator smoke. The
+  smoke must prove the measured `Preview live wallpaper` action opens the real system picker, retain
+  preview pixels, keep the whole-run logcat for crash/ANR checks, and accept only a fresh
+  post-baseline `DotFieldWallpaper` `visibility=true` transition. Then decide whether to accept the
+  system confirmation on the disposable emulator to prove actual HOME dots, normal destination
+  selection, widget bindings, Lock preservation and the DEBUG pause/resume draw gate; otherwise leave
+  apply/pause explicitly pending rather than faking success. Release/hosting/merge stay paused.
+  Weather remains owned by the launcher and pending a separate phase; PrivateSpace,
+  settings-roundtrip, non-Play, large-screen and performance audits stay open.
 
-## done (this run — CI205 compile/style repair)
+## done (this run — CI206 at-limit ScrollView measured viewport)
+
+- **Exact CI206 runtime failure, from the captured XML/pixels and not guessed:** on attempt 1 the
+  `Preview live wallpaper` parent button was `[84,1678][572,1804]`, which crosses `navigation_top=1794`;
+  the helper correctly rejected it and swiped. On attempt 2 the button was fully visible at about
+  `[84,1447][572,1573]`, but the real scrolling surface was reported as
+  `android.widget.ScrollView` bounds `[0,0][1080,1920]` with `scrollable="false"` because content was
+  already at its end. `ui_scroll_container_bounds` accepts only `scrollable="true"`, returned nothing,
+  and `_cwg_measure_control` failed even though the screenshot showed the unobscured red preview
+  action above the navigation bar. CI206 logs established no app failure.
+- **Minimal harness fix:** the strict generic `ui_scroll_container_bounds` is unchanged in behavior.
+  New pure `ui_known_scroll_container_bounds` accepts only an exact `android.widget.ScrollView`
+  (what UiAutomator reports for the Compose vertical-scroll surface) with `scrollable="false"`, a
+  matching expected app package, and strictly positive measured bounds; it ignores arbitrary
+  root/decor/other views, wrong-package nodes and missing/zero bounds, and clips below the measured
+  navigation top exactly like the strict helper. `_cwg_measure_control` now tries the strict
+  scrollable viewport first, then this package-scoped known-container fallback with `$PKG`. No
+  coordinate is hardcoded, partially clipped controls still fail, and every navigation guard remains.
+- **Regression fixtures:** a non-scrollable at-limit real ScrollView with a fully contained measured
+  clickable ancestor now succeeds (and is clipped at both `1794` and `1700`); the initial control
+  crossing the navigation top still fails; a root-only node, an arbitrary `android.view.View`, a
+  ScrollView without bounds, a zero-bounds ScrollView, a wrong-package ScrollView and a missing
+  expected package all fail. Source checks require the exact class/package/scrollable/bounds rules
+  and the strict-before-fallback order. Existing source fixtures and drawer controls are preserved.
+- **Preserved:** fresh-logcat prefix boundary and frame gate/lock fixes from `69b3541`/`71a7c90`,
+  app/service/UI behavior, rendering, permissions, manifest, applicationId, SDK, signing, themes,
+  HOME, widgets, static wallpaper, workflows and dependencies. No private widget code or artifact.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` all pass (**635 ok**); `emulator-smoke-drawer-test.sh` all pass;
+  `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no local APK);
+  `nothingui-polish-guard.sh` OK; `sh -n` clean on every edited script; `git diff --check` clean.
+- **Still open:** preview, actual system apply and the pause/resume draw gate are unproven; do not
+  claim the system preview passed. `2f619da` (CI196) remains the verified fallback. Weather,
+  privacy, PrivateSpace, settings/backup round-trip, non-Play, large-screen and performance audits
+  remain open. No merge, release or hosting.
+
+## done (previous run — CI205 compile/style repair)
 
 - **Exact CI205 failure:** unit job 137516923479 failed at `DotFieldWallpaperService.kt` line 26 and
   line 241 with unresolved `BuildConfig`; the service imported `app.lawnchair.BuildConfig` while the
