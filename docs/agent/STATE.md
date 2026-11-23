@@ -3,27 +3,59 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **PR19 routine weather cancellation/throttle-store pre-CI correction on `f90a68e`:
-  the OkHttp body read now runs entirely on the callback worker with cancellation active for the
-  whole body lifetime, `WeatherThrottleStore` is a required injection, the file store fails closed
-  on a corrupt gate and serializes same-process instances, an unpersisted provider `Retry-After`
-  boundary is kept in memory and reported via `retryPersisted`, and cache writes validate the same
-  key/header limits as reads. PLAY SLIDER CORRECTION FROM `b5a9918` IS PRESERVED. PENDING CI.**
+- current_phase: **PR19 routine style-only correction on `36e7f8e`. CI226 proved
+  `build-debug-apk` green (20m11) and `unit` green (13m23); `check-style` failed (2m37) with only
+  three ktlint `standard:function-signature` wrapping findings in `OkHttpWeatherTransport.kt`,
+  `WeatherCache.kt` and `WeatherThrottle.kt`. The repository ktlint 1.8.0 + compose rules 0.6.8
+  standalone formatter was applied to those three weather files only; the diff is whitespace-only.
+  PLAY SLIDER CORRECTION FROM `b5a9918` AND THE WEATHER CANCELLATION/THROTTLE TESTS ARE PRESERVED.
+  NEW FORMAT COMMIT PENDING CI.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `f90a68e` (`fix(weather): cancel stalled bodies and harden throttle store`) on top of
-  `c9a30c6` docs / `b0250b4` source, which are on top of `b5a9918`.
+- head: `e218504` (`fix(weather): apply repository ktlint formatting`) on top of `36e7f8e` docs /
+  `f90a68e` source, which are on top of `c9a30c6` / `b0250b4` / `b5a9918`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI222 on `b5a9918` is FULL GREEN in 22m56**, with the actual slider step 76→77→76 and the
-  layout, bindings, wallpaper and drawer checks passing. The newer weather source (`b0250b4` and
-  `f90a68e`) is **unwired and not a user feature**; it has not been through that green CI yet and
-  is PENDING CI.
-- next: the next actual API 37 CI must compile/style/test the Play variant, keep the slider,
-  binding, wallpaper and drawer gates green, and run the 66 weather JVM tests. A future owner still
-  must add the real opt-in UI, privacy notice and visible HOME lifecycle gate, construct
-  `MetWeatherRepository` with a `FileWeatherThrottleStore` (now required) and
+- ci: **CI226 on `36e7f8e`: build-debug-apk PASSED (20m11), unit PASSED (13m23), check-style
+  FAILED (2m37)** only on the three formatting findings above. CI222 on `b5a9918` remains the last
+  full green run (22m56). `e218504` has not been through CI yet and is PENDING CI.
+- next: the next actual API 37 CI must turn `check-style` green, keep the Play build and unit jobs
+  green, keep the slider, binding, wallpaper and drawer gates green, and run the weather JVM tests.
+  A future owner still must add the real opt-in UI, privacy notice and visible HOME lifecycle gate,
+  construct `MetWeatherRepository` with a `FileWeatherThrottleStore` (required) and
   `FileWeatherCacheStore`, and cancel the load coroutine plus revoke the generation at HOME
-  pause/screen-off. Release, hosting and merge stay paused; PrivateSpace, settings-roundtrip,
-  non-Play, large-screen and performance audits stay open.
+  pause/screen-off. Weather stays unwired with no live API requests. Release, hosting and merge
+  stay paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay
+  open.
+
+## done (this run — CI226 style-only ktlint wrapping, PENDING CI)
+
+- **Exact CI226 facts:** the `build-debug-apk` job passed in 20m11 and the `unit` job passed in
+  13m23. `check-style` failed in 2m37, reporting only three
+  `standard:function-signature: First line of body expression fits on same line as function
+  signature` findings at `OkHttpWeatherTransport.kt:75`, `WeatherCache.kt:167` and
+  `WeatherThrottle.kt:98`.
+- **Exact repository formatter:** `gradle/libs.versions.toml` pins
+  `com.pinterest.ktlint:ktlint-cli:1.8.0` and `io.nlopez.compose.rules:ktlint:0.6.8`; `build.gradle`
+  Spotless targets `lawnchair/src/**/*.kt` with that ktlint and compose ruleset; `.editorconfig`
+  sets `ktlint_code_style = intellij_idea` and the listed standard-rule disables. The same
+  standalone ktlint 1.8.0 CLI plus compose/common 0.6.8 jars were downloaded to `/tmp/opencode` for
+  this check only (no project dependency or Gradle change) and run against the weather files, where
+  they reproduced exactly those three findings and zero others.
+- **Formatting changes only:** the formatter joined the three short expression-body first lines to
+  their signatures and re-indented the affected bodies/blocks. The OkHttp callback structure, the
+  cache-key predicate, the throttle `withStoreLock`/claim flow, every token, string, call and test
+  are unchanged.
+- **Verification actually run (no Gradle, no Android build, no emulator):** standalone ktlint 1.8.0
+  now reports zero violations across all seven `lawnchair/src/app/nothingui/weather/*.kt` files;
+  `git diff --check` is clean; and for each edited file a whitespace-stripped SHA-256 of
+  `HEAD` versus the working tree is identical, proving the diff contains no non-whitespace change.
+  The weather unit tests were **not** rerun locally; CI remains their gate.
+- **Untouched:** no behavior, test, dependency, manifest, permission, SDK, applicationId, signing,
+  release, workflow, hosting, merge, private widget or non-weather source change. Weather stays
+  unwired and no live MET/API request was made. The audited customization from `b5a9918` and all
+  weather cancellation/throttle tests are byte-for-byte preserved.
+- **Missing evidence / not claimed:** no local Spotless/Gradle run, no rerun of the 66 JVM weather
+  tests, and no CI result for `e218504` yet. `check-style` green and the whole pipeline green are
+  not claimed until the next CI report.
 
 ## done (this run — stalled-body cancellation and throttle-store safety, PENDING CI)
 
