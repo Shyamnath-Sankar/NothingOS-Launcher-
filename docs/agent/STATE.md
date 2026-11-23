@@ -3,36 +3,50 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P6 original dot-field live wallpaper — CI208 preview is the measured baseline.
-  This run adds the runtime apply/pause-resume completion gate (measured Set wallpaper, exact Home
-  screen destination only, dumpsys System-service + Home/Lock proof, per-engine DEBUG token and
-  opaque Settings hide/resume/hide draw-count proof). The new runtime gate is PENDING until a fresh
-  CI runs it; no apply/pause success is claimed yet. App/UI behaviour, permissions, manifest,
-  workflows and dependencies are untouched.**
+- current_phase: **P8 settings customization entry (small UI increment) — Play-only top
+  `Customize launcher` dashboard group links to the existing Home Screen route, and the existing
+  home icon-size slider is MOVED (Play only) into a top `Customize launcher` group on that screen.
+  The slider is not duplicated: non-Play keeps it in the lower Icons group. Browse widgets is
+  deliberately NOT added (no fake button, no crash); widget settings remain reachable through the
+  existing Home Screen route. PENDING CI; no runtime/pixel proof.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this STATE commit on top of `2eba66e` (`docs(agent): record CI206 at-limit viewport repair`);
-  CI208 preview baseline is `2eba66e`; earlier feature `8bbc25e`, guards `25398e2`, smoke `2f225c0`,
-  phase fix `f659bbb`, service lock `71a7c90`, logcat/frame correction `69b3541`, CI205 repair
-  `ba53a24`. The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded
-  candidate history and are not the fallback.
+- head: `7f3c236` (`feat(preferences): surface Play customize launcher entry and icon size`) on top
+  of the previous runtime-gate head `1732f5b`; CI208 preview baseline remains `2eba66e`. Known-good
+  fallback remains `2f619da` (CI196).
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI208 passed the measured system preview: actual dot-field preview pixels, fresh logs with
-  34 drawn frames, Back leaving visibility=false pending=false drawing=false with surface/engine
-  destroy at the same 34, and unchanged Home/Lock IDs. 96 JUnit tests in 16 suites with 0 failures/
-  errors/skips, style and the Play debug APK were green.** The new runtime apply + pause/resume gate
-  in this head has **no CI result**; locally only bounded shell fixtures/source guards, `sh -n` and
-  `git diff --check` were run (no Gradle, no Android build, no emulator, no APK).
-- next: a fresh normal CI must rebuild the Play debug APK and prove the new runtime gate: exact
-  `Dot Field (Live)` preview from `com.android.wallpaper.livepicker`, measured Set wallpaper, a
-  measured exact `Home screen` destination (or direct apply), dumpsys
-  `DotFieldWallpaperService` in the System state with a changed Home ID and preserved Lock, then two
-  opaque Settings hides with a clean single-engine token resume at the exact hidden drawn count and
-  a larger drawn count on the second hide. If any of that is missing the smoke fails closed; do not
-  claim apply/pause success before inspecting CI. Release/hosting/merge stay paused. Weather remains
-  owned by the launcher and pending a separate phase; PrivateSpace, settings-roundtrip, non-Play,
-  large-screen and performance audits stay open.
+- ci: **No CI result yet for `7f3c236`.** The previous head's runtime apply/pause gate is still
+  unproven. This run ran only `git diff --check` (clean); no Gradle, Android build, emulator, APK or
+  test. Do not claim the new section renders or compiles until CI inspects it.
+- next: next CI should confirm compile/style/Play debug APK with the new strings and gated groups.
+  Follow-up (not this run): implement Browse widgets against the native widget picker only after a
+  safe launcher-activity path is agreed; keep it launchable from Settings with normal lifecycle and
+  no new manifest/activity/permission. Release/hosting/merge stay paused; Weather, PrivateSpace,
+  settings-roundtrip, non-Play, large-screen and performance audits stay open.
 
-## done (this run — runtime apply/pause-resume completion gate, PENDING CI)
+## done (this run — Play-customize dashboard entry, PENDING CI)
+
+- **Dashboard:** a Play-only `Customize launcher` `PreferenceGroup` is added above the main group.
+  Its single `PreferenceCategory` (`Icon size and home screen`, description `Icon size, labels and
+  widgets`) navigates to the existing `HomeScreen` route with unchanged selection highlighting. The
+  older main-group `Home screen` entry is hidden on Play only to avoid duplicate navigation; non-Play
+  keeps the original dashboard exactly.
+- **Home Screen:** a Play-only top `Customize launcher` group now hosts the actual existing
+  `prefs2.homeIconSizeFactor` `SliderPreference` (same range 0.5–1.5, step 0.1, percentage display).
+  The original slider block was MOVE-gated (`if (!isPlayStoreFlavor())`) out of the lower Icons
+  group, so there is exactly one control per flavor and no duplicated preference. Icons labels /
+  label size remain in the lower Icons group; widget switches/padding are untouched.
+- **Strings:** three base additions — `customize_launcher_label`, `customize_launcher_description`,
+  `icon_size_and_home_screen_label`. No unused import was added; both files already imported the
+  helpers used.
+- **Browse widgets explicitly deferred:** no button was added. Opening `Launcher.openWidgetPicker()`
+  from the Settings activity needs a safe launcher-instance/normal-lifecycle path that is not proven
+  here, so per instruction this increment leaves it unimplemented rather than faking it.
+- **Scope preserved:** no permissions, manifest, activity, dependency, SDK, workflow, signing,
+  applicationId, theme, wallpaper, widget binding, HOME behavior or non-Play layout change.
+- **Verification actually run:** `git diff --check` clean only. No Gradle/Android build, emulator,
+  JUnit, APK or runtime rendering check. CI is the first compile/style check.
+
+## done (previous run — runtime apply/pause-resume completion gate, PENDING CI)
 
 - **Measured system confirmation only, after the static applies:** `capture_wallpaper_gallery` keeps
   `_cwg_preview_live_wallpaper` and both Pitch Black/Wireframe Torus applies, then calls the new
