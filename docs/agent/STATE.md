@@ -150,8 +150,8 @@ when no task input is given, and continues from "next".
 - **Blocked/unknown:** no local APK, JUnit, merged manifest or emulator result exists. CI195's
   compiled packaging/style/unit evidence is separate from the still-pending runtime proof: the
   scrolled preview attribution/licence/controls, Cancel/Back no-ID change, Pitch Black/Torus Home-ID
-  changes, Lock preservation and widget/layout preservation are CI gates. CI195 stays withheld and
-  CI181 stays the fallback until that runtime verification passes. No merge, release or final design
+  changes, Lock preservation and widget/layout preservation are CI gates. CI195 stays withheld; the
+  later known-good fallback is `2f619da` (CI196), not CI181/CI195. No merge, release or final design
   acceptance.
 
 
