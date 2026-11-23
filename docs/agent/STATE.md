@@ -3,28 +3,60 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P5 weather transport/cache offline slice on `f248190`: pure opt-in coordinate,
-  units and forecast domain; bounded MET `locationforecast/2.0/compact` DOM parser that chooses the
-  nearest relevant valid period instead of the first outdated entry; atomic app-private body cache
-  with Expires/Last-Modified/retrievedAt/locationKey; 3h + Expires refresh gate; exact conditional
-  `If-Modified-Since`; 304 revalidation; in-flight dedup; bounded 403/429 backoff; and a
-  session-generation commit guard. 24 JVM tests pass locally through kotlinc/JUnit. The network is
-  NOT wired and no user-visible weather feature exists. PENDING CI.**
+- current_phase: **PR19 Play Home icon-slider truthfulness correction on `7b7304f`: the Play slider
+  now uses 1 percentage-point steps (0.01f, 0.5..1.5), so the 0.76 default is a real tick and the
+  label reads 76 instead of the misleading 80; the non-Play slider and the 0.76 resource default are
+  unchanged. The runtime gate now expects 76→77→76 and compares the stored
+  `home_icon_size_factor` from the private DataStore protobuf at baseline, after the step and after
+  restore (key-specific parser, exact float bytes when a baseline value exists). PENDING CI.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `f248190` (`feat(weather): add bounded MET forecast domain, cache and transport slice`) on
-  top of `82ed44f`.
+- head: `7b7304f` (`fix(preferences): use one-point Play icon slider steps`) on top of `8a21085`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI has run on `f248190` yet.** The last recorded CI facts (CI211 at `6653d47`) are
-  unchanged and do not cover this weather slice. The previous Play dashboard/Browse runtime gate
-  still awaits a real API 37 run; `1732f5b` (CI209) remains the older fallback.
-- next: the next actual CI must compile/style/test this Play variant and run the new weather unit
-  tests. Weather is **transport and fixtures only, not a finished user feature**. Real product work
-  still pending: settings opt-in + manual coordinate entry + privacy notice, an original weather
-  widget/provider and art, and the visible HOME lifecycle gate that owns the fetch and cancels it
-  at pause/screen-off. Release/hosting/merge stay paused; PrivateSpace, settings-roundtrip, non-Play,
-  large-screen and performance audits stay open.
+- ci: **No CI has run on `7b7304f` yet.** CI218 attempt 3 at `8a21085` failed after the measured
+  slider round-trip: the HOME widget-host bounds were not preserved because the Play default is
+  0.76 while the old 0.1 step displayed 80 and the reverse persisted 0.8. This run corrects the
+  cause, not the geometry assertion or the default. The weather slice at `f248190`/`8a21085` is
+  unchanged and still PENDING CI.
+- next: the next actual API 37 CI must compile/style/test the Play variant, run the pure slider
+  math test, and re-run the measured customization gate expecting 76→77→76 with a matching stored
+  factor and unchanged host bounds/bindings/wallpaper. Weather is still transport-only and is a
+  separate later correction; do not touch its source in this increment. Release/hosting/merge stay
+  paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay open.
 
-## done (this run — weather transport/cache offline slice, PENDING CI)
+## done (this run — PR19 Play icon-slider truthfulness, PENDING CI)
+
+- **Root cause from the saved CI218 attempt 3 and source, not a flaky test:** the real Play default
+  is `config_default_home_icon_size_factor = 0.76`, but the slider's 0.1 step made
+  `snapSliderValue(0.5, 0.76, 0.1)` display 0.8 (80%). One DPAD step persisted 0.9, and the reverse
+  step persisted 0.8 instead of the original 0.76, legitimately changing the widget-host geometry.
+  Browse/Back/HOME replay behavior was already correct and is untouched.
+- **Play-only fix:** the top Customize launcher icon slider now uses `step = 0.01f` with the same
+  `0.5F..1.5F` range, so 0.76 is a real tick and the label reads 76%. The non-Play icon slider keeps
+  0.1f, the Play resource default stays 0.76, opening the screen writes nothing, and an arbitrary
+  pre-existing factor is displayed instead of being normalized.
+- **Pure math:** `getSteps` and `snapSliderValue` moved unchanged into
+  `SliderValueMath.kt` so they are JVM-testable. New `SliderValueMathTest` covers the 76% label, the
+  100 one-point intervals, 0.76→0.77→0.76, arbitrary 0.7634→76 and 0.835→84, plus the unchanged
+  0.1/0.05 steps used by other controls.
+- **Smoke:** `ui_slider_percent` now accepts 50..150 integer percentages (76/77 fixtures), the gate
+  expects a ±1 point step and the same-step reverse, and the new pure `datastore_float_factor`
+  parser reads only `home_icon_size_factor` from the DataStore protobuf and prints percent plus the
+  exact little-endian float bytes. Baseline, after-step and after-restore values are compared
+  numerically; when a baseline factor was already stored its exact bytes must be restored. Fixtures
+  cover 76/77/80, the target after another entry, out-of-range 0.49/1.6, a raw-text fake key and an
+  empty file. The existing host-bounds, binding and wallpaper checks are unchanged.
+- **Not touched:** weather source, Browse/Back/HOME replay logic, the non-Play slider, the 0.76
+  default, permissions, manifest, SDK, applicationId, signing, workflows, dependencies or private
+  widget code. No Gradle/Android build, emulator, APK or runtime claim was made.
+- **Verification actually run (no Gradle, no Android build, no emulator):**
+  `emulator-smoke-test.sh` **758 ok, 0 not ok**; `emulator-smoke-drawer-test.sh` all pass;
+  `nothingui-polish-guard.sh`, `nothingui-home-guard.sh`, `nothingui-widget-guard.sh` and
+  `nothingui-icon-render-guard.sh` OK, with their `-test.sh` suites all passing; `sh -n` clean on
+  every edited script; `git diff --check` clean. The real `SliderValueMathTest` compiled with
+  kotlinc 2.4.21 against JUnit 4.13.2 and ran **OK (5 tests)**. This is shell/JVM evidence only:
+  Play compilation, Gradle style and every API 37 runtime claim remain CI gates.
+
+## done (previous run — weather transport/cache offline slice, PENDING CI)
 
 - **Pure domain:** `WeatherCoordinates.from` rejects NaN, infinities and out-of-range values and
   rounds HALF_UP to four decimals before the value can become a URL parameter or cache key. The
