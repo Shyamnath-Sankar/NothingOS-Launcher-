@@ -3,27 +3,94 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **PR19 Play Home icon-slider truthfulness correction on `7b7304f`: the Play slider
-  now uses 1 percentage-point steps (0.01f, 0.5..1.5), so the 0.76 default is a real tick and the
-  label reads 76 instead of the misleading 80; the non-Play slider and the 0.76 resource default are
-  unchanged. The runtime gate now expects 76→77→76 and compares the stored
-  `home_icon_size_factor` from the private DataStore protobuf at baseline, after the step and after
-  restore (key-specific parser, exact float bytes when a baseline value exists). PENDING CI.**
+- current_phase: **PR19 routine weather transport/cache pre-CI correction on `b0250b4`: a persisted
+  global attempt floor (independent of location and response outcome), a cancellable async OkHttp
+  bridge, injected-clock `Retry-After` parsing without down-clamping, bounded/atomic file cache I/O,
+  and retrieval/revalidation evidence separated from fresh/stale. PLAY SLIDER CORRECTION FROM
+  `b5a9918` IS PRESERVED. PENDING CI.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `7b7304f` (`fix(preferences): use one-point Play icon slider steps`) on top of `8a21085`.
+- head: `b0250b4` (`fix(weather): persist global throttle and cancellable transport`) on top of
+  `b5a9918`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI has run on `7b7304f` yet.** CI218 attempt 3 at `8a21085` failed after the measured
-  slider round-trip: the HOME widget-host bounds were not preserved because the Play default is
-  0.76 while the old 0.1 step displayed 80 and the reverse persisted 0.8. This run corrects the
-  cause, not the geometry assertion or the default. The weather slice at `f248190`/`8a21085` is
-  unchanged and still PENDING CI.
-- next: the next actual API 37 CI must compile/style/test the Play variant, run the pure slider
-  math test, and re-run the measured customization gate expecting 76→77→76 with a matching stored
-  factor and unchanged host bounds/bindings/wallpaper. Weather is still transport-only and is a
-  separate later correction; do not touch its source in this increment. Release/hosting/merge stay
-  paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance audits stay open.
+- ci: **No CI has run on `b0250b4` yet.** CI222 on the fixed `b5a9918` is retrying the drawer job
+  independently; it was not interrupted or polled by this run. The previous weather slice was
+  transport-only and was not wired to any UI, worker or production entry point.
+- next: the next actual API 37 CI must compile/style/test the Play variant, run the existing
+  slider/customization gates (76→77→76), and run the weather JVM tests. A future owner must add the
+  real opt-in UI, privacy notice and visible HOME lifecycle gate, inject
+  `FileWeatherCacheStore`/`FileWeatherThrottleStore` instead of the in-memory throttle default, and
+  cancel the load coroutine plus revoke the generation at HOME pause/screen-off. Release, hosting
+  and merge stay paused; PrivateSpace, settings-roundtrip, non-Play, large-screen and performance
+  audits stay open.
 
-## done (this run — PR19 Play icon-slider truthfulness, PENDING CI)
+## done (this run — weather transport/cache pre-CI correction, PENDING CI)
+
+- **Global request throttle, no longer per-location-success only:** new
+  `lawnchair/src/app/nothingui/weather/WeatherThrottle.kt` defines a persisted `WeatherAttemptGate`
+  (`lastAttemptAt`, provider `retryNotBefore`), `WeatherAttemptDecision` and
+  `WeatherThrottleStore`. `InMemoryWeatherThrottleStore` is the test seam;
+  `FileWeatherThrottleStore` persists through a temp file plus `ATOMIC_MOVE` under a file lock. A
+  claim is recorded **before** the transport call, so a changed location, manual `refresh()`,
+  concurrent error loads and a recreated repository all hit the same floor. A missing record allows
+  the first attempt; an unreadable/unwritable record fails closed (`CACHE_STORAGE`). A denied load
+  returns the honest cached forecast with its stale flag, or `Unavailable` plus the true `retryAt`,
+  never a synthesized forecast. The per-location `Expires` boundary is still honoured (tested at
+  +4 h with `Expires` at +5 h and no transport).
+- **Cancellable transport:** `OkHttpWeatherTransport` no longer calls blocking `execute()`. It uses
+  `suspendCancellableCoroutine` + `enqueue`, registers `invokeOnCancellation { call.cancel() }`,
+  re-checks `ensureActive()` around every bounded read, and cancels/closes in `finally` if the
+  coroutine is no longer active. The repository re-checks cancellation after every suspension and
+  immediately before every cache write/result, then checks the session. A loopback `ServerSocket`
+  test wires the real OkHttp transport into the repository, cancels the job, proves the server sees
+  the close and the cache stays empty. KDoc states the future owner must still cancel at HOME
+  pause/screen-off and revoke the generation; already-sent bytes cannot be retracted.
+- **`Retry-After` with the injected clock:** new `RetryAfterParser` accepts positive seconds
+  (relative to the repository clock) and RFC-1123/ISO HTTP-dates, and returns null for blank, zero,
+  negative, malformed or overflowing values. 403 uses a bounded 1 h fallback, 429 a bounded 60 s
+  fallback, and there is no upper clamp, so a provider's longer delay is never shortened. The
+  persisted `retryNotBefore` only moves later. The reported `retryAt` is
+  `max(server delay, local attempt floor)`, so a 120 s server delay is not reported earlier than
+  the enforced 3 h floor. No automatic retry loop exists.
+- **Bounded, atomic cache:** `FileWeatherCacheStore` checks the file length and then reads through a
+  bounded stream before decoding; it validates a format version, key/body/header sizes and all
+  timestamps. Corruption returns null without deleting the file. `write` returns `Boolean`,
+  rejects oversized entries, writes a temp file and replaces atomically with a non-atomic fallback,
+  and a failed write leaves the previous entry intact. New temp-directory tests cover roundtrip
+  (including revalidation), missing entry/directory, corruption, oversized read/write, unwritable
+  directory preserving the prior entry, read failure and no leftover `.tmp` files. No external
+  storage or Context is used.
+- **Fresh vs stale is separate from retrieval:** `WeatherFreshness` marks a forecast stale when the
+  latest evidence (`retrievedAt` or `revalidatedAt`) is 3 h old **or** when its `validAt` is more
+  than 90 min in the past, so a six-hour-old only-available forecast is never shown as current. A
+  304 now keeps the original `retrievedAt`, records `revalidatedAt`, and updates `Expires` /
+  `Last-Modified`; `WeatherRefreshPolicy` counts revalidation as evidence. `Success.cacheUpdated`
+  reports whether this call durably wrote the cache, and `Unavailable.lastSuccessStale` exposes the
+  age of a preserved last success. Storage, network, local-throttle and provider-rate-limit failures
+  are distinct (`CACHE_STORAGE`, `NETWORK`, `THROTTLED`, `FORBIDDEN`/`RATE_LIMITED`); a cache write
+  failure still returns the real forecast with `cacheUpdated=false`.
+- **Untouched:** no Gradle/Android build, no live MET request, no opt-in/network hookup, no UI,
+  lifecycle, dependency, manifest, permission, SDK, signing or workflow change, and no private
+  widget code. No file outside `weather/` and its unit tests changed, so the saved Play slider
+  correction and all strict smoke assertions are preserved.
+- **Verification actually run (JVM/shell only; no Gradle, no Android build, no emulator):**
+  compiled the weather source and all weather tests with kotlinc 2.4.21 against JUnit 4.13.2,
+  kotlinx-coroutines/serialization, OkHttp 5.5.1 and Okio 3.16.0 (downloaded to `/tmp` for this
+  local check only; no project dependency added). JUnit ran **61 tests, OK (0 failures)** across
+  `MetWeatherRepositoryTest`, `MetLocationForecastParserTest`, `WeatherCachePolicyTest`,
+  `WeatherCoordinatesTest`, `RetryAfterParserTest`, `WeatherThrottleTest`,
+  `FileWeatherCacheStoreTest` and `OkHttpWeatherTransportTest`. ktlint 1.8.0 reported zero
+  violations on the weather source and tests; `git diff --check` was clean. Shell gates:
+  `emulator-smoke-test.sh` all pass, `emulator-smoke-drawer-test.sh` all pass,
+  `nothingui-polish-guard.sh` + test, `nothingui-widget-guard.sh` + test,
+  `nothingui-home-guard.sh` + test, `nothingui-icon-render-guard.sh` + test,
+  `nothingui-wallpaper-guard.sh` all OK (compiled sentinel skipped, no APK). These are fixtures and
+  JVM evidence, not Android/runtime evidence.
+- **Missing evidence / not claimed:** no Play/Gradle compile, no Spotless-in-Gradle run, no API 37
+  emulator or UI/lifecycle proof, and no production wiring of the opt-in UI, privacy notice,
+  `FileWeatherThrottleStore`, `FileWeatherCacheStore` or HOME pause/screen-off cancellation. The
+  local loopback and fixture tests do not represent live MET behavior.
+
+## done (previous run — PR19 Play icon-slider truthfulness, PENDING CI)
 
 - **Root cause from the saved CI218 attempt 3 and source, not a flaky test:** the real Play default
   is `config_default_home_icon_size_factor = 0.76`, but the slider's 0.1 step made
