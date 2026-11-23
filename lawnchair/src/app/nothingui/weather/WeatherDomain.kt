@@ -133,6 +133,12 @@ sealed interface WeatherLoadResult {
         val lastSuccess: WeatherForecast? = null,
         val retryAt: Instant? = null,
         val lastSuccessStale: Boolean = false,
+        /**
+         * False when a provider `Retry-After` boundary could not be written to
+         * the persisted throttle. The boundary is still enforced in memory for
+         * this repository instance; a recreated instance may lose it.
+         */
+        val retryPersisted: Boolean = true,
     ) : WeatherLoadResult
 
     data object Disabled : WeatherLoadResult

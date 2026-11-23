@@ -87,6 +87,23 @@ class FileWeatherCacheStoreTest {
     }
 
     @Test
+    fun anEntryThatWouldNotDecodeIsRejectedRatherThanReportedDurablyValid() {
+        withDirectory { directory ->
+            val store = FileWeatherCacheStore(directory)
+
+            assertFalse(
+                "an oversized header would be unreadable after a successful write",
+                store.write(entry().copy(lastModified = "x".repeat(4096))),
+            )
+            assertFalse(
+                "a key with a line break would corrupt the metadata layout",
+                store.write(entry().copy(locationKey = "bad\nkey")),
+            )
+            assertTrue(directory.listFiles().orEmpty().none { it.name.endsWith(CACHE_SUFFIX) })
+        }
+    }
+
+    @Test
     fun aFailedWritePreservesThePreviousEntry() {
         assumeFalse("permissions are not enforced for root", System.getProperty("user.name") == "root")
         withDirectory { directory ->

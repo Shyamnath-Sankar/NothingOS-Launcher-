@@ -22,9 +22,6 @@ import java.io.InputStream
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -38,10 +35,13 @@ import okhttp3.Response
  * SLA and a 20 requests/second ceiling across all installs: this client has no
  * polling loop and no background scheduler.
  *
- * The call is asynchronous and cancellable. Coroutine cancellation invokes
- * [Call.cancel], and every read loop re-checks cancellation, so a paused HOME
- * surface can stop an in-flight request. Already-sent bytes cannot be retracted;
- * that is the caller's opt-in and lifecycle responsibility.
+ * All network and body I/O runs on OkHttp's worker dispatcher, never on the
+ * caller's coroutine context (which may be the main thread). The coroutine is
+ * resumed only once the whole response, including the bounded body, has been
+ * read. Coroutine cancellation invokes [Call.cancel] for the entire lifetime of
+ * the call, so a stalled body is interrupted and the response is closed by the
+ * callback's `use` block. Already-sent bytes cannot be retracted; that is
+ * the caller's opt-in and lifecycle responsibility.
  *
  * Not constructed anywhere yet. The production path remains disabled until the
  * real opt-in UI, privacy notice and visible HOME lifecycle gate are wired.
@@ -63,59 +63,69 @@ class OkHttpWeatherTransport(
             }
             .build()
 
-        val call = client.newCall(httpRequest)
-        val response = call.await()
-        try {
-            currentCoroutineContext().ensureActive()
-            val declaredLength = response.body.contentLength()
-            if (declaredLength > maxResponseBytes) {
-                throw IOException("weather response is larger than $maxResponseBytes bytes")
-            }
-            val body = if (response.code == MET_NOT_MODIFIED) {
-                null
-            } else {
-                readBounded(response.body.byteStream(), maxResponseBytes)
-            }
-            currentCoroutineContext().ensureActive()
-            return WeatherHttpResponse(
-                code = response.code,
-                body = body,
-                expiresAt = response.headers.getDate("Expires")?.toInstant(),
-                lastModified = response.headers["Last-Modified"],
-                retryAfter = response.headers["Retry-After"],
-            )
-        } finally {
-            if (!currentCoroutineContext().isActive) call.cancel()
-            response.close()
-        }
+        return client.newCall(httpRequest).awaitResponse()
     }
 
-    private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { cancel() }
-        enqueue(
-            object : Callback {
-                override fun onFailure(call: Call, error: IOException) {
-                    if (continuation.isActive) continuation.resumeWithException(error)
-                }
-
-                override fun onResponse(call: Call, response: Response) {
-                    if (continuation.isActive) {
-                        continuation.resume(response)
-                    } else {
-                        response.close()
+    /**
+     * The continuation stays pending until the body has been fully read on the
+     * OkHttp callback thread. Cancellation is registered for the lifetime of the
+     * whole call, and a cancellation that wins after the response exists (but
+     * before it is resumed) still closes the response through `use`.
+     */
+    private suspend fun Call.awaitResponse(): WeatherHttpResponse =
+        suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { cancel() }
+            enqueue(
+                object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
+                        if (continuation.isActive) continuation.resumeWithException(e)
                     }
-                }
-            },
+
+                    override fun onResponse(call: Call, response: Response) {
+                        if (!continuation.isActive) {
+                            response.close()
+                            return
+                        }
+                        val result = try {
+                            response.use { received -> readResponse(call, received) }
+                        } catch (failure: Exception) {
+                            if (continuation.isActive) continuation.resumeWithException(failure)
+                            return
+                        }
+                        if (continuation.isActive) continuation.resume(result)
+                    }
+                },
+            )
+        }
+
+    private fun readResponse(call: Call, response: Response): WeatherHttpResponse {
+        if (call.isCanceled()) throw IOException("weather request was cancelled")
+        val declaredLength = response.body.contentLength()
+        if (declaredLength > maxResponseBytes) {
+            throw IOException("weather response is larger than $maxResponseBytes bytes")
+        }
+        val body = if (response.code == MET_NOT_MODIFIED) {
+            null
+        } else {
+            readBounded(call, response.body.byteStream(), maxResponseBytes)
+        }
+        if (call.isCanceled()) throw IOException("weather request was cancelled")
+        return WeatherHttpResponse(
+            code = response.code,
+            body = body,
+            expiresAt = response.headers.getDate("Expires")?.toInstant(),
+            lastModified = response.headers["Last-Modified"],
+            retryAfter = response.headers["Retry-After"],
         )
     }
 
-    private suspend fun readBounded(stream: InputStream, limit: Long): String {
+    private fun readBounded(call: Call, stream: InputStream, limit: Long): String {
         val output = ByteArrayOutputStream()
         val buffer = ByteArray(READ_BUFFER_BYTES)
         var total = 0L
         stream.use { input ->
             while (true) {
-                currentCoroutineContext().ensureActive()
+                if (call.isCanceled()) throw IOException("weather request was cancelled")
                 val read = input.read(buffer)
                 if (read < 0) break
                 total += read

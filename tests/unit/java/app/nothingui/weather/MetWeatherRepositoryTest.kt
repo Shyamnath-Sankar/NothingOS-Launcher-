@@ -318,6 +318,46 @@ class MetWeatherRepositoryTest {
     }
 
     @Test
+    fun aFailedBoundaryPersistIsKeptConservativelyInMemoryAndReported() = runBlocking {
+        var clockNow = now
+        val throttle = PersistFailingThrottleStore()
+        val transport = ScriptedTransport(
+            Respond(
+                WeatherHttpResponse(
+                    code = 429,
+                    body = null,
+                    expiresAt = null,
+                    lastModified = null,
+                    retryAfter = "Tue, 24 Nov 2026 20:00:00 GMT",
+                ),
+            ),
+            Respond(successResponse()),
+        )
+        val repository = repository(
+            transport = transport,
+            cache = InMemoryWeatherCacheStore(),
+            provider = FakeSessionProvider(session),
+            throttle = throttle,
+            clock = { clockNow },
+        )
+
+        val limited = repository.load(session) as WeatherLoadResult.Unavailable
+
+        assertEquals(WeatherFailureReason.RATE_LIMITED, limited.reason)
+        assertEquals(Instant.parse("2026-11-24T20:00:00Z"), limited.retryAt)
+        assertFalse("the boundary was not persisted", limited.retryPersisted)
+        assertNull(throttle.snapshot()!!.retryNotBefore)
+
+        clockNow = now.plus(Duration.ofHours(10))
+        val blocked = repository.load(session) as WeatherLoadResult.Unavailable
+
+        assertEquals(WeatherFailureReason.THROTTLED, blocked.reason)
+        assertEquals(Instant.parse("2026-11-24T20:00:00Z"), blocked.retryAt)
+        assertFalse("the in-memory boundary is still unpersisted", blocked.retryPersisted)
+        assertEquals("the conservative boundary must not be shortened", 1, transport.calls)
+    }
+
+    @Test
     fun aLongHttpDateRetryAfterIsNotClampedDown() = runBlocking {
         val cache = InMemoryWeatherCacheStore()
         val transport = ScriptedTransport(
@@ -749,6 +789,17 @@ class MetWeatherRepositoryTest {
             withContext(NonCancellable) { gate.await() }
             return response
         }
+    }
+
+    private class PersistFailingThrottleStore : WeatherThrottleStore {
+        private val delegate = InMemoryWeatherThrottleStore()
+
+        override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision =
+            delegate.claim(now, minimumInterval)
+
+        override fun recordRetryNotBefore(until: Instant): Boolean = false
+
+        override fun snapshot(): WeatherAttemptGate? = delegate.snapshot()
     }
 
     private class WriteFailingCacheStore : WeatherCacheStore {

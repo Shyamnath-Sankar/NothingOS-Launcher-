@@ -20,7 +20,11 @@ import java.io.File
 import java.nio.file.Files
 import java.time.Duration
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.concurrent.thread
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -104,6 +108,58 @@ class WeatherThrottleTest {
                 store.claim(now, threeHours),
             )
             assertNull(store.snapshot())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aCorruptGateMakesRecordingTheServerBoundaryFailClosedWithoutReplacingIt() {
+        val directory = Files.createTempDirectory("weather-throttle").toFile()
+        try {
+            val stateFile = File(directory, "request-gate")
+            stateFile.writeText("corrupt")
+            val store = FileWeatherThrottleStore(directory)
+
+            assertFalse(store.recordRetryNotBefore(now.plus(Duration.ofHours(8))))
+            assertEquals("corrupt", stateFile.readText())
+            assertNull(store.snapshot())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun concurrentClaimsFromTwoStoreInstancesAllowExactlyOneAttempt() {
+        val directory = Files.createTempDirectory("weather-throttle").toFile()
+        try {
+            val first = FileWeatherThrottleStore(directory)
+            val second = FileWeatherThrottleStore(directory)
+            val start = CountDownLatch(1)
+            val allowed = AtomicInteger()
+            val storageFailures = AtomicInteger()
+            val thrown = AtomicInteger()
+            val workers = (1..12).map { index ->
+                thread(isDaemon = true, name = "weather-claim-$index") {
+                    start.await()
+                    try {
+                        when ((if (index % 2 == 0) first else second).claim(now, threeHours)) {
+                            WeatherAttemptDecision.Allowed -> allowed.incrementAndGet()
+                            is WeatherAttemptDecision.Denied -> Unit
+                            is WeatherAttemptDecision.StorageFailure -> storageFailures.incrementAndGet()
+                        }
+                    } catch (_: Exception) {
+                        thrown.incrementAndGet()
+                    }
+                }
+            }
+
+            start.countDown()
+            workers.forEach { it.join(10_000) }
+
+            assertEquals("exactly one claim may win", 1, allowed.get())
+            assertEquals("locked instances must not fail on each other", 0, storageFailures.get())
+            assertEquals("claims must not throw out of the store", 0, thrown.get())
         } finally {
             directory.deleteRecursively()
         }

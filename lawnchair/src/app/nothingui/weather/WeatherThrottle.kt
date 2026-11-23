@@ -95,29 +95,35 @@ class FileWeatherThrottleStore(
     private val directory: File,
     private val maxFileBytes: Long = MAX_FILE_BYTES,
 ) : WeatherThrottleStore {
-    override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision = withLock {
-        val gate = readLocked() ?: return@withLock WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
-        val next = gate.nextAllowedAt(minimumInterval)
-        if (next != null && now.isBefore(next)) return@withLock WeatherAttemptDecision.Denied(next)
-        val updated = gate.copy(
-            lastAttemptAt = now,
-            retryNotBefore = gate.retryNotBefore?.takeIf { it.isAfter(now) },
-        )
-        if (writeLocked(updated)) {
-            WeatherAttemptDecision.Allowed
-        } else {
-            WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
+    override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision =
+        withStoreLock(WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))) {
+            val gate = readLocked()
+                ?: return@withStoreLock WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
+            val next = gate.nextAllowedAt(minimumInterval)
+            if (next != null && now.isBefore(next)) return@withStoreLock WeatherAttemptDecision.Denied(next)
+            val updated = gate.copy(
+                lastAttemptAt = now,
+                retryNotBefore = gate.retryNotBefore?.takeIf { it.isAfter(now) },
+            )
+            if (writeLocked(updated)) {
+                WeatherAttemptDecision.Allowed
+            } else {
+                WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
+            }
         }
-    }
 
-    override fun recordRetryNotBefore(until: Instant): Boolean = withLock {
-        val gate = readLocked() ?: WeatherAttemptGate()
+    /**
+     * Fails closed when the stored gate cannot be read: replacing a corrupt
+     * record with an empty one would silently drop the last-attempt floor.
+     */
+    override fun recordRetryNotBefore(until: Instant): Boolean = withStoreLock(false) {
+        val gate = readLocked() ?: return@withStoreLock false
         val existing = gate.retryNotBefore
         val boundary = if (existing != null && existing.isAfter(until)) existing else until
         writeLocked(gate.copy(retryNotBefore = boundary))
     }
 
-    override fun snapshot(): WeatherAttemptGate? = withLock { readLocked() }
+    override fun snapshot(): WeatherAttemptGate? = withStoreLock(null) { readLocked() }
 
     private fun readLocked(): WeatherAttemptGate? {
         if (!stateFile.isFile) return WeatherAttemptGate()
@@ -155,16 +161,27 @@ class FileWeatherThrottleStore(
         }
     }
 
-    private fun <T> withLock(block: () -> T): T {
-        if (!directory.isDirectory) directory.mkdirs()
-        RandomAccessFile(lockFile, "rw").use { file ->
-            val lock = file.channel.lock()
-            try {
-                return block()
-            } finally {
-                lock.release()
+    /**
+     * A JVM file lock is owned by the whole process, so two store instances in
+     * the same process cannot rely on [java.nio.channels.FileLock] alone
+     * (`OverlappingFileLockException`). The process-wide monitor serializes
+     * same-process access; the file lock still guards other processes. Any lock
+     * or I/O failure is reported through [fallback] rather than thrown.
+     */
+    private fun <T> withStoreLock(fallback: T, block: () -> T): T = try {
+        synchronized(processLock) {
+            if (!directory.isDirectory) directory.mkdirs()
+            RandomAccessFile(lockFile, "rw").use { file ->
+                val lock = file.channel.lock()
+                try {
+                    block()
+                } finally {
+                    runCatching { lock.release() }
+                }
             }
         }
+    } catch (_: Exception) {
+        fallback
     }
 
     private fun encode(gate: WeatherAttemptGate): String = buildString {
@@ -190,6 +207,7 @@ class FileWeatherThrottleStore(
         get() = File(directory, "$STATE_NAME.lock")
 
     private companion object {
+        private val processLock = Any()
         const val STATE_NAME = "request-gate"
         const val FORMAT_VERSION = "v1"
         const val NONE = "-"

@@ -73,7 +73,7 @@ class FileWeatherCacheStore(
     private val maxFileBytes: Long = MAX_FILE_BYTES,
 ) : WeatherCacheStore {
     override fun read(locationKey: String): WeatherCacheEntry? {
-        if (locationKey.isBlank() || locationKey.length > MAX_KEY_CHARS) return null
+        if (!isValidKey(locationKey)) return null
         return runCatching {
             val file = fileFor(locationKey)
             if (!file.isFile) return@runCatching null
@@ -85,8 +85,10 @@ class FileWeatherCacheStore(
     }
 
     override fun write(entry: WeatherCacheEntry): Boolean {
-        if (entry.locationKey.isBlank() || entry.locationKey.length > MAX_KEY_CHARS) return false
+        if (!isValidKey(entry.locationKey)) return false
         if (entry.body.isBlank() || entry.body.length > MAX_BODY_CHARS) return false
+        val header = entry.lastModified?.let(::singleLine)
+        if (header != null && header.length > MAX_HEADER_CHARS) return false
         return runCatching {
             if (!directory.isDirectory && !directory.mkdirs() && !directory.isDirectory) {
                 return@runCatching false
@@ -139,7 +141,7 @@ class FileWeatherCacheStore(
         val parts = text.split('\n', limit = METADATA_LINES + 1)
         if (parts.size != METADATA_LINES + 1) return null
         if (parts[0] != FORMAT_VERSION) return null
-        val locationKey = parts[1].takeIf { it.isNotBlank() && it.length <= MAX_KEY_CHARS } ?: return null
+        val locationKey = parts[1].takeIf(::isValidKey) ?: return null
         val retrievedAt = runCatching { Instant.parse(parts[2]) }.getOrNull() ?: return null
         val revalidatedAt = parts[3].takeUnless { it == NONE }
             ?.let { runCatching { Instant.parse(it) }.getOrNull() ?: return null }
@@ -160,6 +162,11 @@ class FileWeatherCacheStore(
     }
 
     private fun singleLine(value: String): String = value.replace('\n', ' ').replace('\r', ' ')
+
+    /** Mirrors the key constraints enforced by [decode] before a write is declared durable. */
+    private fun isValidKey(value: String): Boolean =
+        value.isNotBlank() && value.length <= MAX_KEY_CHARS &&
+            value.none { it == '\n' || it == '\r' }
 
     private companion object {
         const val FORMAT_VERSION = "v1"

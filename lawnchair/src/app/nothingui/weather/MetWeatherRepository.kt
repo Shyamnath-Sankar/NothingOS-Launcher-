@@ -70,13 +70,21 @@ class MetWeatherRepository(
     private val transport: WeatherHttpTransport,
     private val cacheStore: WeatherCacheStore,
     private val sessionProvider: WeatherSessionProvider,
-    private val throttleStore: WeatherThrottleStore = InMemoryWeatherThrottleStore(),
+    private val throttleStore: WeatherThrottleStore,
     private val clock: () -> Instant = { Instant.now() },
     private val parser: MetLocationForecastParser = MetLocationForecastParser(),
     private val minimumInterval: Duration = WeatherRefreshPolicy.MIN_REFRESH_INTERVAL,
     private val forecastEndpoint: String = FORECAST_ENDPOINT,
 ) {
     private val mutex = Mutex()
+
+    /**
+     * A provider boundary that could not be persisted is still enforced for
+     * this instance. Without it a later load would only see the shorter local
+     * attempt floor and could shorten the server's long delay.
+     */
+    private var localRetryBoundary: Instant? = null
+    private var localRetryPersisted: Boolean = true
 
     suspend fun load(session: WeatherSession): WeatherLoadResult = mutex.withLock {
         val location = session.location
@@ -104,6 +112,22 @@ class MetWeatherRepository(
             )
         }
 
+        val retainedBoundary = localRetryBoundary
+        if (retainedBoundary != null) {
+            if (now.isBefore(retainedBoundary)) {
+                return@withLock serveCacheOrUnavailable(
+                    reason = WeatherFailureReason.THROTTLED,
+                    cachedForecast = cachedForecast,
+                    retryAt = retainedBoundary,
+                    lastSuccessStale = lastSuccessStale,
+                    now = now,
+                    retryPersisted = localRetryPersisted,
+                )
+            }
+            localRetryBoundary = null
+            localRetryPersisted = true
+        }
+
         val claim = try {
             throttleStore.claim(now, minimumInterval)
         } catch (failure: Exception) {
@@ -124,6 +148,7 @@ class MetWeatherRepository(
                 retryAt = claim.retryAt,
                 lastSuccessStale = lastSuccessStale,
                 now = now,
+                retryPersisted = false,
             )
 
             WeatherAttemptDecision.Allowed -> Unit
@@ -310,8 +335,12 @@ class MetWeatherRepository(
         fallback: Duration,
     ): WeatherLoadResult {
         val serverRetryAt = retryBoundary(response.retryAfter, now, fallback)
-        runCatching { throttleStore.recordRetryNotBefore(serverRetryAt) }
-        val effectiveRetryAt = listOf(serverRetryAt, now.plus(minimumInterval)).maxOrNull() ?: serverRetryAt
+        val persisted = runCatching { throttleStore.recordRetryNotBefore(serverRetryAt) }
+            .getOrDefault(false)
+        val effectiveRetryAt = listOf(serverRetryAt, now.plus(minimumInterval)).maxOrNull()
+            ?: serverRetryAt
+        localRetryBoundary = listOfNotNull(localRetryBoundary, effectiveRetryAt).maxOrNull()
+        localRetryPersisted = persisted
         currentCoroutineContext().ensureActive()
         if (!isCurrent(session)) return WeatherLoadResult.Cancelled
         return WeatherLoadResult.Unavailable(
@@ -319,6 +348,7 @@ class MetWeatherRepository(
             lastSuccess = cachedForecast,
             retryAt = effectiveRetryAt,
             lastSuccessStale = lastSuccessStale,
+            retryPersisted = persisted,
         )
     }
 
@@ -328,6 +358,7 @@ class MetWeatherRepository(
         retryAt: Instant,
         lastSuccessStale: Boolean,
         now: Instant,
+        retryPersisted: Boolean = true,
     ): WeatherLoadResult = if (cachedForecast != null) {
         WeatherLoadResult.Success(
             forecast = cachedForecast,
@@ -340,6 +371,7 @@ class MetWeatherRepository(
             lastSuccess = null,
             retryAt = retryAt,
             lastSuccessStale = lastSuccessStale,
+            retryPersisted = retryPersisted,
         )
     }
 
