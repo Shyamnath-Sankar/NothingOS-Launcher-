@@ -15,8 +15,8 @@ when no task input is given, and continues from "next".
   measured existing draft before typing, and leaves every later consent/enable/restart/disable/
   cache/prefs/no-backup assertion intact.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `74bf8a7` (`docs(agent): record CI243 weather screen false-negative fix pending runtime`) on
-  top of wiring `c4ad8e9`, helper/fixture `e9becce`, checkpoint `ed4e9e2` and the earlier weather work.
+- head: the branch tip after `59917b9` (STATE pointer); the runtime wiring is `c4ad8e9`, the
+  helper/fixture commit is `e9becce`, on top of checkpoint `ed4e9e2` and the earlier weather work.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **actual CI241 was green (compile/style/units, 132 weather tests) and CI243 compile/style/units
   were also green, but CI243's runtime failed screen detection.** No new CI or runtime result exists
