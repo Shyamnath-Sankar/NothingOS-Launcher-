@@ -3,8 +3,11 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Narrow weather finish/correction on checkpoint `23759f4`; source and tests are
-  committed as `5e70fcf` with offline JVM green and PENDING CI.** The Compose `LocationFields`
+- current_phase: **WeatherPreferences unresolved-import fix committed as `615dbf5`, PENDING CI.**
+  CI239 proved `app.lawnchair.theme.LawnchairTheme` did not resolve at line 50 (cascades at
+  410/444); the import is now the correct `app.lawnchair.ui.theme.LawnchairTheme`, kept alphabetical.
+  This is the only app-source change. Prior weather fail-closed work on `5e70fcf` is unchanged. The
+  Compose `LocationFields`
   multiple-emitter finding is fixed by emitting through one `Column`. Weather settings now syncs the
   loaded persisted consent to the observer, keeps a failed or conflicted disable fail-closed with an
   honest unconfirmed-revocation retry, and never re-enables the session on a revoke conflict. Session
@@ -13,15 +16,12 @@ when no task input is given, and continues from "next".
   enable over a corrupt record. Privacy/UI copy now states that this version stores consent only and
   makes no network request or forecast yet.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `5e70fcf` (`fix(weather): fail closed on unconfirmed revocation and stale sessions`) on top of
-  checkpoint `23759f4` from timed-out run 90.
+- head: `615dbf5` (`fix(weather): import LawnchairTheme from app.lawnchair.ui.theme`) on top of
+  `5e70fcf` and checkpoint `23759f4`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **not queried in this offline run; `5e70fcf` is PENDING CI.** Dispatch context reports CI228
-  was full green with 177 tests across 26 suites (66 weather) before run 90; that result is now
-  historical, not evidence for this commit. The main-branch workflow wrapper correction `3ef7ad6`
-  (whole process group cleanup, 30-minute attempt cap, 45-job bound) was **not edited here** and
-  should bound the next attempt. Run 90 timed out after leaving the `23759f4` checkpoint with the
-  `WeatherPreferences` UI still pending format/CI.
+- ci: **not queried in this offline run; `615dbf5` is PENDING CI.** CI239 proved the unresolved
+  `LawnchairTheme` import at line 50 (cascades at 410/444) and is the reason for this one-line fix.
+  CI228's earlier full-green result is historical, not evidence for this commit.
 - next: the next API 37 CI must compile the real Compose screen with the repository ktlint
   1.8.0 + compose 0.6.8 rules, run the weather JVM tests, and keep the Play build, unit, slider,
   binding, wallpaper and drawer gates green. A later phase still owns the visible HOME lifecycle
@@ -29,7 +29,20 @@ when no task input is given, and continues from "next".
   was made here. Release, hosting and merge stay paused; PrivateSpace, settings-roundtrip, non-Play,
   large-screen and performance audits stay open.
 
-## done (this run — weather fail-closed correction and Compose emitter fix, PENDING CI)
+## done (this run — WeatherPreferences unresolved-import fix, PENDING CI)
+
+- **Exact CI239 finding:** `WeatherPreferences.kt` imported `app.lawnchair.theme.LawnchairTheme`,
+  which does not exist, producing an unresolved reference at line 50 with cascades at 410/444.
+- **One-line fix:** the import is now `app.lawnchair.ui.theme.LawnchairTheme`, matching the
+  `LawnchairTheme` composable declared in `lawnchair/src/app/lawnchair/ui/theme/Theme.kt`, and was
+  moved to keep the `app.lawnchair.ui.*` imports alphabetical (before `ui.util.preview`). No other
+  source line changed.
+- **Untouched:** no Gradle/Android/emulator run, no dependency, manifest, permission, SDK,
+  applicationId, workflow, private widget or behavior change; all prior weather work is unchanged.
+- **Verification actually run:** `git diff --check` clean and the diff is exactly the one import
+  move. CI239's rerun is the compile gate.
+
+## done (previous run — weather fail-closed correction and Compose emitter fix, PENDING CI)
 
 - **Compose fix:** `WeatherPreferences.kt` now wraps the label/latitude/longitude fields in a single
   `Column`, so `LocationFields` emits one container instead of four top-level composables. The exact
