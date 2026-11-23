@@ -47,9 +47,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import app.lawnchair.theme.LawnchairTheme
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
+import app.lawnchair.ui.theme.LawnchairTheme
 import app.lawnchair.ui.util.preview.PreviewLawnchair
 import app.nothingui.theme.NothingUiSpacing
 import app.nothingui.weather.ClearableWeatherCacheStore
