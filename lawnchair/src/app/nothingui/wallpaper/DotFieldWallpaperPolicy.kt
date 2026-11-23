@@ -137,8 +137,8 @@ object DotFieldMotion {
     private const val DRIFT_FRACTION = 0.28f
 
     fun phaseAt(elapsedMs: Long): Float {
-        val normalized = (elapsedMs % PERIOD_MS).toFloat() / PERIOD_MS
-        return (normalized * TWO_PI).toFloat()
+        val normalized = (elapsedMs % PERIOD_MS).toFloat() / PERIOD_MS.toFloat()
+        return normalized * TWO_PI
     }
 
     fun radiusScale(row: Int, column: Int, phase: Float): Float {
