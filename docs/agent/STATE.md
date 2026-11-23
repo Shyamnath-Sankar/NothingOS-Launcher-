@@ -3,30 +3,75 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 settings customization entry — scripts-only pre-CI review correction on
-  `32093c5`: fixed the quoted-bounds `set -u` abort in the customization order check, added an
-  executed order regression, compared restored widget-host bounds and wallpaper IDs/component, and
-  corrected the CI211 facts. PENDING CI AND RUNTIME; no pixel proof.**
+- current_phase: **P5 weather transport/cache offline slice on `f248190`: pure opt-in coordinate,
+  units and forecast domain; bounded MET `locationforecast/2.0/compact` DOM parser that chooses the
+  nearest relevant valid period instead of the first outdated entry; atomic app-private body cache
+  with Expires/Last-Modified/retrievedAt/locationKey; 3h + Expires refresh gate; exact conditional
+  `If-Modified-Since`; 304 revalidation; in-flight dedup; bounded 403/429 backoff; and a
+  session-generation commit guard. 24 JVM tests pass locally through kotlinc/JUnit. The network is
+  NOT wired and no user-visible weather feature exists. PENDING CI.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this run's scripts/docs commit on top of `32093c5` (`test(smoke): gate Play customization
-  dashboard and icon size`), `36e9355`, `bfef563`, `0f0510c`, `22ebdfe`, `724a139`, `6653d47`,
-  `7f3c236`.
+- head: `f248190` (`feat(weather): add bounded MET forecast domain, cache and transport slice`) on
+  top of `82ed44f`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI211 ran at actual head `6653d47` (the earlier Play dashboard entry, source 82), not at
-  `724a139`, and passed in 18m17s with style and 96 tests. Its actual dashboard dark/light captures
-  and installed APK SHA-256
-  `51e05b442b2a1b5bf3be080830c486109aeea9e1a16290011f462486995e5397` are recorded. Its live
-  wallpaper run showed Home ID 3 -> 4, Lock 0, hidden drawn 130, resumed drawn 130, later hidden
-  drawn 202. The later source 83 (`32093c5`) added the Browse/gate code, which is NOT in that built
-  APK, so no CI has approved the new Browse/gate yet. `1732f5b` (CI209) remains the valid fallback;
-  CI211 tested the new dashboard, not the new gate.**
-- next: next actual CI must build the `32093c5`+ head and confirm the real dashboard labels,
-  measured category tap, top SeekBar percentage, explicit Browse picker, Back/HOME non-reopen and
-  one-step icon-size persistence/revert, plus the new widget-bounds and wallpaper ID/component
-  comparisons. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
-  non-Play, large-screen and performance audits stay open.
+- ci: **No CI has run on `f248190` yet.** The last recorded CI facts (CI211 at `6653d47`) are
+  unchanged and do not cover this weather slice. The previous Play dashboard/Browse runtime gate
+  still awaits a real API 37 run; `1732f5b` (CI209) remains the older fallback.
+- next: the next actual CI must compile/style/test this Play variant and run the new weather unit
+  tests. Weather is **transport and fixtures only, not a finished user feature**. Real product work
+  still pending: settings opt-in + manual coordinate entry + privacy notice, an original weather
+  widget/provider and art, and the visible HOME lifecycle gate that owns the fetch and cancels it
+  at pause/screen-off. Release/hosting/merge stay paused; PrivateSpace, settings-roundtrip, non-Play,
+  large-screen and performance audits stay open.
 
-## done (this run — scripts-only pre-CI review correction, PENDING CI)
+## done (this run — weather transport/cache offline slice, PENDING CI)
+
+- **Pure domain:** `WeatherCoordinates.from` rejects NaN, infinities and out-of-range values and
+  rounds HALF_UP to four decimals before the value can become a URL parameter or cache key. The
+  `WeatherForecast` model is explicitly a forecast (not an observation) and carries provider,
+  location key, Celsius units, optional symbol, `validAt` and `retrievedAt`; the label is a
+  whole-degree value. `WeatherSession` holds the enabled/visible/generation/location gate and
+  `WeatherLoadResult` reports success/stale, unavailable with last success, disabled and cancelled.
+- **Parser:** `MetLocationForecastParser` refuses blank/oversized/malformed payloads, skips entries
+  with a bad timestamp or missing/invalid temperature, rejects entries outside the 6h-past/24h-future
+  window and then chooses the entry nearest to now. It does not take the first (frequently already
+  elapsed) timeseries entry. Missing symbol data is accepted as `null`.
+- **Cache:** `WeatherCacheEntry` stores the raw bounded body, `expiresAt`, exact `lastModified`,
+  `retrievedAt` and `locationKey`. `FileWeatherCacheStore` takes a caller-supplied app-private
+  directory and writes through a temp file with `ATOMIC_MOVE` (fallback replace); it is not wired to
+  a Context. `InMemoryWeatherCacheStore` is the unit-test seam. `WeatherRefreshPolicy` requires the
+  global 3h minimum and, when present, the later `Expires` boundary.
+- **Repository:** `MetWeatherRepository` serialises one in-flight request, serves fresh cache without
+  transport (manual `refresh()` cannot bypass the minimum), sends the exact previous
+  `Last-Modified` as `If-Modified-Since`, accepts a 304 only with a still-valid cached body (no
+  invented forecast time), preserves the last success on network/parse/HTTP failure, and sets a
+  bounded in-memory backoff on 403/429 with no automatic retry loop. It re-checks the session
+  generation/enabled/visible/location before writing a response, so a revoked opt-in or changed
+  location cannot commit.
+- **Transport seam:** `WeatherHttpRequest`/`WeatherHttpResponse`/`WeatherHttpTransport` are a pure
+  injectable interface. `OkHttpWeatherTransport` is the only HTTP implementation; it uses the
+  existing OkHttp dependency, bounded reads, finite connect/read/call timeouts, a 512 KiB cap and a
+  `DotWelLauncher/<version> (+<public issues URL>)` User-Agent. Coordinates are at most four decimals.
+- **Deliberately not wired:** no widget, settings, ViewModel, worker, boot receiver, alarm, GPS
+  permission, periodic poll or production network entry point constructs the repository or the
+  OkHttp transport. The network path stays disabled until a real explicit opt-in UI, valid label and
+  coordinates, a privacy notice and the visible HOME lifecycle gate exist.
+- **No prohibited changes:** no Gradle dependency (OkHttp already ships via the retrofit bundle), no
+  manifest/permission/SDK/workflow/signing/applicationId change, no UI or existing home/widget/
+  wallpaper/theme change, no copy of the private widgets repository or any third-party art. Test
+  JSON is invented, non-personal fixture data and is **not** live MET evidence; no MET request was
+  made.
+- **Verification actually run (no Gradle, no Android build, no emulator):** all four weather test
+  classes compiled with kotlinc 2.4.21 against JUnit 4.13.2 and the existing
+  kotlinx-serialization/coroutines versions, then JUnit ran **24 tests, OK (0 failures)**, including
+  coordinate rounding/cache keys, nearest-valid-period parsing, the 3h+Expires gate, exact
+  conditional headers, 304 cache-miss, 429 backoff, last-success preservation, inactive sessions,
+  generation/opt-in revocation and concurrent in-flight dedup. `OkHttpWeatherTransport.kt` compiled
+  separately against okhttp-jvm 5.5.1/okio-jvm 3.16.0. ktlint 1.8.0 reported zero violations on all
+  new files; `git diff --check` was clean. This is JVM-only evidence: Play compilation, style in the
+  Gradle task and every Android/runtime claim remain CI gates.
+
+## done (previous run — scripts-only pre-CI review correction, PENDING CI)
 
 - **Gate abort fixed:** the `set -- "$_ccs_customize"` / `$2` pattern in
   `capture_customization_settings` created one positional from a 4-number bounds string and aborted
