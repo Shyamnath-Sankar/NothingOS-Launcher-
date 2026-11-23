@@ -377,7 +377,8 @@ a real platform wallpaper-picker hierarchy (`com.android.wallpaper`,
 cancel control; the settings gallery, HOME, empty and unknown captures fail closed. It retains
 `live-wallpaper-preview-<n>.xml` and `live-wallpaper-preview.png`, `live-wallpaper-dumpsys.txt` and
 `live-wallpaper-logcat.txt`, and requires a DEBUG-only `DotFieldWallpaper` `visibility=true` or
-`surface=created` transition. Back must leave both Home/Lock IDs unchanged. The system confirmation
+`surface=created` transition. Back must leave both Home/Lock IDs unchanged; the post-Back logcat is
+retained as `live-wallpaper-logcat-after-back.txt` for the paused/destroyed transition. The system confirmation
 and the post-selection pause/resume draw gate are deliberately not automated here; they remain a
 separate runtime gate.
 

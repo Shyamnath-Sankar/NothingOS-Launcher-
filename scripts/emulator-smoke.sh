@@ -2464,6 +2464,7 @@ _cwg_preview_live_wallpaper() {
         fail "could not re-read wallpaper IDs after cancelling the live preview"
     [ "$_cpl_ids_after" = "$_cpl_ids_before" ] ||
         fail "leaving the live preview changed the Home or lock wallpaper ID"
+    adb_cmd logcat -d > "$ARTIFACTS/live-wallpaper-logcat-after-back.txt" 2>&1 || true
     capture_ui_xml "live-wallpaper-after-back.xml" || true
     adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
     sleep 1
