@@ -4196,8 +4196,22 @@ assert_true 'the weather gate measures the Home screen preferences entry' \
     grep -Fq "clickable 'Icon size and home screen'" "$weather_body"
 assert_true 'the weather gate taps the visible Weather settings entry' \
     grep -Fq "clickable 'Weather settings'" "$weather_body"
-assert_true 'the weather gate measures all three real EditText fields' \
-    grep -Fq '_weather_measure_edit_text 3' "$weather_body"
+assert_true 'the weather gate measures all three real EditText fields by label' \
+    grep -Fq "_weather_measure_field 'Longitude'" "$weather_body"
+assert_false 'the weather gate never keys fields by their visible document index' \
+    grep -Fq '_weather_measure_edit_text' "$weather_body"
+assert_true 'the weather gate identifies the real Weather destination without the offscreen button' \
+    grep -Fq 'weather_settings_screen_identity' "$weather_body"
+assert_true 'the weather gate retains an immediate PNG for every screen probe' \
+    grep -Fq 'weather-$_wws_tag-screen-$_wws_attempt.png' "$weather_body"
+assert_true 'the weather gate retains a timeout/failure PNG' \
+    grep -Fq 'weather-$_wws_tag-screen-failure.png' "$weather_body"
+assert_true 'the weather gate scrolls from the measured target direction' \
+    grep -Fq '_weather_scroll_direction' "$weather_body"
+assert_true 'the weather gate measures the existing draft before typing' \
+    grep -Fq 'the weather field $_wty_tag still held' "$weather_body"
+assert_true 'the weather gate clears a measured existing draft before typing' \
+    grep -Fq 'KEYCODE_MOVE_END' "$weather_body"
 assert_true 'the weather gate uses the measured consent checkbox state' \
     grep -Fq '_weather_measure_checkbox' "$weather_body"
 assert_true 'the weather gate dismisses a shown IME instead of guessing' \

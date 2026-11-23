@@ -1872,44 +1872,93 @@ _weather_viewport() {
     printf '%s\n' "$_wv_vp"
 }
 
+# Print "x y_from y_to" for one measured scroll inside the same strict-or-known
+# viewport. The band moves only inside the measured container and the direction
+# is chosen from measured bounds, never from a guessed coordinate.
+_weather_scroll_band() {
+    _wsb_xml=$1
+    _wsb_dir=$2
+    _wsb_viewport=$(_weather_viewport "$_wsb_xml") || return 1
+    set -- $_wsb_viewport
+    _wsb_x=$((($1 + $3) / 2))
+    _wsb_y1=$2
+    _wsb_y2=$4
+    _wsb_span=$((_wsb_y2 - _wsb_y1))
+    [ "$_wsb_span" -ge 200 ] || return 1
+    if [ "$_wsb_dir" = up ]; then
+        _wsb_from=$((_wsb_y1 + _wsb_span / 5))
+        _wsb_to=$((_wsb_y2 - _wsb_span / 5))
+    else
+        _wsb_from=$((_wsb_y2 - _wsb_span / 5))
+        _wsb_to=$((_wsb_y1 + _wsb_span / 5))
+    fi
+    [ "$_wsb_from" -ne "$_wsb_to" ] || return 1
+    printf '%s %s %s\n' "$_wsb_x" "$_wsb_from" "$_wsb_to"
+}
+
+# Choose the direction from the measured target rectangle vs the measured
+# viewport. A target absent from the hierarchy falls back to down for the first
+# bounded pass and up for the second, so a re-entered screen scrolled to its end
+# can still reach an earlier field.
+_weather_scroll_direction() {
+    _wsd_bounds=$1
+    _wsd_viewport=$2
+    _wsd_attempt=$3
+    _wsd_max=$4
+    _wsd_dir=$(weather_target_scroll_direction "$_wsd_bounds" "$_wsd_viewport") ||
+        _wsd_dir=
+    if [ -z "$_wsd_dir" ]; then
+        if [ "$_wsd_attempt" -le "$_wsd_max" ]; then
+            _wsd_dir=down
+        else
+            _wsd_dir=up
+        fi
+    fi
+    printf '%s\n' "$_wsd_dir"
+}
+
 _weather_measure_control() {
     _wmc_kind=$1
     _wmc_label=$2
     _wmc_tag=$3
     _wmc_max=${4:-6}
     _wmc_attempt=0
+    _wmc_limit=$((_wmc_max * 2))
     _wmc_log="$ARTIFACTS/weather-measure-$_wmc_tag.txt"
     : > "$_wmc_log"
     _weather_measured=
     _weather_visible_xml=
-    while [ "$_wmc_attempt" -lt "$_wmc_max" ]; do
+    _weather_field_text=
+    while [ "$_wmc_attempt" -lt "$_wmc_limit" ]; do
         _wmc_attempt=$((_wmc_attempt + 1))
         _wmc_xml="$ARTIFACTS/weather-measure-$_wmc_tag-$_wmc_attempt.xml"
         capture_ui_xml "weather-measure-$_wmc_tag-$_wmc_attempt.xml" || return 1
         _wmc_viewport=$(_weather_viewport "$_wmc_xml") || _wmc_viewport=
-        _wmc_bounds=
+        _wmc_raw=
         if [ -n "$_wmc_viewport" ]; then
             case "$_wmc_kind" in
                 clickable)
-                    _wmc_bounds=$(ui_unique_clickable_label_bounds \
+                    _wmc_raw=$(ui_unique_clickable_label_bounds \
                         "$_wmc_xml" "$_wmc_label")
                     ;;
                 label)
-                    _wmc_bounds=$(ui_unique_label_bounds \
+                    _wmc_raw=$(ui_unique_label_bounds \
                         "$_wmc_xml" "$_wmc_label")
                     ;;
                 *)
-                    _wmc_bounds=
+                    _wmc_raw=
                     ;;
             esac
-            if [ -n "$_wmc_bounds" ] &&
-                ! ui_bounds_within "$_wmc_bounds" "$_wmc_viewport"; then
-                _wmc_bounds=
-            fi
         fi
-        printf 'attempt=%s kind=%s label=%s viewport=%s bounds=%s\n' \
+        _wmc_bounds=
+        if [ -n "$_wmc_raw" ] &&
+            ui_bounds_within "$_wmc_raw" "$_wmc_viewport"; then
+            _wmc_bounds=$_wmc_raw
+        fi
+        printf 'attempt=%s kind=%s label=%s viewport=%s raw=%s bounds=%s\n' \
             "$_wmc_attempt" "$_wmc_kind" "$_wmc_label" \
-            "${_wmc_viewport:-none}" "${_wmc_bounds:-none}" >> "$_wmc_log"
+            "${_wmc_viewport:-none}" "${_wmc_raw:-none}" "${_wmc_bounds:-none}" \
+            >> "$_wmc_log"
         if [ -n "$_wmc_bounds" ]; then
             _weather_measured=$_wmc_bounds
             _weather_visible_xml=$_wmc_xml
@@ -1917,11 +1966,13 @@ _weather_measure_control() {
             capture_screenshot_to "weather-measure-$_wmc_tag-visible.png"
             return 0
         fi
-        _wmc_target=$(settings_scroll_target "$_wmc_xml" "$_cws_nav_top") ||
+        _wmc_dir=$(_weather_scroll_direction "$_wmc_raw" "$_wmc_viewport" \
+            "$_wmc_attempt" "$_wmc_max")
+        _wmc_target=$(_weather_scroll_band "$_wmc_xml" "$_wmc_dir") ||
             return 1
         set -- $_wmc_target
-        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
-            "$_wmc_attempt" "$1" "$2" "$1" "$3" >> "$_wmc_log"
+        printf 'scroll=%s direction=%s from=%s,%s to=%s,%s\n' \
+            "$_wmc_attempt" "$_wmc_dir" "$1" "$2" "$1" "$3" >> "$_wmc_log"
         adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wmc_log" 2>&1 ||
             return 1
         sleep 1
@@ -1929,46 +1980,57 @@ _weather_measure_control() {
     return 1
 }
 
-_weather_measure_edit_text() {
-    _wme_index=$1
-    _wme_tag=$2
-    _wme_max=${3:-6}
-    _wme_attempt=0
-    _wme_log="$ARTIFACTS/weather-measure-$_wme_tag.txt"
-    : > "$_wme_log"
+_weather_measure_field() {
+    _wmf_label=$1
+    _wmf_tag=$2
+    _wmf_max=${3:-6}
+    _wmf_attempt=0
+    _wmf_limit=$((_wmf_max * 2))
+    _wmf_log="$ARTIFACTS/weather-measure-$_wmf_tag.txt"
+    : > "$_wmf_log"
     _weather_measured=
     _weather_visible_xml=
-    while [ "$_wme_attempt" -lt "$_wme_max" ]; do
-        _wme_attempt=$((_wme_attempt + 1))
-        _wme_xml="$ARTIFACTS/weather-measure-$_wme_tag-$_wme_attempt.xml"
-        capture_ui_xml "weather-measure-$_wme_tag-$_wme_attempt.xml" || return 1
-        _wme_viewport=$(_weather_viewport "$_wme_xml") || _wme_viewport=
-        _wme_bounds=
-        if [ -n "$_wme_viewport" ]; then
-            _wme_all=$(ui_edit_text_bounds "$_wme_xml")
-            _wme_bounds=$(printf '%s\n' "$_wme_all" |
-                sed -n "${_wme_index}p")
-            if [ -n "$_wme_bounds" ] &&
-                ! ui_bounds_within "$_wme_bounds" "$_wme_viewport"; then
-                _wme_bounds=
+    _weather_field_text=
+    while [ "$_wmf_attempt" -lt "$_wmf_limit" ]; do
+        _wmf_attempt=$((_wmf_attempt + 1))
+        _wmf_xml="$ARTIFACTS/weather-measure-$_wmf_tag-$_wmf_attempt.xml"
+        capture_ui_xml "weather-measure-$_wmf_tag-$_wmf_attempt.xml" || return 1
+        _wmf_viewport=$(_weather_viewport "$_wmf_xml") || _wmf_viewport=
+        _wmf_raw=
+        _wmf_text=
+        if [ -n "$_wmf_viewport" ]; then
+            _wmf_state=$(ui_labelled_edit_text_state \
+                "$_wmf_xml" "$_wmf_label")
+            if [ -n "$_wmf_state" ]; then
+                _wmf_raw=${_wmf_state%%|*}
+                _wmf_text=${_wmf_state#*|}
             fi
         fi
-        printf 'attempt=%s index=%s viewport=%s bounds=%s\n' \
-            "$_wme_attempt" "$_wme_index" "${_wme_viewport:-none}" \
-            "${_wme_bounds:-none}" >> "$_wme_log"
-        if [ -n "$_wme_bounds" ]; then
-            _weather_measured=$_wme_bounds
-            _weather_visible_xml=$_wme_xml
-            cp "$_wme_xml" "$ARTIFACTS/weather-measure-$_wme_tag-visible.xml"
-            capture_screenshot_to "weather-measure-$_wme_tag-visible.png"
+        _wmf_bounds=
+        if [ -n "$_wmf_raw" ] &&
+            ui_bounds_within "$_wmf_raw" "$_wmf_viewport"; then
+            _wmf_bounds=$_wmf_raw
+        fi
+        printf 'attempt=%s label=%s viewport=%s raw=%s text=%s bounds=%s\n' \
+            "$_wmf_attempt" "$_wmf_label" "${_wmf_viewport:-none}" \
+            "${_wmf_raw:-none}" "${_wmf_text:-}" "${_wmf_bounds:-none}" \
+            >> "$_wmf_log"
+        if [ -n "$_wmf_bounds" ]; then
+            _weather_measured=$_wmf_bounds
+            _weather_field_text=$_wmf_text
+            _weather_visible_xml=$_wmf_xml
+            cp "$_wmf_xml" "$ARTIFACTS/weather-measure-$_wmf_tag-visible.xml"
+            capture_screenshot_to "weather-measure-$_wmf_tag-visible.png"
             return 0
         fi
-        _wme_target=$(settings_scroll_target "$_wme_xml" "$_cws_nav_top") ||
+        _wmf_dir=$(_weather_scroll_direction "$_wmf_raw" "$_wmf_viewport" \
+            "$_wmf_attempt" "$_wmf_max")
+        _wmf_target=$(_weather_scroll_band "$_wmf_xml" "$_wmf_dir") ||
             return 1
-        set -- $_wme_target
-        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
-            "$_wme_attempt" "$1" "$2" "$1" "$3" >> "$_wme_log"
-        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wme_log" 2>&1 ||
+        set -- $_wmf_target
+        printf 'scroll=%s direction=%s from=%s,%s to=%s,%s\n' \
+            "$_wmf_attempt" "$_wmf_dir" "$1" "$2" "$1" "$3" >> "$_wmf_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wmf_log" 2>&1 ||
             return 1
         sleep 1
     done
@@ -1979,38 +2041,48 @@ _weather_measure_checkbox() {
     _wmk_tag=$1
     _wmk_max=${2:-6}
     _wmk_attempt=0
+    _wmk_limit=$((_wmk_max * 2))
     _wmk_log="$ARTIFACTS/weather-measure-$_wmk_tag.txt"
     : > "$_wmk_log"
     _weather_measured=
     _weather_visible_xml=
-    while [ "$_wmk_attempt" -lt "$_wmk_max" ]; do
+    _weather_field_text=
+    while [ "$_wmk_attempt" -lt "$_wmk_limit" ]; do
         _wmk_attempt=$((_wmk_attempt + 1))
         _wmk_xml="$ARTIFACTS/weather-measure-$_wmk_tag-$_wmk_attempt.xml"
         capture_ui_xml "weather-measure-$_wmk_tag-$_wmk_attempt.xml" || return 1
         _wmk_viewport=$(_weather_viewport "$_wmk_xml") || _wmk_viewport=
+        _wmk_raw=
         _wmk_state=
         if [ -n "$_wmk_viewport" ]; then
             _wmk_state=$(ui_unique_checkable_state "$_wmk_xml")
-            if [ -n "$_wmk_state" ] &&
-                ! ui_bounds_within "${_wmk_state%|*}" "$_wmk_viewport"; then
-                _wmk_state=
+            if [ -n "$_wmk_state" ]; then
+                _wmk_raw=${_wmk_state%|*}
             fi
         fi
-        printf 'attempt=%s viewport=%s state=%s\n' \
-            "$_wmk_attempt" "${_wmk_viewport:-none}" "${_wmk_state:-none}" \
+        _wmk_bounds=
+        if [ -n "$_wmk_raw" ] &&
+            ui_bounds_within "$_wmk_raw" "$_wmk_viewport"; then
+            _wmk_bounds=$_wmk_raw
+        fi
+        printf 'attempt=%s viewport=%s raw=%s bounds=%s state=%s\n' \
+            "$_wmk_attempt" "${_wmk_viewport:-none}" \
+            "${_wmk_raw:-none}" "${_wmk_bounds:-none}" "${_wmk_state:-none}" \
             >> "$_wmk_log"
-        if [ -n "$_wmk_state" ]; then
+        if [ -n "$_wmk_bounds" ]; then
             _weather_measured=$_wmk_state
             _weather_visible_xml=$_wmk_xml
             cp "$_wmk_xml" "$ARTIFACTS/weather-measure-$_wmk_tag-visible.xml"
             capture_screenshot_to "weather-measure-$_wmk_tag-visible.png"
             return 0
         fi
-        _wmk_target=$(settings_scroll_target "$_wmk_xml" "$_cws_nav_top") ||
+        _wmk_dir=$(_weather_scroll_direction "$_wmk_raw" "$_wmk_viewport" \
+            "$_wmk_attempt" "$_wmk_max")
+        _wmk_target=$(_weather_scroll_band "$_wmk_xml" "$_wmk_dir") ||
             return 1
         set -- $_wmk_target
-        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
-            "$_wmk_attempt" "$1" "$2" "$1" "$3" >> "$_wmk_log"
+        printf 'scroll=%s direction=%s from=%s,%s to=%s,%s\n' \
+            "$_wmk_attempt" "$_wmk_dir" "$1" "$2" "$1" "$3" >> "$_wmk_log"
         adb_cmd shell input swipe "$1" "$2" "$1" "$3" 400 >> "$_wmk_log" 2>&1 ||
             return 1
         sleep 1
@@ -2044,9 +2116,37 @@ _weather_type() {
     _wty_bounds=$1
     _wty_text=$2
     _wty_tag=$3
+    _wty_existing=${4:-}
+    _wty_label=${5:-}
     tap_center_of_bounds "$_wty_bounds" ||
         fail "could not focus the weather field $_wty_tag"
     sleep 1
+    if [ -n "$_wty_existing" ]; then
+        [ -n "$_wty_label" ] ||
+            fail "the weather field $_wty_tag has a draft but no stable label"
+        _wty_len=$(printf '%s' "$_wty_existing" | awk '{print length}')
+        [ "$_wty_len" -le 256 ] ||
+            fail "the weather field $_wty_tag has an unbounded draft length"
+        _wty_keys=
+        _wty_i=0
+        while [ "$_wty_i" -lt "$_wty_len" ]; do
+            _wty_keys="$_wty_keys 67"
+            _wty_i=$((_wty_i + 1))
+        done
+        adb_cmd shell input keyevent KEYCODE_MOVE_END \
+            > "$ARTIFACTS/weather-clear-$_wty_tag-move-end.txt" 2>&1 ||
+            fail "could not move to the end of the weather field $_wty_tag"
+        adb_cmd shell input keyevent $_wty_keys \
+            > "$ARTIFACTS/weather-clear-$_wty_tag-delete.txt" 2>&1 ||
+            fail "could not clear the weather field $_wty_tag"
+        sleep 1
+        capture_ui_xml "weather-clear-$_wty_tag.xml" ||
+            fail "could not verify the cleared weather field $_wty_tag"
+        _wty_after=$(ui_labelled_edit_text_text \
+            "$ARTIFACTS/weather-clear-$_wty_tag.xml" "$_wty_label")
+        [ -z "$_wty_after" ] ||
+            fail "the weather field $_wty_tag still held '$_wty_after' after the measured clear"
+    fi
     adb_cmd shell input text "$_wty_text" \
         > "$ARTIFACTS/weather-input-$_wty_tag.txt" 2>&1 ||
         fail "could not type into the weather field $_wty_tag"
@@ -2085,18 +2185,16 @@ _weather_wait_screen() {
     _weather_screen_xml=
     while [ "$_wws_attempt" -le 10 ]; do
         _wws_xml="$ARTIFACTS/weather-$_wws_tag-screen-$_wws_attempt.xml"
+        capture_screenshot_to "weather-$_wws_tag-screen-$_wws_attempt.png"
         if capture_ui_xml "weather-$_wws_tag-screen-$_wws_attempt.xml" &&
-            grep -Fq 'Before you enable' "$_wws_xml" &&
-            {
-                grep -Fq 'Save and enable' "$_wws_xml" ||
-                    grep -Fq 'Disable and clear location' "$_wws_xml";
-            }; then
+            weather_settings_screen_identity "$_wws_xml"; then
             _weather_screen_xml=$_wws_xml
             return 0
         fi
         _wws_attempt=$((_wws_attempt + 1))
         sleep 1
     done
+    capture_screenshot_to "weather-$_wws_tag-screen-failure.png"
     return 1
 }
 
@@ -2238,11 +2336,11 @@ capture_weather_settings() {
             fail "the initial weather consent record is '$_cws_consent'"
             ;;
     esac
-    _weather_measure_edit_text 1 fresh-field-1 ||
+    _weather_measure_field 'Location label' fresh-field-1 ||
         fail "could not measure the weather location label field"
-    _weather_measure_edit_text 2 fresh-field-2 ||
+    _weather_measure_field 'Latitude' fresh-field-2 ||
         fail "could not measure the weather latitude field"
-    _weather_measure_edit_text 3 fresh-field-3 ||
+    _weather_measure_field 'Longitude' fresh-field-3 ||
         fail "could not measure the weather longitude field"
     _weather_measure_control label 'Save and enable' fresh-enable 8 ||
         fail "could not measure the fresh Save and enable control"
@@ -2261,13 +2359,15 @@ capture_weather_settings() {
 
     # 2. Invalid label/coordinates with consent still cannot enable.
     _weather_enter_from_home_screen invalid
-    _weather_measure_edit_text 1 invalid-field-1 ||
+    _weather_measure_field 'Location label' invalid-field-1 ||
         fail "could not measure the invalid label field"
     _weather_type "$_weather_measured" \
-        'invalidlabelinvalidlabelinvalidlabelinvalidlabelinvalidlabel' invalid-label
-    _weather_measure_edit_text 2 invalid-field-2 ||
+        'invalidlabelinvalidlabelinvalidlabelinvalidlabelinvalidlabel' invalid-label \
+        "$_weather_field_text" 'Location label'
+    _weather_measure_field 'Latitude' invalid-field-2 ||
         fail "could not measure the invalid latitude field"
-    _weather_type "$_weather_measured" 'not-a-number' invalid-latitude
+    _weather_type "$_weather_measured" 'not-a-number' invalid-latitude \
+        "$_weather_field_text" 'Latitude'
     capture_ui_xml weather-invalid-latitude.xml ||
         fail "could not capture the invalid label/coordinates error state"
     grep -Fq 'Use 48 characters or fewer' \
@@ -2276,9 +2376,10 @@ capture_weather_settings() {
     grep -Fq 'Latitude must be a number from -90 to 90' \
         "$ARTIFACTS/weather-invalid-latitude.xml" ||
         fail "the invalid latitude did not expose its validation error"
-    _weather_measure_edit_text 3 invalid-field-3 ||
+    _weather_measure_field 'Longitude' invalid-field-3 ||
         fail "could not measure the invalid longitude field"
-    _weather_type "$_weather_measured" '10.0000' invalid-longitude
+    _weather_type "$_weather_measured" '10.0000' invalid-longitude \
+        "$_weather_field_text" 'Longitude'
     _weather_set_checkbox true invalid
     _weather_measure_control label 'Save and enable' invalid-enable 8 ||
         fail "could not measure Save and enable with invalid coordinates"
@@ -2298,15 +2399,18 @@ capture_weather_settings() {
 
     # 3. Valid synthetic coordinates without consent cannot enable.
     _weather_enter_from_home_screen valid-unchecked
-    _weather_measure_edit_text 1 valid-field-1 ||
+    _weather_measure_field 'Location label' valid-field-1 ||
         fail "could not measure the valid label field"
-    _weather_type "$_weather_measured" 'Emulator%stest' valid-label
-    _weather_measure_edit_text 2 valid-field-2 ||
+    _weather_type "$_weather_measured" 'Emulator%stest' valid-label \
+        "$_weather_field_text" 'Location label'
+    _weather_measure_field 'Latitude' valid-field-2 ||
         fail "could not measure the valid latitude field"
-    _weather_type "$_weather_measured" '60.0000' valid-latitude
-    _weather_measure_edit_text 3 valid-field-3 ||
+    _weather_type "$_weather_measured" '60.0000' valid-latitude \
+        "$_weather_field_text" 'Latitude'
+    _weather_measure_field 'Longitude' valid-field-3 ||
         fail "could not measure the valid longitude field"
-    _weather_type "$_weather_measured" '10.0000' valid-longitude
+    _weather_type "$_weather_measured" '10.0000' valid-longitude \
+        "$_weather_field_text" 'Longitude'
     _weather_measure_checkbox valid-checkbox ||
         fail "could not measure the unchecked weather consent checkbox"
     [ "${_weather_measured##*|}" = false ] ||
@@ -2335,12 +2439,12 @@ capture_weather_settings() {
         *) fail "the disabled draft persisted an opt-in '$_cws_consent'" ;;
     esac
     _weather_snapshot draft-reset
-    _weather_measure_edit_text 1 draft-reset-field-1 ||
+    _weather_measure_field 'Location label' draft-reset-field-1 ||
         fail "could not measure the reset label field"
     if _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
         fail "the unsaved weather label survived the force-stop"
     fi
-    _weather_measure_edit_text 2 draft-reset-field-2 ||
+    _weather_measure_field 'Latitude' draft-reset-field-2 ||
         fail "could not measure the reset latitude field"
     if _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
         fail "the unsaved weather latitude survived the force-stop"
@@ -2353,15 +2457,18 @@ capture_weather_settings() {
     _weather_enter_from_home_screen draft-reset-enable
 
     # 5. Consent plus valid coordinates enables the local store only.
-    _weather_measure_edit_text 1 enable-field-1 ||
+    _weather_measure_field 'Location label' enable-field-1 ||
         fail "could not measure the enable label field"
-    _weather_type "$_weather_measured" 'Emulator%stest' enable-label
-    _weather_measure_edit_text 2 enable-field-2 ||
+    _weather_type "$_weather_measured" 'Emulator%stest' enable-label \
+        "$_weather_field_text" 'Location label'
+    _weather_measure_field 'Latitude' enable-field-2 ||
         fail "could not measure the enable latitude field"
-    _weather_type "$_weather_measured" '60.0000' enable-latitude
-    _weather_measure_edit_text 3 enable-field-3 ||
+    _weather_type "$_weather_measured" '60.0000' enable-latitude \
+        "$_weather_field_text" 'Latitude'
+    _weather_measure_field 'Longitude' enable-field-3 ||
         fail "could not measure the enable longitude field"
-    _weather_type "$_weather_measured" '10.0000' enable-longitude
+    _weather_type "$_weather_measured" '10.0000' enable-longitude \
+        "$_weather_field_text" 'Longitude'
     _weather_set_checkbox true enable
     _weather_measure_control label 'Save and enable' enable-control 8 ||
         fail "could not measure Save and enable with consent"
@@ -2423,12 +2530,12 @@ capture_weather_settings() {
     printf '%s\n' "$_cws_consent" | grep -Fq '|Emulator test|60.0000|10.0000' ||
         fail "the reloaded weather location is not the saved synthetic location"
     _weather_snapshot enabled-reopened
-    _weather_measure_edit_text 1 reload-field-1 ||
+    _weather_measure_field 'Location label' reload-field-1 ||
         fail "could not measure the reloaded label field"
     if ! _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
         fail "the reloaded Weather screen did not show the saved label"
     fi
-    _weather_measure_edit_text 2 reload-field-2 ||
+    _weather_measure_field 'Latitude' reload-field-2 ||
         fail "could not measure the reloaded latitude field"
     if ! _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
         fail "the reloaded Weather screen did not show the saved latitude"
@@ -2490,12 +2597,12 @@ capture_weather_settings() {
         *) fail "the disabled weather opt-in did not survive the restart, found '$_cws_consent'" ;;
     esac
     _weather_snapshot disabled-reopened
-    _weather_measure_edit_text 1 disabled-reopened-field-1 ||
+    _weather_measure_field 'Location label' disabled-reopened-field-1 ||
         fail "could not measure the cleared label field after the disabled restart"
     if _weather_field_value_present "$_weather_visible_xml" 'Emulator test'; then
         fail "the disabled restart still shows the cleared weather label"
     fi
-    _weather_measure_edit_text 2 disabled-reopened-field-2 ||
+    _weather_measure_field 'Latitude' disabled-reopened-field-2 ||
         fail "could not measure the cleared latitude field after the disabled restart"
     if _weather_field_value_present "$_weather_visible_xml" '60.0000'; then
         fail "the disabled restart still shows the cleared weather latitude"
