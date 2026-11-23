@@ -95,22 +95,21 @@ class FileWeatherThrottleStore(
     private val directory: File,
     private val maxFileBytes: Long = MAX_FILE_BYTES,
 ) : WeatherThrottleStore {
-    override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision =
-        withStoreLock(WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))) {
-            val gate = readLocked()
-                ?: return@withStoreLock WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
-            val next = gate.nextAllowedAt(minimumInterval)
-            if (next != null && now.isBefore(next)) return@withStoreLock WeatherAttemptDecision.Denied(next)
-            val updated = gate.copy(
-                lastAttemptAt = now,
-                retryNotBefore = gate.retryNotBefore?.takeIf { it.isAfter(now) },
-            )
-            if (writeLocked(updated)) {
-                WeatherAttemptDecision.Allowed
-            } else {
-                WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
-            }
+    override fun claim(now: Instant, minimumInterval: Duration): WeatherAttemptDecision = withStoreLock(WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))) {
+        val gate = readLocked()
+            ?: return@withStoreLock WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
+        val next = gate.nextAllowedAt(minimumInterval)
+        if (next != null && now.isBefore(next)) return@withStoreLock WeatherAttemptDecision.Denied(next)
+        val updated = gate.copy(
+            lastAttemptAt = now,
+            retryNotBefore = gate.retryNotBefore?.takeIf { it.isAfter(now) },
+        )
+        if (writeLocked(updated)) {
+            WeatherAttemptDecision.Allowed
+        } else {
+            WeatherAttemptDecision.StorageFailure(now.plus(minimumInterval))
         }
+    }
 
     /**
      * Fails closed when the stored gate cannot be read: replacing a corrupt

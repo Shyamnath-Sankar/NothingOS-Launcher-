@@ -164,9 +164,8 @@ class FileWeatherCacheStore(
     private fun singleLine(value: String): String = value.replace('\n', ' ').replace('\r', ' ')
 
     /** Mirrors the key constraints enforced by [decode] before a write is declared durable. */
-    private fun isValidKey(value: String): Boolean =
-        value.isNotBlank() && value.length <= MAX_KEY_CHARS &&
-            value.none { it == '\n' || it == '\r' }
+    private fun isValidKey(value: String): Boolean = value.isNotBlank() && value.length <= MAX_KEY_CHARS &&
+        value.none { it == '\n' || it == '\r' }
 
     private companion object {
         const val FORMAT_VERSION = "v1"

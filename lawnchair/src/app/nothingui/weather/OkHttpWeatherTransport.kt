@@ -72,31 +72,30 @@ class OkHttpWeatherTransport(
      * whole call, and a cancellation that wins after the response exists (but
      * before it is resumed) still closes the response through `use`.
      */
-    private suspend fun Call.awaitResponse(): WeatherHttpResponse =
-        suspendCancellableCoroutine { continuation ->
-            continuation.invokeOnCancellation { cancel() }
-            enqueue(
-                object : Callback {
-                    override fun onFailure(call: Call, e: IOException) {
-                        if (continuation.isActive) continuation.resumeWithException(e)
-                    }
+    private suspend fun Call.awaitResponse(): WeatherHttpResponse = suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
+        enqueue(
+            object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWithException(e)
+                }
 
-                    override fun onResponse(call: Call, response: Response) {
-                        if (!continuation.isActive) {
-                            response.close()
-                            return
-                        }
-                        val result = try {
-                            response.use { received -> readResponse(call, received) }
-                        } catch (failure: Exception) {
-                            if (continuation.isActive) continuation.resumeWithException(failure)
-                            return
-                        }
-                        if (continuation.isActive) continuation.resume(result)
+                override fun onResponse(call: Call, response: Response) {
+                    if (!continuation.isActive) {
+                        response.close()
+                        return
                     }
-                },
-            )
-        }
+                    val result = try {
+                        response.use { received -> readResponse(call, received) }
+                    } catch (failure: Exception) {
+                        if (continuation.isActive) continuation.resumeWithException(failure)
+                        return
+                    }
+                    if (continuation.isActive) continuation.resume(result)
+                }
+            },
+        )
+    }
 
     private fun readResponse(call: Call, response: Response): WeatherHttpResponse {
         if (call.isCanceled()) throw IOException("weather request was cancelled")
