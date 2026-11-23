@@ -52,6 +52,7 @@ import app.lawnchair.util.getThemedIconPacksInstalled
 import app.lawnchair.util.unsafeLazy
 import app.lawnchair.views.LawnchairFloatingSurfaceView
 import app.nothingui.launcher.WidgetPickerRequest
+import app.nothingui.launcher.WidgetPickerRequestState
 import app.nothingui.theme.NothingUiFeature
 import app.nothingui.widgets.NothingUiWidgetMonitor
 import com.android.launcher3.AbstractFloatingView
@@ -157,8 +158,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     private lateinit var colorScheme: ColorScheme
     private var hasBackGesture = false
-    private var widgetPickerRequestPending = false
-    private var widgetPickerRequestHandled = false
+    private val widgetPickerRequestState = WidgetPickerRequestState()
 
     val gestureController by unsafeLazy { GestureController(this) }
 
@@ -167,18 +167,11 @@ class LawnchairLauncher : QuickstepLauncher() {
         super.onCreate(savedInstanceState)
 
         if (savedInstanceState != null) {
-            widgetPickerRequestHandled = savedInstanceState.getBoolean(
-                STATE_WIDGET_PICKER_HANDLED,
-            )
-            widgetPickerRequestPending = savedInstanceState.getBoolean(
-                STATE_WIDGET_PICKER_PENDING,
+            widgetPickerRequestState.restoreHandled(
+                savedInstanceState.getString(STATE_WIDGET_PICKER_HANDLED),
             )
         }
-        val widgetPickerRequested = WidgetPickerRequest.consume(intent)
-        if (!widgetPickerRequestHandled && widgetPickerRequested) {
-            widgetPickerRequestHandled = true
-            widgetPickerRequestPending = true
-        }
+        WidgetPickerRequest.consume(intent)?.let(widgetPickerRequestState::offer)
 
         prefs.launcherTheme.subscribeChanges(this, ::updateTheme)
         prefs.feedProvider.subscribeChanges(this, defaultOverlay::reconnect)
@@ -288,9 +281,7 @@ class LawnchairLauncher : QuickstepLauncher() {
 
         super.onNewIntent(intent)
 
-        if (WidgetPickerRequest.consume(intent)) {
-            widgetPickerRequestHandled = true
-            widgetPickerRequestPending = true
+        if (WidgetPickerRequest.consume(intent)?.let(widgetPickerRequestState::offer) == true) {
             tryOpenPendingWidgetPicker()
         }
     }
@@ -500,14 +491,14 @@ class LawnchairLauncher : QuickstepLauncher() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        outState.putBoolean(STATE_WIDGET_PICKER_HANDLED, widgetPickerRequestHandled)
-        outState.putBoolean(STATE_WIDGET_PICKER_PENDING, widgetPickerRequestPending)
+        outState.putString(STATE_WIDGET_PICKER_HANDLED, widgetPickerRequestState.handledId)
     }
 
     override fun onPause() {
         if (NothingUiFeature.homeEnabled) {
             NothingUiWidgetMonitor.stop(this)
         }
+        widgetPickerRequestState.cancel()
         super.onPause()
     }
 
@@ -538,36 +529,52 @@ class LawnchairLauncher : QuickstepLauncher() {
             },
         )
 
-        if (widgetPickerRequestPending) {
+        if (widgetPickerRequestState.isPending()) {
+            tryOpenPendingWidgetPicker()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && widgetPickerRequestState.isPending()) {
             tryOpenPendingWidgetPicker()
         }
     }
 
     private fun tryOpenPendingWidgetPicker() {
-        if (!widgetPickerRequestPending) {
-            return
-        }
-        if (!isResumed || isFinishing || isDestroyed) {
+        val requestId = widgetPickerRequestState.pendingId ?: return
+        if (!canOpenWidgetPickerNow()) {
             return
         }
         dragLayer.post {
-            if (!widgetPickerRequestPending) {
+            if (!widgetPickerRequestState.matches(requestId)) {
                 return@post
             }
-            if (!isResumed || isFinishing || isDestroyed) {
+            if (!canOpenWidgetPickerNow()) {
                 return@post
             }
             if (stateManager.state != LauncherState.NORMAL) {
                 return@post
             }
-            widgetPickerRequestPending = false
-            openWidgetPicker()
+            if (widgetPickerRequestState.complete(requestId)) {
+                openWidgetPicker()
+            }
         }
+    }
+
+    private fun canOpenWidgetPickerNow(): Boolean {
+        if (!hasBeenResumed() || isFinishing || isDestroyed || !hasWindowFocus()) {
+            return false
+        }
+        return !isInMultiWindowMode || isTopResumedActivity()
     }
 
     override fun onStateSetEnd(state: LauncherState) {
         super.onStateSetEnd(state)
         refreshPredictionContainersFromModel()
+        if (state == LauncherState.NORMAL && widgetPickerRequestState.isPending()) {
+            tryOpenPendingWidgetPicker()
+        }
     }
 
     override fun onDestroy() {
@@ -632,7 +639,6 @@ class LawnchairLauncher : QuickstepLauncher() {
         private const val FLAG_RECREATE = 1 shl 0
         private const val FLAG_RESTART = 1 shl 1
         private const val STATE_WIDGET_PICKER_HANDLED = "app.nothingui.widgetPicker.handled"
-        private const val STATE_WIDGET_PICKER_PENDING = "app.nothingui.widgetPicker.pending"
 
         var sRestartFlags = 0
 
