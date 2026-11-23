@@ -30,6 +30,11 @@
 #   - long-presses the measured empty central HOME workspace, captures the real
 #     options popup, taps Widgets by its bounds, and requires the native widget
 #     picker search/list (not HOME) before returning HOME
+#   - optionally places the DotWel Weather widget through the same native picker
+#     (exact description cell, measured Add and bind consent), proves exactly one
+#     new Weather binding plus unchanged prior bindings, opens the real
+#     WeatherPreferences by tapping the tile, checks restart persistence, and
+#     measures a resize only when the normal long-press exposes a resize handle
 #   - opens the inherited app drawer, captures its UI XML + screenshot, searches
 #     for Settings, taps the real clickable result, polls until the Settings
 #     activity is the exact resumed foreground, captures settings-launched.xml
@@ -3281,6 +3286,738 @@ search_home_pages_for_widget() {
     return 0
 }
 
+# Search a bounded number of measured normal HOME pages for the new Weather
+# host. It only swipes while the exact launcher activity is resumed, so a bind
+# consent or configuration activity is never bypassed. Sets the same
+# _cww_search_* variables used by capture_weather_widget.
+search_home_pages_for_weather_widget() {
+    _wwps_ref=$1
+    _wwps_xml=$2
+    _wwps_prefix=$3
+    _wwps_log=$4
+    _wwps_page=0
+    _wwps_bounds=$(home_weather_widget_bounds "$_wwps_xml" "$_wwps_ref")
+    printf 'page=%s xml=%s bounds=%s\n' \
+        "$_wwps_page" "$_wwps_xml" "${_wwps_bounds:-none}" >> "$_wwps_log"
+    while [ -z "$_wwps_bounds" ] && [ "$_wwps_page" -lt 3 ]; do
+        _wwps_next=$((_wwps_page + 1))
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/$_wwps_prefix-activities-$_wwps_next.txt" 2>&1 || true
+        if ! foreground_is_component \
+            "$ARTIFACTS/$_wwps_prefix-activities-$_wwps_next.txt" \
+            "$PKG" "$LAUNCHER_ACTIVITY"; then
+            printf 'page=%s stopped=launcher-not-resumed\n' "$_wwps_page" \
+                >> "$_wwps_log"
+            return 1
+        fi
+        _wwps_swipe=$(workspace_page_swipe "$_wwps_xml" next)
+        if [ -z "$_wwps_swipe" ]; then
+            printf 'page=%s stopped=no-safe-page-swipe\n' "$_wwps_page" \
+                >> "$_wwps_log"
+            return 1
+        fi
+        set -- $_wwps_swipe
+        printf 'page=%s swipe=%s,%s,%s,%s\n' \
+            "$_wwps_next" "$1" "$2" "$3" "$4" >> "$_wwps_log"
+        if ! adb_cmd shell input swipe "$1" "$2" "$3" "$4" 500 \
+            > "$ARTIFACTS/$_wwps_prefix-swipe-$_wwps_next.txt" 2>&1; then
+            printf 'page=%s stopped=swipe-failed\n' "$_wwps_page" \
+                >> "$_wwps_log"
+            return 1
+        fi
+        sleep 1
+        _wwps_page=$_wwps_next
+        _wwps_xml="$ARTIFACTS/$_wwps_prefix-page-$_wwps_page.xml"
+        if ! capture_ui_xml "$_wwps_prefix-page-$_wwps_page.xml"; then
+            printf 'page=%s stopped=capture-failed\n' "$_wwps_page" \
+                >> "$_wwps_log"
+            return 1
+        fi
+        capture_screenshot_to "$_wwps_prefix-page-$_wwps_page.png"
+        _wwps_bounds=$(home_weather_widget_bounds "$_wwps_xml" "$_wwps_ref")
+        printf 'page=%s xml=%s bounds=%s\n' \
+            "$_wwps_page" "$_wwps_xml" "${_wwps_bounds:-none}" >> "$_wwps_log"
+    done
+    if [ -z "$_wwps_bounds" ]; then
+        printf 'stopped=not-found-after-max-pages\n' >> "$_wwps_log"
+        return 1
+    fi
+    _cww_search_page=$_wwps_page
+    _cww_search_bounds=$_wwps_bounds
+    _cww_search_xml=$_wwps_xml
+    return 0
+}
+
+# Add the optional DotWel Weather widget through the real native picker, then
+# prove the exact provider is bound once, the prior own and third-party widgets
+# are untouched, the tile opens the real WeatherPreferences, the binding survives
+# a force-stop/HOME restart, and (when the normal long-press exposes a measured
+# resize handle) a resize changes the host bounds without changing the binding.
+# It never writes the database or a preference, never binds an AppWidgetId
+# directly, never grants the bind permission, never clears or seeds the
+# workspace, and never calls setWallpaperComponent. If the picker does not
+# expose an unambiguous Weather cell the gate fails closed with evidence.
+capture_weather_widget() {
+    _cww_provider_class='app.dotwel.widgets.DotWelWeatherWidgetProvider'
+    _cww_description='Weather, opens weather settings'
+    _cww_log="$ARTIFACTS/weather-widget-log.txt"
+    : > "$_cww_log"
+    wait_for_launcher_idle "$ARTIFACTS/weather-widget-launcher-before.txt" 10 ||
+        fail "launcher was not idle before the Weather widget placement"
+    capture_ui_xml weather-widget-home-before.xml ||
+        fail "could not capture HOME before the Weather widget placement"
+    capture_screenshot_to weather-widget-home-before.png
+    [ -s "$ARTIFACTS/weather-widget-home-before.png" ] ||
+        fail "HOME-before-Weather screenshot capture failed"
+    _cww_ref="$ARTIFACTS/weather-widget-home-before.xml"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/weather-widget-appwidget-before.txt" 2>&1 || true
+    _cww_before="$ARTIFACTS/weather-widget-appwidget-before.txt"
+    _cww_prior_ids=$(appwidget_launcher_instances "$_cww_before" "$PKG" id |
+        awk -F '\t' 'NF >= 2 { print $1 }')
+    [ -n "$_cww_prior_ids" ] ||
+        fail "the accepted HOME has no launcher-owned widget bindings to preserve"
+    printf 'prior_bindings=%s\n' "$(printf '%s' "$_cww_prior_ids" | tr '\n' ' ')" \
+        >> "$_cww_log"
+    for _cww_prior_class in \
+        DotWelClockWidgetProvider \
+        DotWelBatteryWidgetProvider \
+        DotWelDeviceWidgetProvider; do
+        appwidget_launcher_instances "$_cww_before" "$PKG" id |
+            grep -Fq "$_cww_prior_class" ||
+            fail "the accepted HOME is missing the $_cww_prior_class binding before Weather placement"
+    done
+
+    # Open the real native picker from the measured empty HOME workspace. Repeat
+    # only a bounded number of times, and never start the picker activity
+    # directly.
+    _cww_attempt=1
+    _cww_picker=
+    _cww_picker_ref=
+    while [ "$_cww_attempt" -le 3 ]; do
+        wait_for_launcher_idle \
+            "$ARTIFACTS/weather-widget-idle-$_cww_attempt.txt" 10 ||
+            fail "launcher was not idle before Weather picker attempt $_cww_attempt"
+        capture_ui_xml "weather-widget-attempt-$_cww_attempt.xml" ||
+            fail "could not capture HOME before Weather picker attempt $_cww_attempt"
+        _cww_target=$(home_longpress_target \
+            "$ARTIFACTS/weather-widget-attempt-$_cww_attempt.xml") ||
+            fail "could not compute an empty HOME long-press target for Weather"
+        set -- $_cww_target
+        adb_cmd shell input swipe "$1" "$2" "$1" "$2" 1000 \
+            > "$ARTIFACTS/weather-widget-longpress-$_cww_attempt.txt" 2>&1 ||
+            fail "could not long-press HOME for the Weather picker"
+        _cww_popup=
+        _cww_poll=1
+        while [ "$_cww_poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml \
+                "weather-widget-popup-$_cww_attempt-$_cww_poll.xml" &&
+                home_popup_is_ready \
+                    "$ARTIFACTS/weather-widget-popup-$_cww_attempt-$_cww_poll.xml"; then
+                _cww_popup="$ARTIFACTS/weather-widget-popup-$_cww_attempt-$_cww_poll.xml"
+                break
+            fi
+            _cww_poll=$((_cww_poll + 1))
+        done
+        if [ -n "$_cww_popup" ]; then
+            _cww_widgets=$(ui_clickable_label_bounds "$_cww_popup" 'Widgets')
+            [ -n "$_cww_widgets" ] ||
+                fail "could not find the Widgets option in the real HOME popup"
+            tap_center_of_bounds "$_cww_widgets" ||
+                fail "could not tap the Widgets option for the Weather picker"
+            _cww_picker_poll=1
+            while [ "$_cww_picker_poll" -le 8 ]; do
+                sleep 1
+                if capture_ui_xml \
+                    "weather-widget-picker-$_cww_attempt-$_cww_picker_poll.xml" &&
+                    widget_picker_is_ready \
+                        "$ARTIFACTS/weather-widget-picker-$_cww_attempt-$_cww_picker_poll.xml" \
+                        "$_cww_ref"; then
+                    _cww_picker="$ARTIFACTS/weather-widget-picker-$_cww_attempt-$_cww_picker_poll.xml"
+                    _cww_picker_ref="$_cww_ref"
+                    break
+                fi
+                _cww_picker_poll=$((_cww_picker_poll + 1))
+            done
+            if [ -n "$_cww_picker" ]; then
+                break
+            fi
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                >> "$_cww_log" 2>&1 || true
+        else
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                >> "$_cww_log" 2>&1 || true
+        fi
+        _cww_attempt=$((_cww_attempt + 1))
+        sleep 1
+    done
+    [ -n "$_cww_picker" ] ||
+        fail "the real HOME long-press did not open the native widget picker for Weather after 3 bounded attempts"
+    cp "$_cww_picker" "$ARTIFACTS/weather-widget-picker.xml"
+    capture_screenshot_to weather-widget-picker.png
+    [ -s "$ARTIFACTS/weather-widget-picker.png" ] ||
+        fail "Weather picker screenshot capture failed"
+    _cww_picker_xml="$ARTIFACTS/weather-widget-picker.xml"
+
+    # Narrow the real list through the measured search input. If the search does
+    # not expose the DotWel group, clear the query and use the measured list.
+    _cww_search_input=$(widget_picker_search_bar_bounds "$_cww_picker_xml")
+    if [ -n "$_cww_search_input" ]; then
+        tap_center_of_bounds "$_cww_search_input" ||
+            fail "could not focus the native widget picker search input for Weather"
+        adb_cmd shell input text DotWel \
+            >> "$_cww_log" 2>&1 ||
+            fail "could not type DotWel into the native widget picker search"
+        _cww_search=
+        _cww_search_poll=1
+        while [ "$_cww_search_poll" -le 6 ]; do
+            sleep 1
+            if capture_ui_xml "weather-widget-search-$_cww_search_poll.xml"; then
+                _cww_search_xml="$ARTIFACTS/weather-widget-search-$_cww_search_poll.xml"
+                if [ -n "$(widget_picker_description_preview_bounds \
+                    "$_cww_search_xml" "$_cww_description")" ] ||
+                    [ -n "$(widget_picker_provider_bounds \
+                        "$_cww_search_xml" "$EXPECTED_LABEL")" ]; then
+                    _cww_search="$_cww_search_xml"
+                    break
+                fi
+            fi
+            _cww_search_poll=$((_cww_search_poll + 1))
+        done
+        if [ -n "$_cww_search" ]; then
+            cp "$_cww_search" "$ARTIFACTS/weather-widget-search.xml"
+            _cww_picker_xml="$ARTIFACTS/weather-widget-search.xml"
+            printf 'search=DotWel results=%s\n' "$_cww_search" >> "$_cww_log"
+        else
+            printf 'search=DotWel no-matching-cell; clearing and using the measured list\n' \
+                >> "$_cww_log"
+            _cww_clear=0
+            while [ "$_cww_clear" -lt 8 ]; do
+                adb_cmd shell input keyevent KEYCODE_DEL \
+                    >> "$_cww_log" 2>&1 || true
+                _cww_clear=$((_cww_clear + 1))
+            done
+            sleep 1
+            if capture_ui_xml weather-widget-search-cleared.xml; then
+                _cww_picker_xml="$ARTIFACTS/weather-widget-search-cleared.xml"
+            fi
+        fi
+    fi
+
+    # Select only the cell whose own description exactly matches the Weather
+    # widget. A provider header, a same-row clock, an ambiguous duplicate and a
+    # clipped preview fail closed.
+    _cww_selected=0
+    _cww_expand=0
+    _cww_scroll=0
+    _cww_preview=
+    _cww_provider_xml=
+    while [ "$_cww_selected" -eq 0 ]; do
+        _cww_header=$(widget_picker_provider_bounds \
+            "$_cww_picker_xml" "$EXPECTED_LABEL")
+        _cww_candidate=$(widget_picker_description_preview_bounds \
+            "$_cww_picker_xml" "$_cww_description")
+        _cww_viewport=$(widget_picker_viewport_bounds "$_cww_picker_xml")
+        if [ -n "$_cww_header" ] && [ -n "$_cww_candidate" ] &&
+            widget_picker_preview_is_visible \
+                "$_cww_candidate" "$_cww_viewport"; then
+            _cww_preview=$_cww_candidate
+            _cww_provider_xml=$_cww_picker_xml
+            _cww_selected=1
+            break
+        fi
+        if [ -n "$_cww_header" ] && [ -z "$_cww_candidate" ] &&
+            [ "$_cww_expand" -lt 2 ]; then
+            tap_center_of_bounds "$_cww_header" ||
+                fail "could not tap the measured DotWel provider header to expand Weather"
+            _cww_expand=$((_cww_expand + 1))
+            _cww_expand_poll=1
+            while [ "$_cww_expand_poll" -le 5 ]; do
+                sleep 1
+                if capture_ui_xml \
+                    "weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"; then
+                    _cww_picker_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"
+                    break
+                fi
+                _cww_expand_poll=$((_cww_expand_poll + 1))
+            done
+            continue
+        fi
+        if [ "$_cww_scroll" -ge 4 ]; then
+            break
+        fi
+        _cww_scroll_target=$(widget_picker_scroll_target "$_cww_picker_xml") ||
+            break
+        set -- $_cww_scroll_target
+        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
+            "$((_cww_scroll + 1))" "$1" "$2" "$1" "$3" >> "$_cww_log"
+        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
+            >> "$_cww_log" 2>&1 ||
+            fail "could not scroll the measured widget list to the Weather cell"
+        _cww_scroll=$((_cww_scroll + 1))
+        sleep 1
+        if ! capture_ui_xml "weather-widget-scroll-$_cww_scroll.xml"; then
+            break
+        fi
+        _cww_picker_xml="$ARTIFACTS/weather-widget-scroll-$_cww_scroll.xml"
+    done
+    if [ "$_cww_selected" -eq 0 ]; then
+        cp "$_cww_picker_xml" "$ARTIFACTS/weather-widget-picker-last.xml" || true
+        capture_screenshot_to weather-widget-picker-last.png
+        fail "the native picker exposed no single fully visible DotWel Weather cell identified by description '$_cww_description'; refusing to guess or bind directly"
+    fi
+    _cww_caption=$(widget_picker_selected_caption \
+        "$_cww_provider_xml" "$_cww_preview")
+    [ -n "$_cww_caption" ] ||
+        fail "the Weather preview WidgetCell exposes no unambiguous widget_name caption"
+    printf 'provider=%s preview=%s caption=%s\n' \
+        "$EXPECTED_LABEL" "$_cww_preview" "$_cww_caption" >> "$_cww_log"
+    cp "$_cww_provider_xml" "$ARTIFACTS/weather-widget-provider.xml"
+    capture_screenshot_to weather-widget-provider.png
+    [ -s "$ARTIFACTS/weather-widget-provider.png" ] ||
+        fail "Weather provider screenshot capture failed"
+
+    # Tap the measured preview and use the real Add button with a safe viewport
+    # intersection. Never drag from the picker.
+    tap_center_of_bounds "$_cww_preview" ||
+        fail "could not tap the measured Weather preview"
+    _cww_add=
+    _cww_add_xml=
+    _cww_add_poll=1
+    while [ "$_cww_add_poll" -le 5 ]; do
+        sleep 1
+        if capture_ui_xml "weather-widget-add-$_cww_add_poll.xml"; then
+            _cww_add_xml="$ARTIFACTS/weather-widget-add-$_cww_add_poll.xml"
+            _cww_add=$(widget_picker_add_button_bounds "$_cww_add_xml")
+            [ -n "$_cww_add" ] && break
+        fi
+        _cww_add_poll=$((_cww_add_poll + 1))
+    done
+    [ -n "$_cww_add" ] ||
+        fail "the Weather Add button was not exposed after tapping the measured preview"
+    _cww_safe_add=$(widget_add_safe_bounds \
+        "$_cww_add" "$(widget_picker_viewport_bounds "$_cww_add_xml")")
+    if [ -z "$_cww_safe_add" ]; then
+        _cww_add_scroll=0
+        while [ "$_cww_add_scroll" -lt 3 ] && [ -z "$_cww_safe_add" ]; do
+            _cww_scroll_target=$(widget_picker_scroll_target "$_cww_add_xml") ||
+                break
+            set -- $_cww_scroll_target
+            adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
+                >> "$_cww_log" 2>&1 ||
+                fail "could not scroll the measured widget list for a safe Weather Add"
+            _cww_add_scroll=$((_cww_add_scroll + 1))
+            sleep 1
+            capture_ui_xml "weather-widget-add-scroll-$_cww_add_scroll.xml" ||
+                break
+            _cww_add_xml="$ARTIFACTS/weather-widget-add-scroll-$_cww_add_scroll.xml"
+            _cww_add=$(widget_picker_add_button_bounds "$_cww_add_xml")
+            [ -n "$_cww_add" ] || break
+            _cww_safe_add=$(widget_add_safe_bounds \
+                "$_cww_add" "$(widget_picker_viewport_bounds "$_cww_add_xml")")
+        done
+    fi
+    [ -n "$_cww_safe_add" ] ||
+        fail "the Weather Add button had no safe intersection above the navigation bar"
+    cp "$_cww_add_xml" "$ARTIFACTS/weather-widget-add.xml"
+    capture_screenshot_to weather-widget-add.png
+    [ -s "$ARTIFACTS/weather-widget-add.png" ] ||
+        fail "Weather Add screenshot capture failed"
+    printf 'add=%s safe_add=%s\n' "$_cww_add" "$_cww_safe_add" >> "$_cww_log"
+    tap_center_of_bounds "$_cww_safe_add" ||
+        fail "could not tap the safe Weather Add intersection"
+
+    # Wait, bounded, for the real bind consent and the new Weather host. Never
+    # check Always allow. A missing consent, a configuration activity, a pending
+    # host or an unbound provider fails with saved evidence.
+    _cww_placed=
+    _cww_placed_bounds=
+    _cww_last_xml="$ARTIFACTS/weather-widget-add.xml"
+    _cww_bind_tapped=0
+    _cww_place_poll=1
+    while [ "$_cww_place_poll" -le 15 ]; do
+        sleep 1
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/weather-widget-activities-$_cww_place_poll.txt" 2>&1 || true
+        if capture_ui_xml "weather-widget-placed-$_cww_place_poll.xml"; then
+            _cww_last_xml="$ARTIFACTS/weather-widget-placed-$_cww_place_poll.xml"
+            if widget_bind_consent_is_ready \
+                "$_cww_last_xml" "$EXPECTED_LABEL" "$_cww_caption"; then
+                cp "$_cww_last_xml" "$ARTIFACTS/weather-widget-bind-consent.xml"
+                capture_screenshot_to weather-widget-bind-consent.png
+                [ -s "$ARTIFACTS/weather-widget-bind-consent.png" ] ||
+                    fail "Weather bind consent screenshot capture failed"
+                if widget_bind_always_allow_is_checked \
+                    "$ARTIFACTS/weather-widget-bind-consent.xml"; then
+                    fail "the Weather bind consent has Always allow checked; refusing a permanent binding"
+                fi
+                if [ "$_cww_bind_tapped" -eq 0 ]; then
+                    _cww_create=$(widget_bind_create_button_bounds \
+                        "$ARTIFACTS/weather-widget-bind-consent.xml" \
+                        "$EXPECTED_LABEL" "$_cww_caption")
+                    [ -n "$_cww_create" ] ||
+                        fail "could not find the measured Create control in the Weather bind consent"
+                    tap_center_of_bounds "$_cww_create" ||
+                        fail "could not tap the measured Weather bind consent Create control"
+                    _cww_bind_tapped=1
+                    printf 'bind_consent=create always_allow=unchecked\n' \
+                        >> "$_cww_log"
+                fi
+            fi
+            _cww_candidate=$(home_weather_widget_bounds \
+                "$_cww_last_xml" "$_cww_ref")
+            if [ -n "$_cww_candidate" ]; then
+                _cww_placed=$_cww_last_xml
+                _cww_placed_bounds=$_cww_candidate
+                break
+            fi
+        fi
+        _cww_place_poll=$((_cww_place_poll + 1))
+    done
+
+    if [ -z "$_cww_placed" ]; then
+        # A later page can hold the new widget. Only after the consent has been
+        # handled, the launcher is resumed and exactly one new Weather binding
+        # exists may the measured normal pages be searched.
+        _cww_new_probe=
+        _cww_aw_poll=1
+        while [ "$_cww_aw_poll" -le 5 ]; do
+            adb_cmd shell dumpsys appwidget \
+                > "$ARTIFACTS/weather-widget-appwidget-page-before.txt" \
+                2>&1 || true
+            _cww_new_probe=$(weather_widget_new_binding \
+                "$_cww_before" \
+                "$ARTIFACTS/weather-widget-appwidget-page-before.txt" "$PKG")
+            [ -n "$_cww_new_probe" ] && break
+            _cww_aw_poll=$((_cww_aw_poll + 1))
+            sleep 1
+        done
+        [ -n "$_cww_new_probe" ] ||
+            fail "no new launcher-owned Weather AppWidgetId was bound before HOME page discovery"
+        if search_home_pages_for_weather_widget \
+            "$_cww_ref" "$_cww_last_xml" weather-widget-placement "$_cww_log"; then
+            _cww_placed=$_cww_search_xml
+            _cww_placed_bounds=$_cww_search_bounds
+            printf 'placement_page=%s bounds=%s\n' \
+                "$_cww_search_page" "$_cww_placed_bounds" >> "$_cww_log"
+        else
+            capture_screenshot_to weather-widget-page-last.png
+            fail "the new Weather widget was not found on the first three measured HOME pages after Add and consent"
+        fi
+    fi
+    cp "$_cww_placed" "$ARTIFACTS/weather-widget-home-placed.xml"
+    capture_screenshot_to weather-widget-home-placed.png
+    [ -s "$ARTIFACTS/weather-widget-home-placed.png" ] ||
+        fail "placed-Weather screenshot capture failed"
+    home_widget_page_geometry_ok "$_cww_placed" "$_cww_placed_bounds" ||
+        fail "the Weather widget is not inside the actual page workspace/header/dock bounds ($_cww_placed_bounds)"
+    home_widget_bounds_clear_of "$_cww_placed" "$_cww_placed_bounds" ||
+        fail "the Weather widget overlaps another measured widget host ($_cww_placed_bounds)"
+    _cww_state=$(weather_widget_text_is_truthful "$_cww_placed") ||
+        fail "the placed Weather tile does not show the truthful off/not-connected copy"
+    printf 'bounds=%s text_state=%s\n' \
+        "$_cww_placed_bounds" "$_cww_state" >> "$_cww_log"
+
+    # Prove exactly one new launcher-owned binding with the exact Weather class,
+    # and that every prior accepted binding still exists.
+    _cww_new=
+    _cww_aw_poll=1
+    while [ "$_cww_aw_poll" -le 5 ]; do
+        adb_cmd shell dumpsys appwidget \
+            > "$ARTIFACTS/weather-widget-appwidget-after.txt" 2>&1 || true
+        _cww_new=$(weather_widget_new_binding \
+            "$_cww_before" "$ARTIFACTS/weather-widget-appwidget-after.txt" "$PKG")
+        [ -n "$_cww_new" ] && break
+        _cww_aw_poll=$((_cww_aw_poll + 1))
+        sleep 1
+    done
+    [ -n "$_cww_new" ] ||
+        fail "exactly one new launcher-owned $_cww_provider_class binding was not found"
+    _cww_new_id=$(printf '%s\n' "$_cww_new" | awk -F '\t' '{ print $1 }')
+    _cww_new_class=$(printf '%s\n' "$_cww_new" | awk -F '\t' '{ print $2 }')
+    [ "$_cww_new_class" = "$_cww_provider_class" ] ||
+        fail "the new Weather binding has the wrong provider class '$_cww_new_class'"
+    appwidget_preserved_bindings \
+        "$_cww_before" "$ARTIFACTS/weather-widget-appwidget-after.txt" "$PKG" ||
+        fail "the Weather placement removed or replaced a prior launcher-owned widget binding"
+    for _cww_prior_class in \
+        DotWelClockWidgetProvider \
+        DotWelBatteryWidgetProvider \
+        DotWelDeviceWidgetProvider; do
+        appwidget_launcher_instances \
+            "$ARTIFACTS/weather-widget-appwidget-after.txt" "$PKG" id |
+            grep -Fq "$_cww_prior_class" ||
+            fail "the $_cww_prior_class binding disappeared after Weather placement"
+    done
+    printf 'new_binding=%s class=%s\n' "$_cww_new_id" "$_cww_new_class" \
+        >> "$_cww_log"
+
+    # Tap the measured Weather host and require the exact real WeatherPreferences
+    # destination, not just any launcher settings screen.
+    tap_center_of_bounds "$_cww_placed_bounds" ||
+        fail "could not tap the measured Weather widget"
+    _cww_prefs=0
+    _cww_tap_poll=1
+    while [ "$_cww_tap_poll" -le 10 ]; do
+        sleep 1
+        adb_cmd shell dumpsys activity activities \
+            > "$ARTIFACTS/weather-widget-tap-activities-$_cww_tap_poll.txt" \
+            2>&1 || true
+        _cww_tap_act="$ARTIFACTS/weather-widget-tap-activities-$_cww_tap_poll.txt"
+        if foreground_is_component "$_cww_tap_act" \
+            "$PKG" "$PREFERENCES_ACTIVITY" &&
+            capture_ui_xml "weather-widget-tap-$_cww_tap_poll.xml" &&
+            weather_settings_screen_identity \
+                "$ARTIFACTS/weather-widget-tap-$_cww_tap_poll.xml"; then
+            cp "$_cww_tap_act" "$ARTIFACTS/weather-widget-tap-activities.txt"
+            cp "$ARTIFACTS/weather-widget-tap-$_cww_tap_poll.xml" \
+                "$ARTIFACTS/weather-widget-tap.xml"
+            _cww_prefs=1
+            break
+        fi
+        _cww_tap_poll=$((_cww_tap_poll + 1))
+    done
+    [ "$_cww_prefs" -eq 1 ] ||
+        fail "tapping the Weather widget did not open the exact real WeatherPreferences destination"
+    capture_screenshot_to weather-widget-tap.png
+    [ -s "$ARTIFACTS/weather-widget-tap.png" ] ||
+        fail "WeatherPreferences screenshot capture failed"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/weather-widget-tap-appwidget.txt" 2>&1 || true
+    appwidget_launcher_instances \
+        "$ARTIFACTS/weather-widget-tap-appwidget.txt" "$PKG" id |
+        grep -qx "$_cww_new_id" ||
+        fail "the Weather binding disappeared while WeatherPreferences was open"
+
+    # Return HOME and prove the exact same binding survived a real app switch.
+    adb_cmd shell input keyevent KEYCODE_BACK \
+        > "$ARTIFACTS/weather-widget-back.txt" 2>&1 || true
+    wait_for_launcher_activity weather-widget-back 10 ||
+        fail "the launcher did not resume after leaving WeatherPreferences"
+    capture_ui_xml weather-widget-home-after-tap.xml ||
+        fail "could not capture HOME after leaving WeatherPreferences"
+    if ! search_home_pages_for_weather_widget \
+        "$_cww_ref" "$ARTIFACTS/weather-widget-home-after-tap.xml" \
+        weather-widget-after-tap "$_cww_log"; then
+        fail "the Weather widget was not found on the first three HOME pages after leaving WeatherPreferences"
+    fi
+    [ "$_cww_search_bounds" = "$_cww_placed_bounds" ] ||
+        fail "the Weather widget bounds changed after leaving WeatherPreferences ('$_cww_search_bounds' vs '$_cww_placed_bounds')"
+
+    # Force-stop the launcher and press HOME, then find the same binding again.
+    _weather_restart weather-widget
+    capture_ui_xml weather-widget-home-after-restart.xml ||
+        fail "could not capture HOME after the Weather restart"
+    capture_screenshot_to weather-widget-home-after-restart.png
+    [ -s "$ARTIFACTS/weather-widget-home-after-restart.png" ] ||
+        fail "HOME-after-Weather-restart screenshot capture failed"
+    if ! search_home_pages_for_weather_widget \
+        "$_cww_ref" "$ARTIFACTS/weather-widget-home-after-restart.xml" \
+        weather-widget-after-restart "$_cww_log"; then
+        fail "the Weather widget was not found on the first three HOME pages after the restart"
+    fi
+    [ "$_cww_search_bounds" = "$_cww_placed_bounds" ] ||
+        fail "the Weather widget bounds changed after the restart ('$_cww_search_bounds' vs '$_cww_placed_bounds')"
+    _cww_state=$(weather_widget_text_is_truthful "$_cww_search_xml") ||
+        fail "the Weather tile lost its truthful off/not-connected copy after the restart"
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" 2>&1 || true
+    appwidget_launcher_instances \
+        "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" "$PKG" id |
+        grep -qx "$_cww_new_id" ||
+        fail "the Weather binding AppWidgetId=$_cww_new_id disappeared after the restart"
+    appwidget_preserved_bindings \
+        "$_cww_before" \
+        "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" "$PKG" ||
+        fail "a prior launcher-owned widget binding disappeared after the Weather restart"
+    cp "$_cww_search_xml" "$ARTIFACTS/weather-widget-home-restarted.xml"
+    _cww_restart_bounds="$_cww_search_bounds"
+
+    # Resize, bounded, only through a measured normal long-press resize handle.
+    # No handle means the normal UI exposes no measured resize control; report
+    # that honestly instead of inventing a coordinate. A handle that does not
+    # change the measured bounds also fails closed rather than claiming a resize.
+    _cww_resize=unsupported
+    _cww_resize_reason='no-measured-resize-frame-or-handle'
+    _cww_resize_before="$_cww_restart_bounds"
+    set -- $_cww_restart_bounds
+    _cww_host_x=$(($1 + ($3 - $1) / 2))
+    _cww_host_y=$(($2 + ($4 - $2) / 2))
+    adb_cmd shell input swipe \
+        "$_cww_host_x" "$_cww_host_y" "$_cww_host_x" "$_cww_host_y" 1000 \
+        > "$ARTIFACTS/weather-widget-resize-longpress.txt" 2>&1 || true
+    _cww_resize_xml=
+    _cww_frame=
+    _cww_bottom=
+    _cww_right=
+    _cww_handle_poll=1
+    while [ "$_cww_handle_poll" -le 6 ]; do
+        sleep 1
+        if capture_ui_xml \
+            "weather-widget-resize-handles-$_cww_handle_poll.xml"; then
+            _cww_resize_xml="$ARTIFACTS/weather-widget-resize-handles-$_cww_handle_poll.xml"
+            _cww_frame=$(widget_resize_handle_bounds \
+                "$_cww_resize_xml" widget_resize_frame)
+            _cww_bottom=$(widget_resize_handle_bounds \
+                "$_cww_resize_xml" widget_resize_bottom_handle)
+            _cww_right=$(widget_resize_handle_bounds \
+                "$_cww_resize_xml" widget_resize_right_handle)
+            if [ -n "$_cww_frame" ] &&
+                { [ -n "$_cww_bottom" ] || [ -n "$_cww_right" ]; }; then
+                break
+            fi
+        fi
+        _cww_handle_poll=$((_cww_handle_poll + 1))
+    done
+    if [ -z "$_cww_frame" ] ||
+        { [ -z "$_cww_bottom" ] && [ -z "$_cww_right" ]; }; then
+        printf 'resize=%s reason=%s\n' "$_cww_resize" "$_cww_resize_reason" \
+            >> "$_cww_log"
+        capture_screenshot_to weather-widget-resize-unsupported.png || true
+        _cww_resize_xml=${_cww_resize_xml:-$ARTIFACTS/weather-widget-home-restarted.xml}
+        cp "$_cww_resize_xml" "$ARTIFACTS/weather-widget-resize-unsupported.xml" \
+            2>/dev/null || true
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            > "$ARTIFACTS/weather-widget-resize-dismiss.txt" 2>&1 || true
+        wait_for_launcher_activity weather-widget-resize-dismiss 10 ||
+            return_home weather-widget-resize-dismiss
+    else
+        cp "$_cww_resize_xml" "$ARTIFACTS/weather-widget-resize-before.xml"
+        capture_screenshot_to weather-widget-resize-before.png
+        _cww_resize_changed=0
+        _cww_resize_axis=
+        if [ -n "$_cww_bottom" ]; then
+            set -- $_cww_bottom
+            _cww_bx=$(($1 + ($3 - $1) / 2))
+            _cww_by=$(($2 + ($4 - $2) / 2))
+            set -- $_cww_resize_before
+            _cww_half_height=$((($4 - $2) / 2))
+            [ "$_cww_half_height" -ge 48 ] || _cww_half_height=48
+            _cww_target_y=$((_cww_by - _cww_half_height))
+            set -- $_cww_frame
+            [ "$_cww_target_y" -gt "$2" ] || _cww_target_y=$(( $2 + 24 ))
+            adb_cmd shell input swipe \
+                "$_cww_bx" "$_cww_by" "$_cww_bx" "$_cww_target_y" 700 \
+                > "$ARTIFACTS/weather-widget-resize-drag-vertical.txt" 2>&1 ||
+                true
+            _cww_drag_poll=1
+            while [ "$_cww_drag_poll" -le 6 ]; do
+                sleep 1
+                if capture_ui_xml \
+                    "weather-widget-resize-after-vertical-$_cww_drag_poll.xml"; then
+                    _cww_drag_xml="$ARTIFACTS/weather-widget-resize-after-vertical-$_cww_drag_poll.xml"
+                    _cww_drag_bounds=$(home_weather_widget_bounds \
+                        "$_cww_drag_xml" "$_cww_ref")
+                    if [ -n "$_cww_drag_bounds" ] &&
+                        [ "$_cww_drag_bounds" != "$_cww_resize_before" ]; then
+                        _cww_resize_changed=1
+                        _cww_resize_axis=vertical
+                        break
+                    fi
+                fi
+                _cww_drag_poll=$((_cww_drag_poll + 1))
+            done
+        fi
+        if [ "$_cww_resize_changed" -eq 0 ] && [ -n "$_cww_right" ]; then
+            set -- $_cww_right
+            _cww_rx=$(($1 + ($3 - $1) / 2))
+            _cww_ry=$(($2 + ($4 - $2) / 2))
+            set -- $_cww_resize_before
+            _cww_half_width=$((($3 - $1) / 2))
+            [ "$_cww_half_width" -ge 48 ] || _cww_half_width=48
+            _cww_target_x=$((_cww_rx - _cww_half_width))
+            set -- $_cww_frame
+            [ "$_cww_target_x" -gt "$1" ] || _cww_target_x=$(( $1 + 24 ))
+            adb_cmd shell input swipe \
+                "$_cww_rx" "$_cww_ry" "$_cww_target_x" "$_cww_ry" 700 \
+                > "$ARTIFACTS/weather-widget-resize-drag-horizontal.txt" 2>&1 ||
+                true
+            _cww_drag_poll=1
+            while [ "$_cww_drag_poll" -le 6 ]; do
+                sleep 1
+                if capture_ui_xml \
+                    "weather-widget-resize-after-horizontal-$_cww_drag_poll.xml"; then
+                    _cww_drag_xml="$ARTIFACTS/weather-widget-resize-after-horizontal-$_cww_drag_poll.xml"
+                    _cww_drag_bounds=$(home_weather_widget_bounds \
+                        "$_cww_drag_xml" "$_cww_ref")
+                    if [ -n "$_cww_drag_bounds" ] &&
+                        [ "$_cww_drag_bounds" != "$_cww_resize_before" ]; then
+                        _cww_resize_changed=1
+                        _cww_resize_axis=horizontal
+                        break
+                    fi
+                fi
+                _cww_drag_poll=$((_cww_drag_poll + 1))
+            done
+        fi
+        if [ "$_cww_resize_changed" -eq 1 ]; then
+            _cww_resize=measured
+            _cww_resize_reason="axis=$_cww_resize_axis"
+            cp "$_cww_drag_xml" "$ARTIFACTS/weather-widget-resize-after.xml"
+            capture_screenshot_to weather-widget-resize-after.png
+            weather_widget_text_is_truthful "$_cww_drag_xml" >/dev/null ||
+                fail "the resized Weather tile lost its truthful copy"
+            adb_cmd shell dumpsys appwidget \
+                > "$ARTIFACTS/weather-widget-resize-appwidget.txt" 2>&1 || true
+            appwidget_launcher_instances \
+                "$ARTIFACTS/weather-widget-resize-appwidget.txt" "$PKG" id |
+                grep -qx "$_cww_new_id" ||
+                fail "resizing the Weather widget changed its AppWidgetId"
+            printf 'resize=%s reason=%s before=%s after=%s\n' \
+                "$_cww_resize" "$_cww_resize_reason" \
+                "$_cww_resize_before" "$_cww_drag_bounds" >> "$_cww_log"
+        else
+            _cww_resize=failed
+            _cww_resize_reason='handles-exposed-no-measured-change'
+            printf 'resize=%s reason=%s before=%s\n' \
+                "$_cww_resize" "$_cww_resize_reason" \
+                "$_cww_resize_before" >> "$_cww_log"
+            capture_screenshot_to weather-widget-resize-failed.png || true
+            adb_cmd shell input keyevent KEYCODE_BACK \
+                > "$ARTIFACTS/weather-widget-resize-dismiss.txt" 2>&1 || true
+            fail "the normal Weather resize handles were exposed but no measured bounds change was observed; refusing to claim resize support"
+        fi
+        adb_cmd shell input keyevent KEYCODE_BACK \
+            > "$ARTIFACTS/weather-widget-resize-exit.txt" 2>&1 || true
+        wait_for_launcher_activity weather-widget-resize-exit 10 ||
+            return_home weather-widget-resize-exit
+    fi
+
+    # The Weather settings consent must remain disabled and no prior binding may
+    # have changed after the resize/tap/restart sequence.
+    _cww_final=$(_weather_capture_consent weather-widget-final)
+    case "$_cww_final" in
+        disabled\|*) ;;
+        *) fail "the Weather widget gate did not finish with consent disabled, found '$_cww_final'" ;;
+    esac
+    adb_cmd shell dumpsys appwidget \
+        > "$ARTIFACTS/weather-widget-appwidget-final.txt" 2>&1 || true
+    appwidget_preserved_bindings \
+        "$_cww_before" "$ARTIFACTS/weather-widget-appwidget-final.txt" "$PKG" ||
+        fail "a prior launcher-owned widget binding disappeared after the Weather evidence gate"
+    appwidget_launcher_instances \
+        "$ARTIFACTS/weather-widget-appwidget-final.txt" "$PKG" id |
+        grep -qx "$_cww_new_id" ||
+        fail "the Weather binding AppWidgetId=$_cww_new_id disappeared before the final proof"
+
+    printf 'Weather widget: the real HOME long-press popup opened the native picker; the single DotWel Weather cell described as "%s" was measured and tapped; the real Add and bind-consent Create controls were used with Always allow unchecked; exactly one new launcher-owned %s binding (AppWidgetId=%s) was bound at measured bounds %s with truthful %s copy; tapping the tile opened the exact real WeatherPreferences; the same binding and bounds survived leaving settings and a force-stop/HOME restart; resize=%s (%s). Prior accepted clock/battery/device/third-party bindings were unchanged, no workspace item was reset/moved/deleted, no database/preference was written, no AppWidgetId was bound directly, and the final Weather consent is disabled.\n' \
+        "$_cww_description" "$_cww_provider_class" "$_cww_new_id" \
+        "$_cww_placed_bounds" "$_cww_state" "$_cww_resize" \
+        "$_cww_resize_reason" > "$ARTIFACTS/weather-widget.txt"
+    printf 'Screenshots: weather-widget-home-before.png, weather-widget-picker.png, weather-widget-provider.png, weather-widget-add.png, weather-widget-bind-consent.png, weather-widget-home-placed.png, weather-widget-tap.png, weather-widget-home-after-restart.png, weather-widget-resize-%s.png.\n' \
+        "$_cww_resize" >> "$ARTIFACTS/weather-widget.txt"
+    printf 'Resize: %s (%s); before bounds %s.\n' \
+        "$_cww_resize" "$_cww_resize_reason" "$_cww_resize_before" \
+        >> "$ARTIFACTS/weather-widget.txt"
+
+    # Return the existing primary/default HOME. Do not reset, move or delete any
+    # workspace item; the disposable Weather widget may remain for the rest of
+    # the run because every later check tolerates one extra binding.
+    restore_primary_home weather-widget-primary
+    verify_nothing_home
+}
+
 # Long-press the empty central HOME workspace with a real gesture, open the real
 # options popup, tap Widgets by its measured bounds, and require the native widget
 # picker search/list. No activity is started directly and no preference is
@@ -4715,6 +5452,7 @@ capture_weather_settings
 exercise_device_settings_shortcuts
 capture_grid_settings
 capture_widgets_picker
+capture_weather_widget
 exercise_app_drawer
 capture_drawer_bottom_boundary
 
