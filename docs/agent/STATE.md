@@ -3,26 +3,69 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather smoke CI252 post-enable false-missing probe fixed in scripts and
-  fixtures, PENDING ACTUAL RUNTIME. Durable enable is NOT yet verified.** CI252's compile/style/units
-  were green; its 21m26 runtime failed the post-enable app-private probe, reporting `missing` while
-  the enabled UI was actually shown. An independent shell reproduction proved the cause: adb joins
-  shell arguments, so `run-as PKG sh -c "test -f path"` reaches the device as `sh -c test -f path`,
-  the inner `sh -c` runs only `test`, and `test` exits 1 even for an existing file. The cache
-  existence check and cache seed had the same misquote. No new runtime result exists for this fix;
-  the next API 37 CI is the only proof of the durable store and the real UI.
+- current_phase: **Weather HOME lifecycle/consent owner phase — implemented and locally verified,
+  PENDING CI. Visible weather rendering and the real provider remain unconnected.** This run adds a
+  launcher-owned `WeatherHomeOwner` around the existing `WeatherSessionController`, a process-wide
+  `WeatherHomeRuntime` shared with settings, and the real `LawnchairLauncher` lifecycle hookup.
+  Production still uses the explicit no-network `NoNetworkWeatherWork`; no repository, transport,
+  worker, alarm or device location exists. CI254's full-green milestone is the starting point.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `f3b9b9c` (this run's shell-boundary fix); prior CI250 work is `927657b` on the `c56e4cb`
-  state doc, itself on `c4ad8e9`/`e9becce`/`ed4e9e2`.
+- head: `780b088` (Android hookup); the owner + tests are `7c96b40`; base `b36d0f0`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI252 compile/style/units were green and its 21m26 runtime failed only the post-enable
-  app-private probe.** No new CI or runtime result exists for `f3b9b9c`; durable enabled state,
-  reload, disable, cache clearing and final-off remain unproven by this run.
-- next: the next API 37 CI must prove the enabled poll reads the real durable store, shows the
-  measured/lower success line, reloads the saved label/coordinates, disables, clears the seeded
-  cache, survives restarts and finishes disabled. Release, hosting and merge stay paused; visible
-  HOME lifecycle/network wiring, PrivateSpace, settings round-trip, non-Play, large-screen and
-  performance audits stay open.
+- ci: **CI254 was FULL GREEN and independently audited: 243 tests total, 132 weather tests.** That
+  audit confirmed real settings consent JSON generation 1 persisted across restart, and disable
+  generation 2 / null fields / empty cache persisted across restart and final off; the focused red
+  accent was verified as focus, not error. No CI result exists yet for `780b088`; the next API 37 CI
+  is the only proof of this run's lifecycle wiring.
+- next: **visible weather rendering**, then **repository wiring** (real provider behind the owner's
+  injected work), then **live provider**, then **runtime audits**. Release, hosting and merge stay
+  paused. PrivateSpace, settings round-trip, non-Play, large-screen and performance audits stay open.
+  Do not claim a forecast is connected or the launcher is complete.
+
+## done (this run — Weather HOME lifecycle/consent owner, PENDING CI)
+
+- **Launcher-owned owner:** new pure-JVM `WeatherHomeOwner` wraps the existing
+  `WeatherSessionController` and is the single bridge for HOME visibility and the settings consent
+  observer. It reads the persisted consent through `WeatherConsentStore` off the main dispatcher on
+  every false→true HOME transition, before any work can start, and fails closed (disabled, no work)
+  when the read throws. It owns no repository, transport, timer, alarm, worker or location source.
+- **HOME-only visibility:** `setHomeVisible` requires the resumed, visible NORMAL HOME surface. All
+  Apps, Overview and a different activity hide it. `WeatherHomeWiring.isHomeVisible` is the pure
+  guard. Repeated visible callbacks do not duplicate the read or the load.
+- **Screen/user/destroy gates:** `setScreenInteractive` and `setUserPresent` feed the controller's
+  `screenOn`/`userPresent` gates. `shutdown` permanently stops the session. Every pause, screen-off,
+  user-absent, settings edit/disable and shutdown invalidates the pending consent read (read epoch)
+  and lets the controller cancel the in-flight job.
+- **Stale fencing:** a read launched before a pause or a newer settings decision is dropped. A
+  persisted enable older than an in-process disable/edit cannot resurrect consent; a persisted
+  disable is always trusted. Results are delivered only for the current session (existing controller
+  guarantee).
+- **Shared settings observer:** `WeatherPreferences.createController` now passes
+  `consentObserver = WeatherHomeRuntime.observeConsent(appContext, state)`, so enable/edit/revoke
+  cancels the visible session immediately. `WeatherHomeRuntime` is the one process-wide owner
+  (application context, app-private no-backup consent store, explicit `NoNetworkWeatherWork`, no-op
+  sink).
+- **Real launcher hookup:** `LawnchairLauncher.onResume` starts the owner, queries
+  `PowerManager.isInteractive` and `KeyguardManager.isKeyguardLocked`, registers a resumed-only
+  `ACTION_SCREEN_ON/OFF/USER_PRESENT` receiver, and syncs visibility. `onStateSetEnd` re-syncs so
+  All Apps/Overview hide it and returning to NORMAL re-reads consent. `onPause`/`onDestroy` stop and
+  unregister. No widget broadcast starts a load.
+- **Transport stays off:** production uses `NoNetworkWeatherWork`, which returns an honest
+  `Unavailable` with no forecast and no network. No `OkHttpWeatherTransport`, repository, provider,
+  synthetic CI coordinates, dependency, permission, manifest, SDK, applicationId, workflow, signing
+  or non-Play layout changed. Existing truthful "no forecast yet" copy is untouched.
+- **Verification actually run (offline JVM/shell only; no Gradle, Android build or emulator):** the
+  full pure weather package compiled with kotlinc 2.4.21 against JUnit 4.13.2, coroutines 1.11.0,
+  serialization 1.13.0, OkHttp 5.5.1 and Okio 3.16.0 (downloaded to `/tmp` only; no project
+  dependency added). JUnit ran **149 tests, OK (0 failures)** across 15 weather classes: the 132
+  prior weather tests plus 17 new `WeatherHomeOwnerTest` cases. The 17 new tests were written first
+  and failed on the missing owner/wiring/work symbols before the implementation. ktlint 1.8.0
+  reports zero violations on the new and edited files; `git diff --check` is clean.
+- **Missing evidence / not claimed:** no Gradle/Play compile, no Spotless-in-Gradle, no API 37
+  emulator and no runtime proof for `780b088`. The owner tests use fake work/store/dispatcher; they
+  prove policy, cancellation and fencing, not the real Compose or device lifecycle. The real
+  launcher wiring is committed but unproven until CI compiles it. No forecast is connected.
+
 
 ## done (this run — CI252 adb-join false-missing probe and real blur proof, PENDING ACTUAL RUNTIME)
 
