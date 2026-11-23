@@ -2152,6 +2152,45 @@ weather_settings_screen_identity() (
     return 0
 )
 
+# Print "off" or "not_connected" only when the captured hierarchy exposes the
+# exact truthful DotWel Weather copy and no forecast value. The value must be
+# "--"; Off must have no as-of line and NotConnected must say the provider is not
+# connected. A temperature, an "Updated"/"As of" timestamp or any other detail
+# fails closed, so a synthetic or stale forecast can never satisfy the evidence.
+weather_widget_text_is_truthful() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    value=$(ui_node_attribute "$xml" nothingui_weather_value text)
+    detail=$(ui_node_attribute "$xml" nothingui_weather_detail text)
+    asof=$(ui_node_attribute "$xml" nothingui_weather_asof text)
+    [ "$value" = "--" ] || return 1
+    case "$detail" in
+        'Weather off · tap to set up')
+            [ -z "$asof" ] || return 1
+            printf 'off\n'
+            return 0
+            ;;
+        'No forecast yet')
+            [ "$asof" = 'Provider not connected' ] || return 1
+            printf 'not_connected\n'
+            return 0
+            ;;
+    esac
+    return 1
+)
+
+# Print the measured "x1 y1 x2 y2" bounds of a resize-frame handle by resource
+# id suffix (for example widget_resize_bottom_handle). A missing, malformed or
+# off-screen handle prints nothing so the caller reports resize as unsupported
+# instead of inventing a drag coordinate.
+widget_resize_handle_bounds() (
+    xml=$1
+    suffix=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$suffix" ] || return 0
+    ui_bounds_values "$(ui_node_attribute "$xml" "$suffix" bounds)"
+)
+
 # Print the measured scroll direction needed to bring a target into a viewport:
 # "up" when the target is fully or partly above the viewport, "down" when it is
 # fully or partly below it. Malformed or missing rectangles print nothing so the
@@ -2786,6 +2825,86 @@ widget_picker_selected_caption() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of the single WidgetCell preview whose own
+# widget_description text exactly equals $2. The inherited picker shows one cell
+# per widget variant, so a provider header alone cannot identify the Weather
+# cell. The cell must own exactly one clickable widget_preview_container and one
+# exact description; zero, multiple, clipped or description-less matches print
+# nothing so the caller fails closed instead of tapping a guessed coordinate.
+widget_picker_description_preview_bounds() (
+    xml=$1
+    want=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$want" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                desc = attr($0, "content-desc")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                cell = (sp > 0 ? stack_cell[sp] : 0)
+                if (cls ~ /(^|\.)WidgetCell$/ && !selfclose) {
+                    cell_count++
+                    cell = cell_count
+                }
+                if (cell > 0) {
+                    if (rid ~ /(^|\/)widget_preview_container$/ &&
+                        bounds ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/ &&
+                        (attr($0, "clickable") == "true" ||
+                         attr($0, "long-clickable") == "true")) {
+                        cell_preview[cell]++
+                        cell_preview_bounds[cell] = bounds
+                    }
+                    if (rid ~ /(^|\/)widget_description$/ &&
+                        (text == want || desc == want)) {
+                        cell_description[cell]++
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_cell[sp] = cell
+                }
+            }
+            END {
+                matched = 0
+                for (i = 1; i <= cell_count; i++) {
+                    if (cell_description[i] == 1 && cell_preview[i] == 1) {
+                        matched++
+                        selected = i
+                    }
+                }
+                if (matched != 1) exit
+                emit(cell_preview_bounds[selected])
+            }
+        '
+)
+
 # Print the bounds ("x1 y1 x2 y2") of the widget picker search bar. The real
 # inherited picker exposes widgets_search_bar_edit_text; the outer
 # search_bar_container/widgets_search_bar is the fallback so the viewport still
@@ -3321,6 +3440,118 @@ home_widget_bounds() (
         '
 )
 
+# Print the measured bounds of the single AppWidgetHostView whose own subtree
+# exposes both the Weather value and detail ids, excluding every host already
+# present in $2. A host that contains a Weather-looking id only elsewhere in the
+# page, a preview/pending host, a duplicate Weather host and a host unchanged
+# from the reference all fail closed by printing nothing. This is the identity
+# proof for the optional Weather widget: it cannot be satisfied by an own clock,
+# battery or device host at the same geometry.
+home_weather_widget_bounds() (
+    xml=$1
+    reference=${2:-}
+    [ -s "$xml" ] || return 0
+    {
+        if [ -n "$reference" ] && [ -s "$reference" ]; then
+            tr '>' '\n' < "$reference" |
+                awk '{ print "R\t" $0 }'
+        fi
+        tr '>' '\n' < "$xml" |
+            awk '{ print "C\t" $0 }'
+    } |
+        awk -F '\t' '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            function is_workspace(rid, cls) {
+                return rid ~ /(^|\/)workspace(_right|_grid)?$/ ||
+                    cls ~ /(^|\.)Workspace$/
+            }
+            function is_preview(rid, cls) {
+                return rid ~ /(^|\/)(widget_preview_container|widgets_list_header|widgets_catalog|widgets_search_bar|primary_widgets_list_view)$/ ||
+                    cls ~ /(WidgetCell|WidgetCellPreview|WidgetsListHeader|WidgetsBottomSheet|BaseWidgetSheet|AddItemWidgetsBottomSheet)/
+            }
+            function is_pending(cls) {
+                return cls ~ /PendingAppWidgetHostView/
+            }
+            {
+                kind = $1
+                rec = substr($0, index($0, "\t") + 1)
+                if (kind != last_kind) {
+                    sp = 0
+                    last_kind = kind
+                }
+                if (rec ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if (rec !~ /<node[[:space:]]/) next
+                rid = attr(rec, "resource-id")
+                cls = attr(rec, "class")
+                bounds = attr(rec, "bounds")
+                selfclose = (rec ~ /\/[[:space:]]*$/)
+                parent_ws = (sp > 0 ? stack_ws[sp] : 0)
+                parent_preview = (sp > 0 ? stack_preview[sp] : 0)
+                parent_host = (sp > 0 ? stack_host[sp] : 0)
+                ws = parent_ws || is_workspace(rid, cls)
+                preview = parent_preview || is_preview(rid, cls)
+                if (kind == "C" && ws) cur_saw_ws = 1
+                if (parent_host > 0) {
+                    if (rid ~ /(^|\/)nothingui_weather_value$/) host_value[parent_host] = 1
+                    if (rid ~ /(^|\/)nothingui_weather_detail$/) host_detail[parent_host] = 1
+                }
+                if (cls ~ /AppWidgetHostView/ &&
+                    bounds ~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/ &&
+                    !selfclose) {
+                    host_count++
+                    host = host_count
+                    host_bounds[host] = bounds
+                    host_ws[host] = ws
+                    host_preview[host] = preview
+                    host_pending[host] = is_pending(cls)
+                    if (kind == "R" && !preview && !is_pending(cls)) {
+                        seen[bounds] = 1
+                    }
+                }
+                if (!selfclose) {
+                    sp++
+                    stack_ws[sp] = ws
+                    stack_preview[sp] = preview
+                    stack_host[sp] = (cls ~ /AppWidgetHostView/ ? host : parent_host)
+                }
+            }
+            END {
+                chosen = ""
+                matches = 0
+                for (i = 1; i <= host_count; i++) {
+                    if (!host_value[i] || !host_detail[i]) continue
+                    if (host_preview[i] || host_pending[i]) continue
+                    if (host_bounds[i] in seen) continue
+                    if (cur_saw_ws && !host_ws[i]) continue
+                    matches++
+                    chosen = host_bounds[i]
+                }
+                if (matches != 1) exit
+                emit(chosen)
+            }
+        '
+)
+
 # Succeed only when a placed widget's bounds sit inside the workspace that is
 # actually visible on the page it was found on and do not overlap a launcher
 # header or the dock that is actually present there. The first-page header is
@@ -3452,6 +3683,36 @@ workspace_page_swipe() (
         next) printf '%s %s %s %s\n' "$right" "$y" "$left" "$y" ;;
         prev) printf '%s %s %s %s\n' "$left" "$y" "$right" "$y" ;;
     esac
+)
+
+# Succeed only when the new widget bounds do not overlap any other measured
+# AppWidgetHostView on the same page. Adjacent edges are not an overlap. The new
+# host's own record is ignored. Malformed input fails closed.
+home_widget_bounds_clear_of() (
+    xml=$1
+    new=$2
+    [ -s "$xml" ] || return 1
+    set -- $new
+    [ "$#" -eq 4 ] || return 1
+    nx1=$1
+    ny1=$2
+    nx2=$3
+    ny2=$4
+    for field in "$@"; do
+        case "$field" in '' | *[!0-9]*) return 1 ;; esac
+    done
+    [ "$nx1" -lt "$nx2" ] && [ "$ny1" -lt "$ny2" ] || return 1
+    ui_widget_host_bounds "$xml" |
+        awk -v nx1="$nx1" -v ny1="$ny1" -v nx2="$nx2" -v ny2="$ny2" '
+            {
+                if ($0 == nx1 " " ny1 " " nx2 " " ny2) next
+                if ($1 < nx2 && nx1 < $3 && $2 < ny2 && ny1 < $4) {
+                    overlap = 1
+                    exit
+                }
+            }
+            END { exit(overlap ? 1 : 0) }
+        '
 )
 
 # Print the bounds ("x1 y1 x2 y2") of every visible pending AppWidgetHostView
@@ -3713,6 +3974,70 @@ appwidget_launcher_instances() (
     host=$2
     [ -s "$dump" ] || return 0
     appwidget_new_providers '' "$dump" "$host" id
+)
+
+# Print "<numeric AppWidgetId><TAB><provider class>" only when exactly one widget
+# was newly bound between the two dumps, its host and provider package are both
+# the running package, and its provider class is exactly
+# app.dotwel.widgets.DotWelWeatherWidgetProvider. Zero records, multiple or mixed
+# records, a non-numeric id, a foreign package, the clock/battery/device
+# providers and class prefix/suffix lookalikes all print nothing and fail closed.
+weather_widget_new_binding() (
+    before=$1
+    after=$2
+    pkg=$3
+    [ -s "$after" ] || return 0
+    [ -n "$pkg" ] || return 0
+    appwidget_new_providers "$before" "$after" "$pkg" id |
+        awk -F '\t' -v pkg="$pkg" '
+            function provider_class(provider,    info, parts) {
+                if (provider !~ /^provider=ComponentInfo\{[^}]*\}$/) return ""
+                info = provider
+                sub(/^provider=ComponentInfo\{/, "", info)
+                sub(/\}$/, "", info)
+                if (split(info, parts, "/") != 2) return ""
+                if (parts[1] != pkg) return ""
+                return parts[2]
+            }
+            {
+                count++
+                if (NF != 2 || $1 !~ /^[0-9]+$/) {
+                    bad = 1
+                    next
+                }
+                class = provider_class($2)
+                if (class != "app.dotwel.widgets.DotWelWeatherWidgetProvider") {
+                    bad = 1
+                    next
+                }
+                id = $1
+                bound = class
+            }
+            END {
+                if (bad || count != 1) exit 0
+                print id "\t" bound
+            }
+        '
+)
+
+# Succeed only when every launcher-owned widget id present before the placement
+# is still present after it. Zero prior bindings is vacuously preserved; a
+# missing, malformed or empty after-dump fails closed. This proves the accepted
+# clock, battery, device and any third-party widget was not replaced or removed.
+appwidget_preserved_bindings() (
+    before=$1
+    after=$2
+    host=$3
+    [ -s "$after" ] || return 1
+    before_ids=$(appwidget_launcher_instances "$before" "$host" |
+        awk -F '\t' 'NF >= 1 && $1 != "" { print $1 }')
+    [ -n "$before_ids" ] || return 0
+    after_ids=$(appwidget_launcher_instances "$after" "$host" |
+        awk -F '\t' 'NF >= 1 && $1 != "" { print $1 }')
+    for id in $before_ids; do
+        printf '%s\n' "$after_ids" | grep -qx "$id" || return 1
+    done
+    return 0
 )
 
 # Print the last debug theme-refresh line for the given launcher activity that

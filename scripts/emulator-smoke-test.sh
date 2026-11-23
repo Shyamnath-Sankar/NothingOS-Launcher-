@@ -823,6 +823,72 @@ assert_eq 'a caption from another WidgetCell is never used for the selected prev
     '' \
     "$(widget_picker_selected_caption "$widget_caption_unrelated_xml" '60 460 500 860')"
 
+# A provider header can own several variants. The optional Weather cell must be
+# identified by its own exact widget_description, never by the header or by
+# position, so a Clock at the same row can never be tapped.
+widget_description_cells_xml="$TMP_DIR/widget-description-cells.xml"
+cat > "$widget_description_cells_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+      <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+      <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+    </node>
+    <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][500,860]" />
+      <node index="1" text="Dot matrix clock, opens clock settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][480,900]" />
+    </node>
+    <node index="2" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[580,460][1020,860]" />
+      <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[600,860][1000,900]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the exact Weather description selects its own measured preview' \
+    '580 460 1020 860' \
+    "$(widget_picker_description_preview_bounds "$widget_description_cells_xml" 'Weather, opens weather settings')"
+assert_eq 'a near-match Weather description is not accepted' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$widget_description_cells_xml" 'Weather')"
+assert_eq 'the Clock description never selects the Weather preview' \
+    '60 460 500 860' \
+    "$(widget_picker_description_preview_bounds "$widget_description_cells_xml" 'Dot matrix clock, opens clock settings')"
+
+widget_description_duplicate_xml="$TMP_DIR/widget-description-duplicate.xml"
+cat > "$widget_description_duplicate_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+    <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][480,900]" />
+  </node>
+  <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[580,460][1020,860]" />
+    <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[600,860][1000,900]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'two cells with the same Weather description fail closed' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$widget_description_duplicate_xml" 'Weather, opens weather settings')"
+
+widget_description_missing_xml="$TMP_DIR/widget-description-missing.xml"
+cat > "$widget_description_missing_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[60,460][500,860]" />
+    <node index="1" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[180,860][400,900]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Weather cell without an exposed description fails closed' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$widget_description_missing_xml" 'Weather, opens weather settings')"
+assert_eq 'an unknown widget description fails closed' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$widget_description_cells_xml" 'No such widget description')"
+
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
@@ -1017,6 +1083,177 @@ EOF
 assert_eq 'a host outside a workspace that is present is rejected' \
     '' \
     "$(home_widget_bounds "$compact_outside_ws_xml" "$home_xml")"
+
+# The optional Weather widget is identified by both of its own child ids inside
+# a new workspace host. A clock/battery host at another geometry, a Weather id
+# elsewhere on the page, a duplicate Weather host, a preview host and a host
+# already in the reference all fail closed.
+weather_home_ref_xml="$TMP_DIR/weather-home-ref.xml"
+cat > "$weather_home_ref_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[556,328][1042,738]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_home_placed_xml="$TMP_DIR/weather-home-placed.xml"
+cat > "$weather_home_placed_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[556,328][1042,738]" />
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,770][524,1170]">
+        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" class="android.widget.TextView" bounds="[60,790][300,850]" />
+        <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" class="android.widget.TextView" bounds="[60,860][420,900]" />
+        <node index="2" text="Provider not connected" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" class="android.widget.TextView" bounds="[60,910][420,950]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a new workspace host with both Weather child ids yields its measured bounds' \
+    '38 770 524 1170' \
+    "$(home_weather_widget_bounds "$weather_home_placed_xml" "$weather_home_ref_xml")"
+assert_eq 'the same Weather host already in the reference is not new' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_placed_xml" "$weather_home_placed_xml")"
+assert_eq 'a page without a Weather child yields no Weather host' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_ref_xml" "$weather_home_ref_xml")"
+
+weather_home_missing_detail_xml="$TMP_DIR/weather-home-missing-detail.xml"
+cat > "$weather_home_missing_detail_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[38,770][524,1170]">
+        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" class="android.widget.TextView" bounds="[60,790][300,850]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a host with only the Weather value id fails closed' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_missing_detail_xml" "$weather_home_ref_xml")"
+
+weather_home_outside_host_xml="$TMP_DIR/weather-home-outside-host.xml"
+cat > "$weather_home_outside_host_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" class="android.widget.TextView" bounds="[60,790][300,850]" />
+      <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" class="android.widget.TextView" bounds="[60,860][420,900]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'Weather ids outside any host do not prove a widget' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_outside_host_xml" "$weather_home_ref_xml")"
+
+weather_home_duplicate_xml="$TMP_DIR/weather-home-duplicate.xml"
+cat > "$weather_home_duplicate_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,300][1080,1375]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[38,770][524,1170]">
+        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[60,790][300,850]" />
+        <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[60,860][420,900]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[556,770][1042,1170]">
+        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[580,790][820,850]" />
+        <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[580,860][940,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'two new Weather hosts fail closed as ambiguous' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_duplicate_xml" "$weather_home_ref_xml")"
+
+weather_home_preview_xml="$TMP_DIR/weather-home-preview.xml"
+cat > "$weather_home_preview_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,360][500,660]">
+      <node index="0" text="" class="app.lawnchair.LawnchairAppWidgetHostView" bounds="[80,360][500,660]">
+        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[100,380][300,440]" />
+        <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[100,450][420,490]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Weather-looking host inside the picker preview is rejected' \
+    '' \
+    "$(home_weather_widget_bounds "$weather_home_preview_xml" "$weather_home_ref_xml")"
+
+assert_true 'the non-overlapping placed Weather host is clear of the existing hosts' \
+    home_widget_bounds_clear_of "$weather_home_placed_xml" '38 770 524 1170'
+assert_false 'a Weather host overlapping the clock host is rejected' \
+    home_widget_bounds_clear_of "$weather_home_ref_xml" '38 700 524 1100'
+assert_true 'adjacent Weather bounds do not count as overlap' \
+    home_widget_bounds_clear_of "$weather_home_ref_xml" '38 738 524 1138'
+
+weather_off_xml="$TMP_DIR/weather-off.xml"
+cat > "$weather_off_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="Weather off · tap to set up" content-desc="Weather off · tap to set up" clickable="true" bounds="[0,0][500,200]">
+    <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="Weather off · tap to set up" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the truthful disabled Weather copy is accepted as off' \
+    'off' \
+    "$(weather_widget_text_is_truthful "$weather_off_xml")"
+assert_eq 'the truthful not-connected Weather copy is accepted' \
+    'not_connected' \
+    "$(weather_widget_text_is_truthful "$weather_home_placed_xml")"
+
+weather_forecast_xml="$TMP_DIR/weather-forecast.xml"
+cat > "$weather_forecast_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="12°C" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+  <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+  <node index="2" text="Provider not connected" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+</hierarchy>
+EOF
+assert_eq 'a synthetic Weather temperature is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_forecast_xml")"
+
+weather_off_stale_xml="$TMP_DIR/weather-off-stale.xml"
+cat > "$weather_off_stale_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+  <node index="1" text="Weather off · tap to set up" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+  <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+</hierarchy>
+EOF
+assert_eq 'an off Weather tile with a fake update timestamp is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_off_stale_xml")"
+
+weather_not_connected_reason_xml="$TMP_DIR/weather-not-connected-reason.xml"
+cat > "$weather_not_connected_reason_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+  <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+  <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+</hierarchy>
+EOF
+assert_eq 'a not-connected Weather tile with an update timestamp is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_not_connected_reason_xml")"
 
 # CI147 regression: the pre-widget HOME already exposes the two own widgets.
 # After the third-party Calendar is added, both own hosts remain and the new
@@ -1590,6 +1827,96 @@ EOF
 assert_eq 'a non-numeric widget id is not accepted' \
     '' \
     "$(own_widget_new_binding "$own_bind_before" "$own_bind_non_numeric" "$own_bind_pkg")"
+
+# The optional Weather widget must be the one new binding, with the exact
+# Weather provider class. A clock, a mixed pair, a foreign package/host and a
+# lookalike class all fail closed, so the gate cannot pass on the accepted own
+# clock/battery/device widgets.
+weather_bind_ok="$TMP_DIR/weather-bind-ok.txt"
+cat > "$weather_bind_ok" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=12
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+EOF
+assert_eq 'exactly one newly bound Weather provider is accepted with its numeric id' \
+    "$(printf '12\tapp.dotwel.widgets.DotWelWeatherWidgetProvider')" \
+    "$(weather_widget_new_binding "$own_bind_before" "$weather_bind_ok" "$own_bind_pkg")"
+assert_eq 'a newly bound clock is not accepted as the Weather widget' \
+    '' \
+    "$(weather_widget_new_binding "$own_bind_before" "$own_bind_clock" "$own_bind_pkg")"
+assert_eq 'an unchanged dump has no new Weather binding' \
+    '' \
+    "$(weather_widget_new_binding "$weather_bind_ok" "$weather_bind_ok" "$own_bind_pkg")"
+
+weather_bind_two="$TMP_DIR/weather-bind-two.txt"
+cat > "$weather_bind_two" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=12
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+  [2] id=13
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}, profile:0}
+EOF
+assert_eq 'a Weather plus clock pair is rejected as multiple records' \
+    '' \
+    "$(weather_widget_new_binding "$own_bind_before" "$weather_bind_two" "$own_bind_pkg")"
+
+weather_bind_foreign="$TMP_DIR/weather-bind-foreign.txt"
+cat > "$weather_bind_foreign" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=12
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.fake/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+EOF
+assert_eq 'a foreign package Weather class is rejected' \
+    '' \
+    "$(weather_widget_new_binding "$own_bind_before" "$weather_bind_foreign" "$own_bind_pkg")"
+
+weather_bind_foreign_host="$TMP_DIR/weather-bind-foreign-host.txt"
+cat > "$weather_bind_foreign_host" <<'EOF'
+Widgets:
+  [0] id=1
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.example.one/.One}, profile:0}
+  [1] id=12
+    host=HostId{user:0, app:10301, hostId:1031, pkg:com.other.launcher}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+EOF
+assert_eq 'a Weather provider owned by another host is rejected' \
+    '' \
+    "$(weather_widget_new_binding "$own_bind_before" "$weather_bind_foreign_host" "$own_bind_pkg")"
+
+weather_bind_suffix="$TMP_DIR/weather-bind-suffix.txt"
+sed 's/DotWelWeatherWidgetProvider/DotWelWeatherWidgetProviderExtra/' \
+    "$weather_bind_ok" > "$weather_bind_suffix"
+assert_eq 'a Weather class suffix lookalike is rejected' \
+    '' \
+    "$(weather_widget_new_binding "$own_bind_before" "$weather_bind_suffix" "$own_bind_pkg")"
+
+assert_true 'every prior launcher binding survives the Weather placement' \
+    appwidget_preserved_bindings "$own_bind_before" "$weather_bind_ok" "$own_bind_pkg"
+assert_true 'all existing bindings survive when the before dump is empty' \
+    appwidget_preserved_bindings "$TMP_DIR/does-not-exist" "$weather_bind_ok" "$own_bind_pkg"
+weather_bind_replaced="$TMP_DIR/weather-bind-replaced.txt"
+cat > "$weather_bind_replaced" <<'EOF'
+Widgets:
+  [0] id=12
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+EOF
+assert_false 'a placement that dropped a prior binding is rejected' \
+    appwidget_preserved_bindings "$own_bind_before" "$weather_bind_replaced" "$own_bind_pkg"
 
 home_widgets_xml="$TMP_DIR/home-widgets.xml"
 cat > "$home_widgets_xml" <<'EOF'
