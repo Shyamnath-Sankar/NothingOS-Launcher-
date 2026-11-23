@@ -35,10 +35,17 @@ PROVENANCE="$ROOT/docs/wallpapers/README.md"
 BY_LICENSE="$ROOT/licenses/wallpapers/CC-BY-4.0.txt"
 ZERO_LICENSE="$ROOT/licenses/wallpapers/CC0-1.0.txt"
 SMOKE="$ROOT/scripts/emulator-smoke.sh"
+LIVE_SERVICE="$ROOT/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperService.kt"
+LIVE_POLICY="$ROOT/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperPolicy.kt"
+LIVE_META="$ROOT/play/res/xml/dotwel_dot_field_wallpaper.xml"
+LIVE_THUMB="$ROOT/play/res/drawable/dotwel_live_wallpaper_thumbnail.xml"
+PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
+LIVE_TEST="$ROOT/tests/unit/java/app/nothingui/wallpaper/DotFieldWallpaperPolicyTest.kt"
 
 for file in "$CATALOG" "$TARGET" "$APPLIER" "$UI" "$DASHBOARD" "$HOME_PREFS" \
     "$ROUTES" "$NAV" "$PNG" "$VECTOR" "$SOURCE_SVG" "$RECOLORED_SVG" \
-    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE"; do
+    "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE" "$LIVE_SERVICE" \
+    "$LIVE_POLICY" "$LIVE_META" "$LIVE_THUMB" "$PLAY_MANIFEST" "$LIVE_TEST"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -280,5 +287,107 @@ grep -Fq 'wallpaper_lock_preserved' "$SMOKE" ||
     fail "the smoke does not prove the lock wallpaper survived"
 grep -Fq 'wallpaper-home-after-' "$SMOKE" ||
     fail "the smoke does not capture HOME pixels after each explicit apply"
+
+# --- original live wallpaper: Play-only, BIND_WALLPAPER protected -----------
+#
+# The service is declared only in the Play overlay and is protected by the
+# platform BIND_WALLPAPER service permission. This must never become a
+# uses-permission and must not add any other manifest permission.
+
+grep -Fq 'android:name="app.nothingui.wallpaper.DotFieldWallpaperService"' "$PLAY_MANIFEST" ||
+    fail "the Play manifest does not declare the dot-field live wallpaper"
+grep -Fq 'android:permission="android.permission.BIND_WALLPAPER"' "$PLAY_MANIFEST" ||
+    fail "the live wallpaper service is not protected by BIND_WALLPAPER"
+grep -Fq 'android:name="android.service.wallpaper.WallpaperService"' "$PLAY_MANIFEST" ||
+    fail "the live wallpaper service has no WallpaperService action"
+grep -Fq 'android:name="android.service.wallpaper"' "$PLAY_MANIFEST" ||
+    fail "the live wallpaper service has no wallpaper metadata"
+grep -Fq 'android:resource="@xml/dotwel_dot_field_wallpaper"' "$PLAY_MANIFEST" ||
+    fail "the live wallpaper metadata resource is not linked"
+if grep -Eq 'uses-permission[^>]*BIND_WALLPAPER' "$PLAY_MANIFEST"; then
+    fail "BIND_WALLPAPER must stay a service protection, not a uses-permission"
+fi
+for denied in INTERNET ACCESS_NETWORK_STATE WAKE_LOCK SCHEDULE_EXACT_ALARM \
+    FOREGROUND_SERVICE RECORD_AUDIO CAMERA ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION; do
+    if grep -Eq "uses-permission[^>]*$denied" "$PLAY_MANIFEST"; then
+        fail "the live wallpaper added a forbidden uses-permission: $denied"
+    fi
+done
+
+grep -Fq 'android:thumbnail="@drawable/dotwel_live_wallpaper_thumbnail"' "$LIVE_META" ||
+    fail "the wallpaper metadata has no thumbnail"
+grep -Fq 'android:description="@string/dotwel_live_wallpaper_description"' "$LIVE_META" ||
+    fail "the wallpaper metadata has no description"
+if ! grep -Fq '<vector' "$LIVE_THUMB"; then
+    fail "the live wallpaper thumbnail is not a bundled vector"
+fi
+
+grep -Fq 'DEFAULT_FRAME_INTERVAL_MS: Long = 66L' "$LIVE_POLICY" ||
+    fail "the live wallpaper is not gated to ~15 fps"
+grep -Fq 'fun canDraw(): Boolean' "$LIVE_POLICY" ||
+    fail "the live wallpaper has no pure draw gate"
+grep -Fq 'onEngineDestroyed' "$LIVE_POLICY" ||
+    fail "the live wallpaper policy cannot become terminal"
+grep -Fq 'if (widthPx <= 0 || heightPx <= 0) return null' "$LIVE_POLICY" ||
+    fail "the live wallpaper geometry accepts an invalid surface"
+
+grep -Fq 'override fun onVisibilityChanged(visible: Boolean)' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not react to visibility"
+grep -Fq 'override fun onSurfaceDestroyed(holder: SurfaceHolder)' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not react to surface destruction"
+grep -Fq 'override fun onDestroy()' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not react to engine destruction"
+grep -Fq 'removeCallbacksAndMessages(null)' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not remove every queued draw callback"
+grep -Fq 'if (!policy.canDraw()) return' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not gate every posted frame"
+grep -Fq 'holder.surface.isValid' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not check the real surface"
+grep -Fq 'holder.surfaceFrame' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not derive its bounds from the SurfaceHolder frame"
+grep -Fq 'canvas.drawCircle' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not draw the dot field on canvas"
+grep -Fq 'Log.d(TAG, transition)' "$LIVE_SERVICE" ||
+    fail "the live wallpaper has no DEBUG-only transition trace"
+if grep -Eq 'setWallpaperComponent|WallpaperManager\.getInstance|bindService|Runtime\.getRuntime|ProcessBuilder' \
+    "$LIVE_SERVICE" "$UI"; then
+    fail "the live wallpaper or UI binds/overrides the wallpaper directly"
+fi
+if grep -Eq 'AlarmManager|WakeLock|LocationManager|SensorManager' "$LIVE_SERVICE"; then
+    fail "the live wallpaper must not use alarms, wake locks, location or sensors"
+fi
+if grep -Eq 'INTERNET|HttpURLConnection|OkHttp|java\.net' "$LIVE_SERVICE"; then
+    fail "the live wallpaper must not use the network"
+fi
+
+grep -Fq 'WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER' "$UI" ||
+    fail "the settings screen does not open the system live preview"
+grep -Fq 'WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT' "$UI" ||
+    fail "the settings screen does not name the live wallpaper component"
+grep -Fq 'ComponentName(context, DotFieldWallpaperService::class.java)' "$UI" ||
+    fail "the settings screen does not target the original live wallpaper"
+grep -Fq 'catch (notFound: ActivityNotFoundException)' "$UI" ||
+    fail "the live preview launch has no resolution failure feedback"
+grep -Fq 'dotwel_live_wallpaper_unavailable' "$UI" ||
+    fail "the live preview has no unavailable message"
+grep -Fq 'private fun openLiveWallpaperPreview(context: Context): Int?' "$UI" ||
+    fail "the live preview launch logic is not isolated"
+grep -Fq 'liveMessageRes' "$UI" ||
+    fail "the live preview has no failure feedback state"
+
+# The two static catalogue choices and all existing apply/Cancel guards stay.
+[ "$(grep -c 'AmoledWallpaper(' "$CATALOG")" -ge 3 ] ||
+    fail "the static catalogue no longer declares both wallpapers"
+grep -Fq 'dotwel_wallpaper_cancel_preview' "$UI" ||
+    fail "the static Cancel preview guard was removed"
+
+for test_case in \
+    'aFreshEngineDrawsNothing' \
+    'zeroOrNegativeSurfaceDimensionsStayInvalid' \
+    'surfaceDestroyOrEngineDestroyStopsEveryFutureFrame' \
+    'theFrameCadenceIsAboutFifteenFpsAndNeverZero'; do
+    grep -Fq "fun $test_case" "$LIVE_TEST" ||
+        fail "the live wallpaper policy test is missing $test_case"
+done
 
 printf 'nothingui-wallpaper-guard: OK\n'

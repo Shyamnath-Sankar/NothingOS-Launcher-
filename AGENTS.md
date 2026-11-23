@@ -198,6 +198,13 @@ or it is not done.
 - **Do not add:** `MANAGE_EXTERNAL_STORAGE`, `SYSTEM_ALERT_WINDOW`,
   `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `READ_MEDIA_IMAGES`, `READ_SMS`, `READ_CALL_LOG`.
 - **Wallpaper picking** uses the system Photo Picker / `ACTION_GET_CONTENT`; `SET_WALLPAPER` is fine.
+- **Play-only live wallpaper:** the original dot-field `WallpaperService` is declared only in
+  `play/AndroidManifest.xml`, protected by the platform `android.permission.BIND_WALLPAPER` service
+  permission (never a `uses-permission`) with the `android.service.wallpaper.WallpaperService`
+  action. It adds no user-granted permission and no wider access. It is reached only through an
+  explicit preview action in the Play AMOLED settings that starts the system
+  `ACTION_CHANGE_LIVE_WALLPAPER` flow; the system preview and confirmation own selection, and the
+  app never calls `setWallpaperComponent`.
 - **Default home:** `RoleManager.ROLE_HOME`, user-initiated, no fake system dialogs, changes reversible.
 - **Android 15+ Private Space:** declare `ACCESS_HIDDEN_PROFILES` and implement profile containers;
   never show locked-profile apps in search or recents.
