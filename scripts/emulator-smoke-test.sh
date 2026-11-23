@@ -4160,6 +4160,18 @@ assert_eq 'a later sibling label does not shift latitude to longitude' \
     '40 450 1040 550|10.0000' \
     "$(ui_labelled_edit_text_state "$weather_sibling_xml" 'Longitude')"
 
+weather_duplicate_label_xml="$TMP_DIR/weather-duplicate-label.xml"
+cat > "$weather_duplicate_label_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="60.0000" content-desc="Latitude" bounds="[40,320][1040,420]">
+    <node index="0" class="android.widget.TextView" text="Latitude" bounds="[60,330][200,370]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the same label exposed twice for one field still associates that field' \
+    '40 320 1040 420|60.0000' \
+    "$(ui_labelled_edit_text_state "$weather_duplicate_label_xml" 'Latitude')"
+
 weather_duplicate_field_xml="$TMP_DIR/weather-duplicate-field.xml"
 cat > "$weather_duplicate_field_xml" <<'EOF'
 <hierarchy rotation="0">

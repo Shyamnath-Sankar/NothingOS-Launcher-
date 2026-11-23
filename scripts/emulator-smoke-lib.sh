@@ -1805,29 +1805,32 @@ ui_labelled_edit_text_state() (
                         label_idx[label_count] = i
                     }
                 }
-                if (label_count != 1) exit
-                L = label_idx[1]
-                for (e = 1; e <= n; e++) {
-                    if (cls[e] != "android.widget.EditText") continue
-                    if (!valid(bnd[e])) continue
-                    matched = 0
-                    if (txt[e] == label || desc[e] == label) matched = 1
-                    if (!matched && depth[L] > depth[e] && L > e && L <= end[e]) matched = 1
-                    if (!matched && depth[L] < depth[e] && L < e && e <= end[L]) matched = 1
-                    if (!matched && cls[L] != "android.widget.EditText" &&
-                        depth[L] == depth[e] && L < e && end[L] < e) {
-                        between = 0
-                        for (m = L + 1; m < e; m++) {
-                            if (cls[m] == "android.widget.EditText" && depth[m] == depth[e]) {
-                                between = 1
-                                break
+                if (label_count == 0) exit
+                for (li = 1; li <= label_count; li++) {
+                    L = label_idx[li]
+                    for (e = 1; e <= n; e++) {
+                        if (cls[e] != "android.widget.EditText") continue
+                        if (!valid(bnd[e])) continue
+                        matched = 0
+                        if (txt[e] == label || desc[e] == label) matched = 1
+                        if (!matched && depth[L] > depth[e] && L > e && L <= end[e]) matched = 1
+                        if (!matched && depth[L] < depth[e] && L < e && e <= end[L]) matched = 1
+                        if (!matched && cls[L] != "android.widget.EditText" &&
+                            depth[L] == depth[e] && L < e && end[L] < e) {
+                            between = 0
+                            for (m = L + 1; m < e; m++) {
+                                if (cls[m] == "android.widget.EditText" && depth[m] == depth[e]) {
+                                    between = 1
+                                    break
+                                }
                             }
+                            if (!between) matched = 1
                         }
-                        if (!between) matched = 1
-                    }
-                    if (matched) {
-                        match_count++
-                        match_e = e
+                        if (matched && !(e in seen_e)) {
+                            seen_e[e] = 1
+                            match_count++
+                            match_e = e
+                        }
                     }
                 }
                 if (match_count != 1) exit
@@ -2079,19 +2082,20 @@ weather_consent_state() (
 )
 
 # Succeed only when the hierarchy is the real WeatherPreferences destination:
-# the unique privacy heading, the unique Terms link, a unique Location label and
-# a unique Latitude field must all be present. A Save/Disable control, a
-# Longitude field or any controls below the fold are deliberately NOT required,
-# because those legitimately sit outside the initial viewport. The Weather
-# heading is only required to be present (the top app bar and the group heading
-# can both legitimately carry it).
+# the unique privacy heading and the unique Terms link must be present, together
+# with a Location label and a Latitude field. A Save/Disable control, a Longitude
+# field or any controls below the fold are deliberately NOT required, because
+# those legitimately sit outside the initial viewport. The heading and field
+# labels are checked for presence rather than uniqueness: one label can be
+# exposed both as a Text node and as a field semantic, and the Weather heading
+# can legitimately appear in both the top app bar and the group.
 weather_settings_screen_identity() (
     xml=${1:-}
     [ -s "$xml" ] || return 1
     [ -n "$(ui_unique_label_bounds "$xml" 'Before you enable')" ] || return 1
     [ -n "$(ui_unique_label_bounds "$xml" 'Terms of Service')" ] || return 1
-    [ -n "$(ui_unique_label_bounds "$xml" 'Location label')" ] || return 1
-    [ -n "$(ui_unique_label_bounds "$xml" 'Latitude')" ] || return 1
+    ui_label_present "$xml" 'Location label' || return 1
+    ui_label_present "$xml" 'Latitude' || return 1
     ui_label_present "$xml" 'Weather' || return 1
     return 0
 )
