@@ -48,13 +48,28 @@ interface WeatherCacheStore {
     fun write(entry: WeatherCacheEntry): Boolean
 }
 
-class InMemoryWeatherCacheStore : WeatherCacheStore {
+/**
+ * The opt-out capability. Disabling weather removes only the selected
+ * location's forecast cache; it must never touch the global provider throttle
+ * floor, which belongs to a different store.
+ */
+interface ClearableWeatherCacheStore : WeatherCacheStore {
+    /** @return true when no cache entry for [locationKey] remains. */
+    fun clear(locationKey: String): Boolean
+}
+
+class InMemoryWeatherCacheStore : ClearableWeatherCacheStore {
     private val entries = ConcurrentHashMap<String, WeatherCacheEntry>()
 
     override fun read(locationKey: String): WeatherCacheEntry? = entries[locationKey]
 
     override fun write(entry: WeatherCacheEntry): Boolean {
         entries[entry.locationKey] = entry
+        return true
+    }
+
+    override fun clear(locationKey: String): Boolean {
+        entries.remove(locationKey)
         return true
     }
 }
@@ -71,7 +86,7 @@ class InMemoryWeatherCacheStore : WeatherCacheStore {
 class FileWeatherCacheStore(
     private val directory: File,
     private val maxFileBytes: Long = MAX_FILE_BYTES,
-) : WeatherCacheStore {
+) : ClearableWeatherCacheStore {
     override fun read(locationKey: String): WeatherCacheEntry? {
         if (!isValidKey(locationKey)) return null
         return runCatching {
@@ -104,6 +119,14 @@ class FileWeatherCacheStore(
             } finally {
                 if (temporary.exists()) temporary.delete()
             }
+        }.getOrDefault(false)
+    }
+
+    override fun clear(locationKey: String): Boolean {
+        if (!isValidKey(locationKey)) return false
+        return runCatching {
+            val file = fileFor(locationKey)
+            !file.exists() || file.delete()
         }.getOrDefault(false)
     }
 

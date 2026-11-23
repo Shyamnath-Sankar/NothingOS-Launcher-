@@ -135,6 +135,55 @@ class FileWeatherCacheStoreTest {
     }
 
     @Test
+    fun clearingOneLocationRemovesOnlyThatEntry() {
+        withDirectory { directory ->
+            val store = FileWeatherCacheStore(directory)
+            val other = "48.8566,2.3522"
+            assertTrue(store.write(entry()))
+            assertTrue(store.write(entry(locationKey = other)))
+
+            assertTrue(store.clear(key))
+
+            assertNull(store.read(key))
+            assertTrue(store.read(other) != null)
+        }
+    }
+
+    @Test
+    fun clearingAnAbsentEntrySucceeds() {
+        withDirectory { directory ->
+            val store = FileWeatherCacheStore(directory)
+
+            assertTrue(store.clear(key))
+            assertTrue(store.clear(key))
+        }
+    }
+
+    @Test
+    fun clearingAnInvalidKeyIsRejected() {
+        withDirectory { directory ->
+            val store = FileWeatherCacheStore(directory)
+
+            assertFalse(store.clear(""))
+            assertFalse(store.clear("line\nbreak"))
+            assertFalse(store.clear("x".repeat(257)))
+        }
+    }
+
+    @Test
+    fun anInMemoryStoreAlsoForgetsAClearedLocation() {
+        val store = InMemoryWeatherCacheStore()
+        val other = "48.8566,2.3522"
+        store.write(entry())
+        store.write(entry(locationKey = other))
+
+        assertTrue(store.clear(key))
+
+        assertNull(store.read(key))
+        assertTrue(store.read(other) != null)
+    }
+
+    @Test
     fun aReadFailureDoesNotThrow() {
         withDirectory { directory ->
             val store = FileWeatherCacheStore(directory)
@@ -167,8 +216,9 @@ class FileWeatherCacheStoreTest {
     private fun entry(
         body: String = """{"properties":{"timeseries":[]}}""",
         revalidatedAt: Instant? = null,
+        locationKey: String = key,
     ): WeatherCacheEntry = WeatherCacheEntry(
-        locationKey = key,
+        locationKey = locationKey,
         body = body,
         retrievedAt = retrievedAt,
         expiresAt = retrievedAt.plusSeconds(14_400),
