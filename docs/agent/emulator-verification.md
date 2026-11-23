@@ -45,8 +45,12 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   unsaved; consent plus `60.0000,10.0000` writes only the `no_backup/dotwel-weather-private` store;
   a restart reloads the label, coordinates and enabled state; and Disable removes a seeded synthetic
   `.weather` cache fixture and stays disabled after another restart. It dismisses a shown IME before
-  measuring, scrolls only inside the measured settings container, and keeps `weather-*.xml`/`.png`
-  plus app-private consent JSON evidence. It never opens a provider link, makes a network/API call,
+  measuring, identifies the destination from the unique privacy heading and field labels without
+  requiring an offscreen Save/Disable control, associates fields by their stable labels rather than
+  visible order, scrolls both ways only inside the measured settings container from the measured
+  target direction, clears any measured leftover draft before typing, retains a PNG for every screen
+  probe including timeout/failure, and keeps `weather-*.xml`/`.png` plus app-private consent JSON
+  evidence. It never opens a provider link, makes a network/API call,
   requests a location permission, writes a workspace item or seeds launcher data. The seeded
   `.weather` file is a synthetic cache-clear fixture, not forecast data
 - then exercises the three real device-card Settings pills (`nothingui_device_wifi`,

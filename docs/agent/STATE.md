@@ -3,33 +3,72 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **WeatherPreferences unresolved-import fix committed as `615dbf5`, PENDING CI.**
-  CI239 proved `app.lawnchair.theme.LawnchairTheme` did not resolve at line 50 (cascades at
-  410/444); the import is now the correct `app.lawnchair.ui.theme.LawnchairTheme`, kept alphabetical.
-  This is the only app-source change. Prior weather fail-closed work on `5e70fcf` is unchanged. The
-  Compose `LocationFields`
-  multiple-emitter finding is fixed by emitting through one `Column`. Weather settings now syncs the
-  loaded persisted consent to the observer, keeps a failed or conflicted disable fail-closed with an
-  honest unconfirmed-revocation retry, and never re-enables the session on a revoke conflict. Session
-  results are delivered under the transition lock with a controller-owned monotonic generation
-  (overflow fails closed). The consent CAS requires a strictly increasing generation and refuses an
-  enable over a corrupt record. Privacy/UI copy now states that this version stores consent only and
-  makes no network request or forecast yet.
+- current_phase: **Weather smoke false negative fixed for screen detection; helper/fixtures and
+  wiring committed, PENDING NEW RUNTIME.** CI243 compile/style/units were green (weather tests 132)
+  but runtime failed `_weather_wait_screen fresh`: its 10 real XML captures showed the Weather
+  destination with the privacy heading, Terms/Source/License links, Weather heading, `Location
+  label` and a clipped `Latitude`, while Save/Enable was below the fold. The wait now identifies the
+  screen from that unique destination/privacy/field evidence without demanding an offscreen button,
+  saves a PNG for every probe plus a timeout/failure PNG, associates the three fields by stable
+  labels (own semantics, descendant/ancestor, preceding sibling) instead of visible EditText index,
+  chooses measured up/down scrolling from the target rectangle vs measured viewport, clears any
+  measured existing draft before typing, and leaves every later consent/enable/restart/disable/
+  cache/prefs/no-backup assertion intact.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `615dbf5` (`fix(weather): import LawnchairTheme from app.lawnchair.ui.theme`) on top of
-  `5e70fcf` and checkpoint `23759f4`.
+- head: `c4ad8e9` (`fix(smoke): detect weather screen without offscreen buttons and key fields by
+  label`) on top of helper/fixture commit `e9becce`, checkpoint `ed4e9e2` and the earlier weather work.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **not queried in this offline run; `615dbf5` is PENDING CI.** CI239 proved the unresolved
-  `LawnchairTheme` import at line 50 (cascades at 410/444) and is the reason for this one-line fix.
-  CI228's earlier full-green result is historical, not evidence for this commit.
-- next: the next API 37 CI must compile the real Compose screen with the repository ktlint
-  1.8.0 + compose 0.6.8 rules, run the weather JVM tests, and keep the Play build, unit, slider,
-  binding, wallpaper and drawer gates green. A later phase still owns the visible HOME lifecycle
-  hookup, the network repository wiring and pixels; weather stays unwired and no live MET request
-  was made here. Release, hosting and merge stay paused; PrivateSpace, settings-roundtrip, non-Play,
-  large-screen and performance audits stay open.
+- ci: **actual CI241 was green (compile/style/units, 132 weather tests) and CI243 compile/style/units
+  were also green, but CI243's runtime failed screen detection.** No new CI or runtime result exists
+  for `c4ad8e9`; the new runtime is PENDING and must be the evidence, not these shell fixtures.
+- next: the next API 37 CI must show `_weather_wait_screen` succeeding on the real Weather screen,
+  then exercise the unchanged fresh/invalid/no-consent/draft-reset/enable/reload/disable/restart
+  assertions with the label-keyed fields, measured both-way scrolling and per-probe PNGs. Release,
+  hosting and merge stay paused; visible HOME lifecycle/network wiring, PrivateSpace, settings
+  round-trip, non-Play, large-screen and performance audits stay open.
 
-## done (this run — WeatherPreferences unresolved-import fix, PENDING CI)
+## done (this run — CI243 Weather screen false negative, PENDING NEW RUNTIME)
+
+- **Exact CI243 false negative:** compile/style/units were green, but `_weather_wait_screen fresh`
+  failed. The 10 real `weather-fresh-screen-1..10` XML captures showed the Weather destination
+  (`Before you enable`, privacy paragraphs, Terms/Source/License, Weather heading, `Location label`
+  at `[126,1636][407,1699]`, clipped `Latitude` at `[126,1826][290,1889]`) while `Save and enable`
+  was offscreen. The old detector required the privacy notice AND Save/Disable in the same initial
+  viewport, so it never scrolled and failed on a real screen.
+- **Screen identity:** new pure `weather_settings_screen_identity` requires the unique privacy
+  heading, unique Terms link, unique `Location label`, unique `Latitude` and a present Weather
+  heading. It deliberately does not require Save, Disable, Longitude or any below-fold control. The
+  wait now captures a screenshot before every XML probe and a `screen-failure.png` on timeout.
+- **Field association:** new `ui_labelled_edit_text_state` associates an `android.widget.EditText`
+  with its stable label (own text/content-description, descendant label, ancestor label, or
+  immediately preceding non-EditText sibling) and returns the current draft. Missing, duplicate or
+  ambiguous labels print nothing, so `_weather_measure_field` never keys a field by visible document
+  order. `_weather_type` clears an existing measured draft with an exact number of DEL keys and
+  verifies the field is empty before typing, so re-entry cannot append duplicate text.
+- **Both-direction measured scroll:** `weather_target_scroll_direction` chooses `up`/`down` from the
+  measured target rectangle vs the measured viewport (fully or partly above => up, below => down);
+  `_weather_scroll_band` keeps the swipe inside the strict-or-known measured container. The bounded
+  loop tries the exact direction first, then a second measured pass for a target absent from the
+  hierarchy, so a re-entered screen at its end can still reach an earlier field. No coordinate is
+  guessed.
+- **Preserved assertions:** the later fresh/invalid/no-consent/draft-reset/enable/reload/disable/
+  restart checks, cache-clear seed, app-private consent store, no-backup prefs boundary and final
+  disabled state are unchanged. The `Disable and clear location`, enabled message and disabled
+  message checks are untouched.
+- **No app change:** no Kotlin/Compose/app UI behavior, manifest, permission, SDK, applicationId,
+  workflow, dependency, network/provider, Home lifecycle, private-widget, merge, release or hosting
+  change. Only the two smoke scripts and this evidence doc/STATE changed.
+- **Verification actually run (shell only; no Gradle, Android build or emulator):**
+  `sh scripts/emulator-smoke-test.sh` **all passed (829 ok)**, including new fixtures for the
+  initial privacy screen without Save/Enable, clipped `Latitude`, populated label association,
+  duplicate-label failure, up/down direction and the upward measured scroll band; `sh -n` is clean
+  on all three edited scripts; `git diff --check` is clean.
+- **Missing evidence / not claimed:** no new runtime proof, screenshot, APK or CI result for
+  `c4ad8e9`. The helper fixtures are not evidence that the real screen was detected; the next CI
+  runtime must prove it. CI241 green, CI243's green compile/style/units and its 132 weather tests
+  are historical facts, not proof of this fix.
+
+## done (previous run — WeatherPreferences unresolved-import fix, PENDING CI)
 
 - **Exact CI239 finding:** `WeatherPreferences.kt` imported `app.lawnchair.theme.LawnchairTheme`,
   which does not exist, producing an unresolved reference at line 50 with cascades at 410/444.
@@ -120,7 +159,7 @@ when no task input is given, and continues from "next".
   tests, and no CI result for `e218504` yet. `check-style` green and the whole pipeline green are
   not claimed until the next CI report.
 
-## done (this run — stalled-body cancellation and throttle-store safety, PENDING CI)
+## done (previous run — stalled-body cancellation and throttle-store safety, PENDING CI)
 
 - **Transport root cause:** `Call.await()` resumed the coroutine when headers arrived, so `get` then
   called the blocking bounded body read on the caller's context (possibly Main). The
