@@ -3241,15 +3241,16 @@ assert_false 'a preview without a measured action fails closed' \
 assert_false 'an empty capture is not a preview' \
     live_wallpaper_preview_is_ready "$TMP_DIR/live-preview-missing.xml"
 
-# Transition-only log evidence: visibility/surface lines prove a bound engine;
-# hidden-only, empty and unrelated logs fail closed.
+# Transition-only log evidence: only a fresh visibility=true line for this
+# engine proves it became visible. Surface creation alone, hidden-only, empty
+# and unrelated logs fail closed.
 live_log_visible="$TMP_DIR/live-log-visible.txt"
 printf 'D/DotFieldWallpaper( 123): visibility=true\n' > "$live_log_visible"
 assert_true 'a visibility transition proves the engine became visible' \
     live_wallpaper_became_visible "$live_log_visible"
 live_log_surface="$TMP_DIR/live-log-surface.txt"
 printf 'D/DotFieldWallpaper( 123): surface=created 1080x2400\n' > "$live_log_surface"
-assert_true 'a surface creation proves the engine rendered' \
+assert_false 'surface creation alone is not a visible engine' \
     live_wallpaper_became_visible "$live_log_surface"
 live_log_hidden="$TMP_DIR/live-log-hidden.txt"
 printf 'D/DotFieldWallpaper( 123): visibility=false\n' > "$live_log_hidden"
@@ -3261,6 +3262,45 @@ live_log_unrelated="$TMP_DIR/live-log-unrelated.txt"
 printf 'D/Other( 123): visibility=true\n' > "$live_log_unrelated"
 assert_false 'an unrelated log fails closed' \
     live_wallpaper_became_visible "$live_log_unrelated"
+
+# Preview-only boundary: the pre-preview baseline is captured read-only and the
+# fresh evidence is only the appended tail. A stale visibility line in the
+# baseline, a missing baseline and a rotated buffer all fail closed.
+live_log_baseline="$TMP_DIR/live-log-baseline.txt"
+cat > "$live_log_baseline" <<'EOF'
+D/DotFieldWallpaper( 123): visibility=true posted=1 drawn=0 pending=false drawing=false
+I/ActivityManager( 500): stale shared buffer line
+EOF
+live_log_full="$TMP_DIR/live-log-full.txt"
+cp "$live_log_baseline" "$live_log_full"
+printf 'D/DotFieldWallpaper( 123): visibility=true posted=2 drawn=1 pending=true drawing=false\n' \
+    >> "$live_log_full"
+live_log_preview="$TMP_DIR/live-log-preview.txt"
+assert_true 'the baseline boundary isolates only the appended tail' \
+    live_wallpaper_preview_log_after "$live_log_baseline" "$live_log_full" "$live_log_preview"
+assert_false 'the stale pre-preview visibility line is not in the fresh slice' \
+    grep -Fq 'drawn=0' "$live_log_preview"
+assert_true 'the fresh appended visibility line is accepted' \
+    live_wallpaper_became_visible "$live_log_preview"
+
+live_log_stale_full="$TMP_DIR/live-log-stale-full.txt"
+cp "$live_log_baseline" "$live_log_stale_full"
+printf 'I/ActivityManager( 500): no new engine transition yet\n' >> "$live_log_stale_full"
+live_log_stale_preview="$TMP_DIR/live-log-stale-preview.txt"
+assert_true 'the boundary still isolates the appended tail without a transition' \
+    live_wallpaper_preview_log_after "$live_log_baseline" "$live_log_stale_full" \
+    "$live_log_stale_preview"
+assert_false 'a stale pre-preview visibility line cannot prove a fresh preview' \
+    live_wallpaper_became_visible "$live_log_stale_preview"
+
+live_log_rotated="$TMP_DIR/live-log-rotated.txt"
+sed '1d' "$live_log_full" > "$live_log_rotated"
+assert_false 'a rotated buffer without an exact prefix boundary fails closed' \
+    live_wallpaper_preview_log_after "$live_log_baseline" "$live_log_rotated" \
+    "$TMP_DIR/live-log-rotated-preview.txt"
+assert_false 'a missing baseline fails closed' \
+    live_wallpaper_preview_log_after "$TMP_DIR/live-log-no-baseline.txt" "$live_log_full" \
+    "$TMP_DIR/live-log-no-baseline-preview.txt"
 
 # Source wiring: measure the action, open the platform preview, retain pixels
 # and transition logs, then require Back to leave the IDs unchanged.
@@ -3274,10 +3314,69 @@ assert_true 'the live preview pixels are retained' \
     grep -Fq 'live-wallpaper-preview.png' "$live_body"
 assert_true 'the engine transition log is required' \
     grep -Fq 'live_wallpaper_became_visible' "$live_body"
+assert_false 'the preview phase never clears the shared logcat buffer' \
+    grep -Fq 'logcat -c' "$live_body"
+assert_true 'the preview keeps a read-only pre-tap logcat baseline' \
+    grep -Fq 'live-wallpaper-logcat-before.txt' "$live_body"
+assert_true 'the preview evidence is sliced after the baseline boundary' \
+    grep -Fq 'live_wallpaper_preview_log_after' "$live_body"
+assert_true 'visibility is proven from the fresh preview-only slice' \
+    grep -Fq 'live-wallpaper-logcat-preview.txt' "$live_body"
 assert_true 'Cancel/Back must leave the wallpaper IDs unchanged' \
     grep -Fq '_cpl_ids_after' "$live_body"
 assert_true 'the live preview is exercised by the gallery capture' \
     grep -Fq '_cwg_preview_live_wallpaper' "$SMOKE"
+
+# Focused structure regression for the frame protocol. This checks the exact
+# lock placement (not concurrency behaviour): gate+enqueue share one lock,
+# teardown removes queued callbacks and waits for an in-flight draw, and the
+# draw publishes completion under the same lock before requesting another.
+SERVICE="$ROOT_DIR/lawnchair/src/app/nothingui/wallpaper/DotFieldWallpaperService.kt"
+assert_true 'the frame service has one engine lock' \
+    grep -Fq 'private val lock = ReentrantLock()' "$SERVICE"
+request_body="$TMP_DIR/dot-field-request.txt"
+sed -n '/private fun requestFrame(immediate: Boolean)/,/^        }$/p' "$SERVICE" > "$request_body"
+assert_true 'requestFrame gates under the engine lock' \
+    grep -Fq 'lock.withLock' "$request_body"
+assert_true 'requestFrame gates on the pure policy under that lock' \
+    grep -Fq 'if (!policy.canDraw()) return' "$request_body"
+assert_true 'requestFrame marks the frame pending under that lock' \
+    grep -Fq 'framePending = true' "$request_body"
+assert_true 'requestFrame enqueues under the same lock' \
+    grep -Fq 'handler.post' "$request_body"
+cancel_body="$TMP_DIR/dot-field-cancel.txt"
+sed -n '/private fun cancelAndAwaitIdle()/,/^        }$/p' "$SERVICE" > "$cancel_body"
+assert_true 'teardown removes every queued callback under the lock' \
+    grep -Fq 'removeCallbacksAndMessages(null)' "$cancel_body"
+assert_true 'teardown waits for an in-flight draw' \
+    grep -Fq 'while (drawing)' "$cancel_body"
+assert_true 'teardown awaits the idle condition so the worker can finish' \
+    grep -Fq 'idle.await()' "$cancel_body"
+assert_false 'the service no longer has an unsynchronized stopFrames helper' \
+    grep -Fq 'private fun stopFrames' "$SERVICE"
+assert_true 'visibility false uses the cancel-and-await protocol' \
+    sed -n '/override fun onVisibilityChanged/,/^        }$/p' "$SERVICE" |
+    grep -Fq 'cancelAndAwaitIdle()'
+assert_true 'surface destruction uses the cancel-and-await protocol' \
+    sed -n '/override fun onSurfaceDestroyed/,/^        }$/p' "$SERVICE" |
+    grep -Fq 'cancelAndAwaitIdle()'
+assert_true 'engine destruction uses the cancel-and-await protocol' \
+    sed -n '/override fun onDestroy()/,/^        }$/p' "$SERVICE" |
+    grep -Fq 'cancelAndAwaitIdle()'
+draw_body="$TMP_DIR/dot-field-draw.txt"
+sed -n '/private fun drawFrame()/,/^        }$/p' "$SERVICE" > "$draw_body"
+assert_true 'the draw separates the locked begin-frame gate' \
+    grep -Fq 'private fun beginFrame(): Boolean' "$SERVICE"
+finish_body="$TMP_DIR/dot-field-finish.txt"
+sed -n '/private fun finishFrame(drew: Boolean)/,/^        }$/p' "$SERVICE" > "$finish_body"
+assert_true 'the draw clears in-flight under the lock' \
+    grep -Fq 'drawing = false' "$finish_body"
+assert_true 'the draw notifies a waiting teardown under the lock' \
+    grep -Fq 'idle.signalAll()' "$finish_body"
+assert_true 'transition logs carry cumulative posted/drawn counters' \
+    grep -Fq 'posted=$postedFrames drawn=$drawnFrames' "$SERVICE"
+assert_false 'the frame draw never logs per frame' \
+    grep -Fq 'logTransition' "$draw_body"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

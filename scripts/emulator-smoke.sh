@@ -2431,7 +2431,10 @@ _cwg_preview_live_wallpaper() {
         fail "could not reveal the live wallpaper preview action"
     [ -n "$_cpl_control" ] ||
         fail "the live wallpaper preview action has no measured bounds"
-    adb_cmd logcat -c >/dev/null 2>&1 || true
+    # Read-only baseline: never clear the shared logcat buffer, so every earlier
+    # crash/ANR line stays available to the final logcat checks. Only the appends
+    # after this baseline may prove the fresh preview engine.
+    adb_cmd logcat -d > "$ARTIFACTS/live-wallpaper-logcat-before.txt" 2>&1 || true
     tap_center_of_bounds "$_cpl_control"
 
     _cpl_ready=
@@ -2454,8 +2457,13 @@ _cwg_preview_live_wallpaper() {
 
     adb_cmd shell dumpsys wallpaper > "$ARTIFACTS/live-wallpaper-dumpsys.txt" 2>&1 || true
     adb_cmd logcat -d > "$ARTIFACTS/live-wallpaper-logcat.txt" 2>&1 || true
-    live_wallpaper_became_visible "$ARTIFACTS/live-wallpaper-logcat.txt" ||
-        fail "the live wallpaper engine never logged a visible surface"
+    live_wallpaper_preview_log_after \
+        "$ARTIFACTS/live-wallpaper-logcat-before.txt" \
+        "$ARTIFACTS/live-wallpaper-logcat.txt" \
+        "$ARTIFACTS/live-wallpaper-logcat-preview.txt" ||
+        fail "could not isolate the fresh post-preview live-wallpaper log"
+    live_wallpaper_became_visible "$ARTIFACTS/live-wallpaper-logcat-preview.txt" ||
+        fail "the live wallpaper engine never logged a fresh visible transition"
 
     adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 ||
         fail "could not leave the system live-wallpaper preview"

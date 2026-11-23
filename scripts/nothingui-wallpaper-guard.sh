@@ -341,14 +341,33 @@ grep -Fq 'removeCallbacksAndMessages(null)' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not remove every queued draw callback"
 grep -Fq 'if (!policy.canDraw()) return' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not gate every posted frame"
+grep -Fq 'if (framePending || drawing) return' "$LIVE_SERVICE" ||
+    fail "the live wallpaper can enqueue a duplicate frame"
+grep -Fq 'private fun cancelAndAwaitIdle()' "$LIVE_SERVICE" ||
+    fail "the live wallpaper has no cancel-and-await teardown"
+grep -Fq 'while (drawing)' "$LIVE_SERVICE" ||
+    fail "teardown can return while a frame is still drawing"
+grep -Fq 'idle.await()' "$LIVE_SERVICE" ||
+    fail "teardown does not release the lock while waiting for the draw"
+grep -Fq 'idle.signalAll()' "$LIVE_SERVICE" ||
+    fail "the draw does not publish completion to a waiting teardown"
+grep -Fq 'posted=$postedFrames drawn=$drawnFrames' "$LIVE_SERVICE" ||
+    fail "the transition trace does not expose frame counters"
 grep -Fq 'holder.surface.isValid' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not check the real surface"
 grep -Fq 'holder.surfaceFrame' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not derive its bounds from the SurfaceHolder frame"
 grep -Fq 'canvas.drawCircle' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not draw the dot field on canvas"
-grep -Fq 'Log.d(TAG, transition)' "$LIVE_SERVICE" ||
+grep -Fq 'Log.d(TAG, "$transition $counters")' "$LIVE_SERVICE" ||
     fail "the live wallpaper has no DEBUG-only transition trace"
+
+# The preview phase must never clear the shared log buffer; it keeps a
+# read-only baseline and isolates only the appended tail.
+grep -Fq 'live-wallpaper-logcat-before.txt' "$SMOKE" ||
+    fail "the preview phase has no read-only logcat baseline"
+grep -Fq 'live_wallpaper_preview_log_after' "$SMOKE" ||
+    fail "the preview phase does not isolate the fresh post-baseline log"
 if grep -Eq 'setWallpaperComponent|WallpaperManager\.getInstance|bindService|Runtime\.getRuntime|ProcessBuilder' \
     "$LIVE_SERVICE" "$UI"; then
     fail "the live wallpaper or UI binds/overrides the wallpaper directly"

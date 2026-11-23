@@ -2666,12 +2666,46 @@ live_wallpaper_preview_is_ready() (
 )
 
 # The live wallpaper engine logs only lifecycle transitions in debug builds.
-# Require a bounded, real transition, never per-frame noise. An empty or
-# unrelated log fails closed.
+# A surface being created proves only that a surface existed: it does not prove
+# that this engine actually became visible or drew a frame. Require the engine's
+# own fresh `visibility=true` transition; surface-only, hidden-only, empty and
+# unrelated logs all fail closed. Callers pass the post-baseline slice, never
+# the whole shared logcat buffer.
 live_wallpaper_became_visible() (
     log=$1
     [ -s "$log" ] || return 1
-    grep -Eq 'DotFieldWallpaper.*visibility=true' "$log" && return 0
-    grep -Eq 'DotFieldWallpaper.*surface=created' "$log" && return 0
-    return 1
+    grep -Eq 'DotFieldWallpaper.*visibility=true' "$log" || return 1
+    return 0
+)
+
+# Derive only the log lines appended after a read-only pre-preview baseline.
+# The baseline must still be an exact prefix of the later capture; a missing
+# baseline, an empty capture or a rotated/truncated ring buffer fails closed, so
+# a stale pre-preview `visibility=true` line can never be accepted as fresh
+# post-preview evidence. The full capture stays untouched for crash/ANR checks.
+live_wallpaper_preview_log_after() (
+    baseline=$1
+    full=$2
+    out=$3
+    [ -f "$baseline" ] || return 1
+    [ -s "$full" ] || return 1
+    baseline_lines=$(wc -l < "$baseline" | tr -d '[:space:]')
+    case "$baseline_lines" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    if [ "$baseline_lines" -gt 0 ]; then
+        prefix="$out.baseline-prefix"
+        if ! head -n "$baseline_lines" "$full" > "$prefix"; then
+            rm -f "$prefix"
+            return 1
+        fi
+        if ! cmp -s "$prefix" "$baseline"; then
+            rm -f "$prefix"
+            return 1
+        fi
+        rm -f "$prefix"
+    fi
+    tail -n "+$((baseline_lines + 1))" "$full" > "$out" || return 1
+    [ -s "$out" ] || return 1
+    return 0
 )
