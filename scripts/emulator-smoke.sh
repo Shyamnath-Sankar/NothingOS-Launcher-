@@ -2403,6 +2403,8 @@ capture_wallpaper_gallery() {
         _cwg_failure="preview/Back changed widget IDs"
     [ -z "$_cwg_failure" ] || fail "$_cwg_failure"
 
+    _cwg_preview_live_wallpaper
+
     _cwg_apply_wallpaper 'Pitch Black' 'pitch-black'
     _cwg_apply_wallpaper 'Wireframe Torus' 'wireframe-torus'
 
@@ -2410,6 +2412,61 @@ capture_wallpaper_gallery() {
         fail "could not measure the final wallpaper IDs"
     printf 'final ids=%s\n' "$_cwg_ids_final" >> "$ARTIFACTS/wallpaper-baseline.txt"
     return_home wallpaper-gallery
+}
+
+# Bounded, measured proof that the explicit live-wallpaper action opens the
+# real platform preview without changing the current Home/Lock wallpaper.
+# Applying the live wallpaper and proving its pause/resume draw gate after
+# system confirmation stay a separate runtime gate: this run never fakes a
+# confirmation and never calls the platform setter itself.
+_cwg_preview_live_wallpaper() {
+    _cpl_ids_before=$(_cwg_read_ids "$ARTIFACTS/live-wallpaper-ids-before.txt") ||
+        fail "could not measure wallpaper IDs before the live preview"
+    _cwg_launch_gallery live-wallpaper ||
+        fail "could not open the gallery for the live wallpaper preview"
+    sleep 1
+    capture_ui_xml "live-wallpaper-gallery.xml" ||
+        fail "could not capture the live wallpaper gallery"
+    _cpl_control=$(_cwg_measure_control 'Preview live wallpaper' 'live-wallpaper' 8) ||
+        fail "could not reveal the live wallpaper preview action"
+    [ -n "$_cpl_control" ] ||
+        fail "the live wallpaper preview action has no measured bounds"
+    adb_cmd logcat -c >/dev/null 2>&1 || true
+    tap_center_of_bounds "$_cpl_control"
+
+    _cpl_ready=
+    _cpl_attempt=0
+    while [ "$_cpl_attempt" -lt 8 ]; do
+        _cpl_attempt=$((_cpl_attempt + 1))
+        sleep 1
+        capture_ui_xml "live-wallpaper-preview-$_cpl_attempt.xml" || continue
+        if live_wallpaper_preview_is_ready \
+            "$ARTIFACTS/live-wallpaper-preview-$_cpl_attempt.xml"; then
+            _cpl_ready=1
+            break
+        fi
+    done
+    [ -n "$_cpl_ready" ] ||
+        fail "the system live-wallpaper preview did not open from the measured action"
+    capture_screenshot_to "live-wallpaper-preview.png"
+    [ -s "$ARTIFACTS/live-wallpaper-preview.png" ] ||
+        fail "could not capture the live-wallpaper preview pixels"
+
+    adb_cmd shell dumpsys wallpaper > "$ARTIFACTS/live-wallpaper-dumpsys.txt" 2>&1 || true
+    adb_cmd logcat -d > "$ARTIFACTS/live-wallpaper-logcat.txt" 2>&1 || true
+    live_wallpaper_became_visible "$ARTIFACTS/live-wallpaper-logcat.txt" ||
+        fail "the live wallpaper engine never logged a visible surface"
+
+    adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 ||
+        fail "could not leave the system live-wallpaper preview"
+    sleep 1
+    _cpl_ids_after=$(_cwg_read_ids "$ARTIFACTS/live-wallpaper-ids-after.txt") ||
+        fail "could not re-read wallpaper IDs after cancelling the live preview"
+    [ "$_cpl_ids_after" = "$_cpl_ids_before" ] ||
+        fail "leaving the live preview changed the Home or lock wallpaper ID"
+    capture_ui_xml "live-wallpaper-after-back.xml" || true
+    adb_cmd shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+    sleep 1
 }
 
 # Explicitly apply one measured tile. The caller has already entered the

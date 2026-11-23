@@ -2645,3 +2645,33 @@ widget_picker_is_ready() (
     fi
     return 1
 )
+
+# Succeed only when the captured hierarchy really belongs to a platform
+# live-wallpaper preview. The launcher settings gallery, a stale HOME, an empty
+# capture and any unknown package all fail closed; a real preview must carry a
+# platform wallpaper-picker package and a measured confirm/cancel control.
+live_wallpaper_preview_is_ready() (
+    xml=$1
+    [ -s "$xml" ] || return 1
+    if grep -Fq 'Preview live wallpaper' "$xml"; then
+        return 1
+    fi
+    if ! grep -Eq 'package="(com\.android\.wallpaper|com\.android\.wallpaper\.livepicker|com\.android\.wallpaperpicker|com\.google\.android\.apps\.wallpaper)[^"]*"' "$xml"; then
+        return 1
+    fi
+    if ! grep -Eq 'text="(Set wallpaper|Set on Home screen|Set on home screen|Apply|Cancel|CANCEL)"' "$xml"; then
+        return 1
+    fi
+    return 0
+)
+
+# The live wallpaper engine logs only lifecycle transitions in debug builds.
+# Require a bounded, real transition, never per-frame noise. An empty or
+# unrelated log fails closed.
+live_wallpaper_became_visible() (
+    log=$1
+    [ -s "$log" ] || return 1
+    grep -Eq 'DotFieldWallpaper.*visibility=true' "$log" && return 0
+    grep -Eq 'DotFieldWallpaper.*surface=created' "$log" && return 0
+    return 1
+)

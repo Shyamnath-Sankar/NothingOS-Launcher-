@@ -3195,6 +3195,90 @@ assert_true 'the drawer layout still allows top padding overflow' \
 assert_false 'the drawer layout does not globally enable clipToPadding' \
     grep -Fq 'android:clipToPadding="true"' "$RV_LAYOUT"
 
+# Live-wallpaper preview readiness: only a real platform picker with a measured
+# action control is accepted; the settings gallery, HOME, empty and unknown
+# captures fail closed.
+live_preview_ok="$TMP_DIR/live-preview-ok.xml"
+cat > "$live_preview_ok" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" package="com.android.wallpaper" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="1" text="Set wallpaper" class="android.widget.Button" clickable="true" bounds="[100,1700][980,1800]" />
+    <node index="2" text="Cancel" class="android.widget.Button" clickable="true" bounds="[40,1820][300,1900]" />
+  </node>
+</hierarchy>
+EOF
+assert_true 'a platform live-wallpaper preview is accepted' \
+    live_wallpaper_preview_is_ready "$live_preview_ok"
+
+live_preview_google="$TMP_DIR/live-preview-google.xml"
+sed 's/com.android.wallpaper/com.google.android.apps.wallpaper/; s/Set wallpaper/Set on Home screen/' \
+    "$live_preview_ok" > "$live_preview_google"
+assert_true 'the Google wallpaper picker preview is accepted' \
+    live_wallpaper_preview_is_ready "$live_preview_google"
+
+live_preview_gallery="$TMP_DIR/live-preview-gallery.xml"
+cat > "$live_preview_gallery" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" package="com.launchernos.dotwellabs.debug" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="1" text="Preview live wallpaper" class="android.widget.Button" clickable="true" bounds="[40,1400][1040,1500]" />
+  </node>
+</hierarchy>
+EOF
+assert_false 'the settings gallery is not a system preview' \
+    live_wallpaper_preview_is_ready "$live_preview_gallery"
+
+live_preview_unknown="$TMP_DIR/live-preview-unknown.xml"
+sed 's/com.android.wallpaper/com.example.unknown/' "$live_preview_ok" \
+    > "$live_preview_unknown"
+assert_false 'an unknown package fails closed' \
+    live_wallpaper_preview_is_ready "$live_preview_unknown"
+
+live_preview_no_control="$TMP_DIR/live-preview-no-control.xml"
+sed '/text="Set wallpaper"/d; /text="Cancel"/d' "$live_preview_ok" \
+    > "$live_preview_no_control"
+assert_false 'a preview without a measured action fails closed' \
+    live_wallpaper_preview_is_ready "$live_preview_no_control"
+assert_false 'an empty capture is not a preview' \
+    live_wallpaper_preview_is_ready "$TMP_DIR/live-preview-missing.xml"
+
+# Transition-only log evidence: visibility/surface lines prove a bound engine;
+# hidden-only, empty and unrelated logs fail closed.
+live_log_visible="$TMP_DIR/live-log-visible.txt"
+printf 'D/DotFieldWallpaper( 123): visibility=true\n' > "$live_log_visible"
+assert_true 'a visibility transition proves the engine became visible' \
+    live_wallpaper_became_visible "$live_log_visible"
+live_log_surface="$TMP_DIR/live-log-surface.txt"
+printf 'D/DotFieldWallpaper( 123): surface=created 1080x2400\n' > "$live_log_surface"
+assert_true 'a surface creation proves the engine rendered' \
+    live_wallpaper_became_visible "$live_log_surface"
+live_log_hidden="$TMP_DIR/live-log-hidden.txt"
+printf 'D/DotFieldWallpaper( 123): visibility=false\n' > "$live_log_hidden"
+assert_false 'a hidden-only log is not a visible engine' \
+    live_wallpaper_became_visible "$live_log_hidden"
+assert_false 'an empty log fails closed' \
+    live_wallpaper_became_visible "$TMP_DIR/live-log-missing.txt"
+live_log_unrelated="$TMP_DIR/live-log-unrelated.txt"
+printf 'D/Other( 123): visibility=true\n' > "$live_log_unrelated"
+assert_false 'an unrelated log fails closed' \
+    live_wallpaper_became_visible "$live_log_unrelated"
+
+# Source wiring: measure the action, open the platform preview, retain pixels
+# and transition logs, then require Back to leave the IDs unchanged.
+live_body="$TMP_DIR/live_wallpaper_preview.sh"
+sed -n '/^_cwg_preview_live_wallpaper() {/,/^}/p' "$SMOKE" > "$live_body"
+assert_true 'the live preview action is measured before tapping' \
+    grep -Fq "_cwg_measure_control 'Preview live wallpaper'" "$live_body"
+assert_true 'the system preview readiness is checked' \
+    grep -Fq 'live_wallpaper_preview_is_ready' "$live_body"
+assert_true 'the live preview pixels are retained' \
+    grep -Fq 'live-wallpaper-preview.png' "$live_body"
+assert_true 'the engine transition log is required' \
+    grep -Fq 'live_wallpaper_became_visible' "$live_body"
+assert_true 'Cancel/Back must leave the wallpaper IDs unchanged' \
+    grep -Fq '_cpl_ids_after' "$live_body"
+assert_true 'the live preview is exercised by the gallery capture' \
+    grep -Fq '_cwg_preview_live_wallpaper' "$SMOKE"
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1
