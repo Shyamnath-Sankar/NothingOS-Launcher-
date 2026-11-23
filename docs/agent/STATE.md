@@ -3,51 +3,59 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P8 settings customization entry (small UI increment) — Browse widgets is now a
-  Play-only row in the top `Customize launcher` group on the Home Screen settings screen, after the
-  existing icon-size slider. It launches this app's own launcher explicitly with ACTION_MAIN /
-  CATEGORY_HOME and an app-owned one-shot extra; the launcher consumes the extra once and opens the
-  existing native widget picker only after it is resumed on NORMAL home. PENDING CI AND RUNTIME; no
-  pixel proof.**
+- current_phase: **P8 settings customization entry — PRE-CI review correction for the Play-only
+  Browse widgets route. `LawnchairLauncher` no longer touches hidden `Activity.isResumed`; it now
+  uses `BaseActivity.hasBeenResumed()`. The pending request is a bounded one-shot: it retries only
+  on a foreground/NORMAL transition end, is cancelled on a real `onPause` instead of replaying on a
+  later unrelated resume, requires window focus (and top-resumed in multi-window), and new requests
+  carry their own id so rotation/replay cannot duplicate while a fresh request is still accepted.
+  PENDING CI AND RUNTIME; no pixel proof.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: `724a139` (`feat(preferences): open native widget picker from Play customize group`) on top
-  of `7f3c236` and the runtime-gate head `1732f5b`. **Corrected: the known tested fallback is
-  `1732f5b` (CI209), not `2f619da` (CI196).** CI211 is still pending actual CI; the CI208 preview
-  baseline remains `2eba66e`.
+- head: `bfef563` (`test(launcher): cover one-shot widget picker request states`) on top of
+  `0f0510c` (`fix(launcher): bound one-shot widget picker request lifecycle`), `724a139`, and the
+  known tested fallback `1732f5b` (CI209). CI211 for the earlier `724a139` remains pending actual
+  CI; this correction is newer and unbuilt.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI result yet for `724a139`.** CI211 is pending actual CI. The CI209 evidence that is
-  actually known: 96 tests passed; live wallpaper Home ID 3→4, Lock ID 0; pause counter 128 and
-  resume counter 128. This run ran only two source guards, `git diff --check` and an XML parse; no
-  Gradle, Android build, emulator, APK or pixel check. Do not claim the new row renders or that the
-  picker opens until CI/runtime inspects it.
-- next: next CI should confirm compile/style/Play debug APK with the new strings, helper and gated
-  row. Follow-up runtime must confirm: the Settings tap brings the launcher home, the picker opens
-  once, rotation/recreation does not replay it, and no picker opens while Settings or another app
-  is foreground. Release/hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip,
-  non-Play, large-screen and performance audits stay open.
+- ci: **No CI result for `0f0510c` / `bfef563` yet.** This run ran only two source guards,
+  `sh -n` and `git diff --check`; no Gradle, Android build, emulator, JUnit, APK or pixel check.
+  Do not claim the corrected lifecycle, the Settings row or the native picker until CI/runtime
+  inspects them.
+- next: next CI should confirm compile/style/Play debug APK and the new unit test. Follow-up runtime
+  must confirm: the Settings tap brings the launcher home, the picker opens once only when home is
+  focused and NORMAL, rotation does not duplicate it, leaving home cancels a pending request, and no
+  picker opens while Settings or another app is foreground (including multi-window). Release/
+  hosting/merge stay paused; Weather, PrivateSpace, settings-roundtrip, non-Play, large-screen and
+  performance audits stay open.
 
-## done (this run — Play Browse widgets route, PENDING CI AND RUNTIME)
+## done (this run — pre-CI review correction, PENDING CI AND RUNTIME)
 
-- **New helper, one-shot request:** `app/nothingui/launcher/WidgetPickerRequest.kt` builds an
-  explicit `LawnchairLauncher` intent with `ACTION_MAIN`, `CATEGORY_HOME`,
-  `FLAG_ACTIVITY_NEW_TASK` and an app-owned boolean extra; `consume()` removes the extra so the same
-  Intent object cannot replay it.
-- **Settings row:** the Play-only top `Customize launcher` group in `HomeScreenPreferences.kt` now
-  has a `ClickablePreference` (`browse_widgets_label` / `browse_widgets_description`) directly after
-  the existing icon-size slider. It only starts the explicit launcher intent; it does not call
-  `Launcher.getLauncher(context)` on the Settings context and does not fake a picker.
-- **Launcher lifecycle:** `LawnchairLauncher` consumes the extra in `onCreate`/`onNewIntent`,
-  persists handled/pending in saved instance state, and opens via a `dragLayer.post` only when
-  `isResumed`, not finishing/destroyed, and `stateManager.state == NORMAL`. The pending flag is
-  cleared only when the real `openWidgetPicker()` is invoked, so ordinary resumes do not re-open it.
-- **Untouched:** the existing gesture `onNewIntent` handling, Home popup/binding/grid/defaults,
-  widget binding, manifest/activity/permission/dependency/SDK/workflow/signing/applicationId,
-  wallpaper, non-Play layout and private widget code/artifacts. Two base strings were added.
+- **Defect 1 fixed:** the two hidden `Activity.isResumed` accesses in `tryOpenPendingWidgetPicker`
+  were replaced with the documented public `BaseActivity.hasBeenResumed()` flag; window focus is now
+  also required. Multi-window additionally requires `isTopResumedActivity()`, so a merely resumed
+  launcher behind another focused window cannot post or open the picker.
+- **Defect 2 fixed with a small pure helper:** new `app/nothingui/launcher/WidgetPickerRequestState`
+  tracks the current request id, refuses stale completion, refuses a handled id, and cancels on a
+  real `onPause`. `LawnchairLauncher` retries from `onResume`, the existing `onWindowFocusChanged`
+  hook and `onStateSetEnd(NORMAL)` only; there is no poll loop. A non-NORMAL attempt leaves the
+  request pending for the NORMAL transition instead of allowing a later unrelated resume to replay
+  it. The expected `onNewIntent`-before-`onResume` path is not a pause, so it is preserved.
+- **Request identity:** `WidgetPickerRequest` now adds an app-owned per-tap id extra (with a stable
+  legacy fallback), removes both extras on consume, and returns the id. `handledId` is persisted in
+  saved instance state so the same intent cannot replay; a newer request has a different id and is
+  accepted even after an older handled request. Pending is intentionally not restored, so rotation
+  never reopens it.
+- **Fixtures:** new `tests/unit/java/app/nothingui/launcher/WidgetPickerRequestStateTest.kt` covers
+  cold, warm, same-intent replay, non-NORMAL transition, expected resume, real pause/cancel,
+  rotation/handled restore, stale completion, a newer request, and missing ids.
+- **Untouched:** the existing Home popup/gesture `onNewIntent` path, Home app defaults/layouts,
+  widget binding, Settings row, manifest/activity/permission/dependency/SDK/workflow/signing/
+  applicationId, wallpaper, non-Play layout and private widget code. No emulator smoke was added
+  this run; the measured Settings/Browse-widgets picker capture remains for the next phase.
 - **Verification actually run (no Gradle, no Android build, no emulator):**
   `scripts/nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no APK);
-  `scripts/nothingui-polish-guard.sh` OK; `lawnchair/res/values/strings.xml` parses;
-  `git diff --check` clean. The route, timing, once-only behaviour and rendering are NOT proven
-  until CI/runtime.
+  `scripts/nothingui-polish-guard.sh` OK; `sh -n` clean on both guards; `git diff --check` clean.
+  Unit-test compilation/execution, style, Play build and every runtime lifecycle claim are CI/runtime
+  gates and are NOT proven here.
 
 ## done (previous run — Play-customize dashboard entry, PENDING CI)
 
