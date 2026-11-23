@@ -9,10 +9,10 @@ when no task input is given, and continues from "next".
   confirmation, HOME dots, destination choice, pause/resume draw gate and Lock/widget proofs remain
   CI runtime gates.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this commit (`docs(agent): record the dot-field live wallpaper gates`). Feature commit
-  `8bbc25e` (feat/wallpaper), guards `25398e2` (test/wallpaper), smoke `2f225c0` (test/smoke). The
-  known-good fallback remains `2f619da`, CI181 `6824907` the last verified runtime fallback, CI195
-  the withheld candidate.
+- head: this STATE commit on top of `2e494d8` (`test(smoke): retain the post-preview engine log`).
+  Feature `8bbc25e`, guards `25398e2`, preview smoke `2f225c0`, phase fix `f659bbb`, docs `8f4906c`.
+  The known-good fallback remains `2f619da`, CI181 `6824907` the last verified runtime fallback,
+  CI195 the withheld candidate.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **No new CI result exists for this head.** Only source/fixture/syntax checks were run locally
   (no Gradle, no emulator, no APK). The new JUnit policy test, spotless, the Play debug build and the
