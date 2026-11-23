@@ -51,6 +51,7 @@ import app.lawnchair.ui.preferences.navigation.AmoledWallpapers
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
 import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.collectAsStateBlocking
+import app.nothingui.launcher.WidgetPickerRequest
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
 import com.android.launcher3.R
@@ -96,6 +97,13 @@ fun HomeScreenPreferences(
                     step = 0.1f,
                     valueRange = 0.5F..1.5F,
                     showAsPercentage = true,
+                )
+                ClickablePreference(
+                    label = stringResource(id = R.string.browse_widgets_label),
+                    subtitle = stringResource(id = R.string.browse_widgets_description),
+                    onClick = {
+                        context.startActivity(WidgetPickerRequest.launcherIntent(context))
+                    },
                 )
             }
         }

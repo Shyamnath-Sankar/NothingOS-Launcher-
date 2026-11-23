@@ -199,6 +199,8 @@
     <string name="customize_launcher_label">Customize launcher</string>
     <string name="customize_launcher_description">Icon size, labels and widgets</string>
     <string name="icon_size_and_home_screen_label">Icon size and home screen</string>
+    <string name="browse_widgets_label">Browse widgets</string>
+    <string name="browse_widgets_description">Choose from the available widgets</string>
 
     <string name="home_screen_actions">Home screen actions</string>
 

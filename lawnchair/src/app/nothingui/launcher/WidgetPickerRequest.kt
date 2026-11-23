@@ -1,0 +1,44 @@
+/*
+ * Copyright 2026 the DotWel Launcher project contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package app.nothingui.launcher
+
+import android.content.Context
+import android.content.Intent
+import app.lawnchair.LawnchairLauncher
+
+/**
+ * One-shot request that brings the launcher home and asks it to open the platform widget picker
+ * only after it is resumed. The extra is removed as soon as it is consumed so a recreated activity
+ * cannot replay the request.
+ */
+object WidgetPickerRequest {
+    const val EXTRA_OPEN_WIDGET_PICKER = "app.nothingui.extra.OPEN_WIDGET_PICKER"
+
+    fun launcherIntent(context: Context): Intent = Intent(context, LawnchairLauncher::class.java)
+        .setAction(Intent.ACTION_MAIN)
+        .addCategory(Intent.CATEGORY_HOME)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        .putExtra(EXTRA_OPEN_WIDGET_PICKER, true)
+
+    fun consume(intent: Intent?): Boolean {
+        if (intent == null || !intent.getBooleanExtra(EXTRA_OPEN_WIDGET_PICKER, false)) {
+            return false
+        }
+        intent.removeExtra(EXTRA_OPEN_WIDGET_PICKER)
+        return true
+    }
+}
