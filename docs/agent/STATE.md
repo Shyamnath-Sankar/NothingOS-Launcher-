@@ -15,7 +15,7 @@ when no task input is given, and continues from "next".
   measured existing draft before typing, and leaves every later consent/enable/restart/disable/
   cache/prefs/no-backup assertion intact.
 - branch: `agent/home-widget-composition-v1-new`
-- head: the branch tip after `59917b9` (STATE pointer); the runtime wiring is `c4ad8e9`, the
+- head: the branch tip after `88ff535` (STATE pointer); the runtime wiring is `c4ad8e9`, the
   helper/fixture commit is `e9becce`, on top of checkpoint `ed4e9e2` and the earlier weather work.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **actual CI241 was green (compile/style/units, 132 weather tests) and CI243 compile/style/units
@@ -36,15 +36,18 @@ when no task input is given, and continues from "next".
   was offscreen. The old detector required the privacy notice AND Save/Disable in the same initial
   viewport, so it never scrolled and failed on a real screen.
 - **Screen identity:** new pure `weather_settings_screen_identity` requires the unique privacy
-  heading, unique Terms link, unique `Location label`, unique `Latitude` and a present Weather
-  heading. It deliberately does not require Save, Disable, Longitude or any below-fold control. The
-  wait now captures a screenshot before every XML probe and a `screen-failure.png` on timeout.
+  heading and unique Terms link plus a present `Location label`, `Latitude` and Weather heading. It
+  deliberately does not require Save, Disable, Longitude or any below-fold control. Presence (not
+  uniqueness) is used for the field labels and heading because one label can be exposed as both a
+  Text node and a field semantic. The wait now captures a screenshot before every XML probe and a
+  `screen-failure.png` on timeout.
 - **Field association:** new `ui_labelled_edit_text_state` associates an `android.widget.EditText`
   with its stable label (own text/content-description, descendant label, ancestor label, or
-  immediately preceding non-EditText sibling) and returns the current draft. Missing, duplicate or
-  ambiguous labels print nothing, so `_weather_measure_field` never keys a field by visible document
-  order. `_weather_type` clears an existing measured draft with an exact number of DEL keys and
-  verifies the field is empty before typing, so re-entry cannot append duplicate text.
+  immediately preceding non-EditText sibling) and returns the current draft. Duplicate label nodes
+  that all point at the same field are accepted; missing or cross-field ambiguous labels print
+  nothing, so `_weather_measure_field` never keys a field by visible document order. `_weather_type`
+  clears an existing measured draft with an exact number of DEL keys and verifies the field is empty
+  before typing, so re-entry cannot append duplicate text.
 - **Both-direction measured scroll:** `weather_target_scroll_direction` chooses `up`/`down` from the
   measured target rectangle vs the measured viewport (fully or partly above => up, below => down);
   `_weather_scroll_band` keeps the swipe inside the strict-or-known measured container. The bounded
@@ -59,9 +62,10 @@ when no task input is given, and continues from "next".
   workflow, dependency, network/provider, Home lifecycle, private-widget, merge, release or hosting
   change. Only the two smoke scripts and this evidence doc/STATE changed.
 - **Verification actually run (shell only; no Gradle, Android build or emulator):**
-  `sh scripts/emulator-smoke-test.sh` **all passed (829 ok)**, including new fixtures for the
+  `sh scripts/emulator-smoke-test.sh` **all passed (830 ok)**, including new fixtures for the
   initial privacy screen without Save/Enable, clipped `Latitude`, populated label association,
-  duplicate-label failure, up/down direction and the upward measured scroll band; `sh -n` is clean
+  duplicate-label failure, same-field duplicate semantics, up/down direction and the upward
+  measured scroll band; `sh -n` is clean
   on all three edited scripts; `git diff --check` is clean.
 - **Missing evidence / not claimed:** no new runtime proof, screenshot, APK or CI result for
   `c4ad8e9`. The helper fixtures are not evidence that the real screen was detected; the next CI
