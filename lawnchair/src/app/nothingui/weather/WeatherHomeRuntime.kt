@@ -20,10 +20,16 @@ import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
  * The single process-wide [WeatherHomeOwner] shared by the launcher HOME
  * lifecycle and the Weather settings screen.
+ *
+ * Pausing or destroying the launcher activity only hides its HOME surface; it
+ * does not shut this owner down, so a recreated activity reuses the same
+ * process state without retaining the old activity. The owner is replaced only
+ * if it has been explicitly shut down, never by reusing a closed instance.
  *
  * The owner is created with the app-private no-backup consent store and the
  * explicit [NoNetworkWeatherWork] placeholder. This phase constructs no
@@ -32,21 +38,29 @@ import kotlinx.coroutines.SupervisorJob
 object WeatherHomeRuntime {
     private val lock = Any()
     private var instance: WeatherHomeOwner? = null
+    private var ownerScope: CoroutineScope? = null
 
     fun get(context: Context): WeatherHomeOwner = synchronized(lock) {
-        instance ?: create(context.applicationContext).also { instance = it }
+        val current = instance
+        if (WeatherHomeRuntimePolicy.shouldReuseOwner(current)) return current!!
+        ownerScope?.cancel()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val created = create(context.applicationContext, scope)
+        ownerScope = scope
+        instance = created
+        created
     }
 
     fun observeConsent(context: Context, state: WeatherConsentState) {
         get(context).onConsentChanged(state)
     }
 
-    private fun create(context: Context): WeatherHomeOwner = WeatherHomeOwner(
+    private fun create(context: Context, scope: CoroutineScope): WeatherHomeOwner = WeatherHomeOwner(
         consentStore = FileWeatherConsentStore(
             WeatherPrivateStorage.consentDirectory(context.noBackupFilesDir),
         ),
         work = NoNetworkWeatherWork,
-        scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+        scope = scope,
         resultSink = WeatherResultSink {},
     )
 }

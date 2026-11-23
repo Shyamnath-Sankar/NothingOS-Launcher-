@@ -61,7 +61,9 @@ import app.nothingui.launcher.WidgetPickerRequestState
 import app.nothingui.theme.NothingUiFeature
 import app.nothingui.weather.WeatherHomeOwner
 import app.nothingui.weather.WeatherHomeRuntime
+import app.nothingui.weather.WeatherHomeSurfaceState
 import app.nothingui.weather.WeatherHomeWiring
+import app.nothingui.weather.WeatherScreenPolicy
 import app.nothingui.widgets.NothingUiWidgetMonitor
 import com.android.launcher3.AbstractFloatingView
 import com.android.launcher3.BaseActivity
@@ -118,8 +120,19 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
     private val themeProvider by unsafeLazy { ThemeProvider.INSTANCE.get(this) }
     private val weatherHomeOwner: WeatherHomeOwner by unsafeLazy { WeatherHomeRuntime.get(this) }
-    private var weatherActivityResumed = false
+    private val weatherSurface = WeatherHomeSurfaceState()
     private var weatherScreenReceiver: BroadcastReceiver? = null
+    private var weatherStateListenerRegistered = false
+    private val weatherStateListener = object : StateManager.StateListener<LauncherState> {
+        override fun onStateTransitionStart(toState: LauncherState) {
+            weatherSurface.onTransitionStart()
+            syncWeatherHomeVisibility()
+        }
+        override fun onStateTransitionComplete(finalState: LauncherState) {
+            weatherSurface.onTransitionComplete(finalState == LauncherState.NORMAL)
+            syncWeatherHomeVisibility()
+        }
+    }
     private val noStatusBarStateListener = object : StateManager.StateListener<LauncherState> {
         override fun onStateTransitionStart(toState: LauncherState) {
             if (toState is OverviewState) {
@@ -585,7 +598,6 @@ class LawnchairLauncher : QuickstepLauncher() {
     override fun onStateSetEnd(state: LauncherState) {
         super.onStateSetEnd(state)
         refreshPredictionContainersFromModel()
-        syncWeatherHomeVisibility()
         if (state == LauncherState.NORMAL && widgetPickerRequestState.isPending()) {
             tryOpenPendingWidgetPicker()
         }
@@ -602,31 +614,68 @@ class LawnchairLauncher : QuickstepLauncher() {
     }
 
     private fun startWeatherHome() {
-        weatherActivityResumed = true
         val owner = weatherHomeOwner
-        val powerManager = getSystemService(PowerManager::class.java)
-        val keyguardManager = getSystemService(KeyguardManager::class.java)
-        owner.setScreenInteractive(powerManager?.isInteractive == true)
-        owner.setUserPresent(keyguardManager?.isKeyguardLocked == false)
+        weatherSurface.onResume(
+            currentStateIsHome = stateManager.state == LauncherState.NORMAL,
+            transitionInProgress = stateManager.state != stateManager.currentStableState,
+        )
+        refreshWeatherScreenState()
+        registerWeatherStateListener()
         registerWeatherScreenReceiver(owner)
         syncWeatherHomeVisibility()
     }
 
+    /**
+     * Pause and destroy only hide this activity's HOME surface and unregister
+     * its listeners. They never shut the process-wide owner down, so a recreated
+     * activity reuses it and keeps no reference to the old activity.
+     */
     private fun stopWeatherHome() {
-        weatherActivityResumed = false
+        weatherSurface.onPause()
+        unregisterWeatherStateListener()
         unregisterWeatherScreenReceiver()
         weatherHomeOwner.setHomeVisible(false)
+    }
+
+    /**
+     * Queries the system instead of trusting a previous broadcast. A screen-on
+     * broadcast alone never means the device is unlocked, and a missing
+     * KeyguardManager fails closed as locked.
+     */
+    private fun refreshWeatherScreenState() {
+        val interactive = getSystemService(PowerManager::class.java)?.isInteractive == true
+        val keyguardLocked = getSystemService(KeyguardManager::class.java)?.isKeyguardLocked != false
+        val gate = WeatherScreenPolicy.evaluate(
+            interactive = interactive,
+            keyguardLocked = keyguardLocked,
+        )
+        val owner = weatherHomeOwner
+        owner.setScreenInteractive(gate.screenInteractive)
+        owner.setUserPresent(gate.userPresent)
     }
 
     private fun syncWeatherHomeVisibility() {
         weatherHomeOwner.setHomeVisible(
             WeatherHomeWiring.isHomeVisible(
-                activityResumed = weatherActivityResumed,
-                homeState = stateManager.state == LauncherState.NORMAL,
+                activityResumed = weatherSurface.isResumed,
+                homeConfirmed = weatherSurface.isHomeConfirmed,
+                transitionInProgress = weatherSurface.isTransitionInProgress,
                 finishing = isFinishing,
                 destroyed = isDestroyed,
             ),
         )
+    }
+
+    private fun registerWeatherStateListener() {
+        if (weatherStateListenerRegistered) return
+        stateManager.addStateListener(weatherStateListener)
+        weatherStateListenerRegistered = true
+    }
+
+    private fun unregisterWeatherStateListener() {
+        if (!weatherStateListenerRegistered) return
+        weatherStateListenerRegistered = false
+        stateManager.removeStateListener(weatherStateListener)
     }
 
     private fun registerWeatherScreenReceiver(owner: WeatherHomeOwner) {
@@ -636,9 +685,11 @@ class LawnchairLauncher : QuickstepLauncher() {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 when (intent?.action) {
-                    Intent.ACTION_SCREEN_ON -> owner.setScreenInteractive(true)
-                    Intent.ACTION_SCREEN_OFF -> owner.setScreenInteractive(false)
-                    Intent.ACTION_USER_PRESENT -> owner.setUserPresent(true)
+                    Intent.ACTION_SCREEN_OFF -> owner.onScreenOff()
+
+                    Intent.ACTION_SCREEN_ON,
+                    Intent.ACTION_USER_PRESENT,
+                    -> refreshWeatherScreenState()
                 }
             }
         }
