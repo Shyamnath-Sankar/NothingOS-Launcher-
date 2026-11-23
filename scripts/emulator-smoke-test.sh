@@ -4195,6 +4195,109 @@ assert_eq 'a target clipped at the top scrolls up' \
 assert_eq 'a malformed target has no inferred scroll direction' \
     '' "$(weather_target_scroll_direction '126 100 954' '0 72 1080 1794')"
 
+# CI250: the enabled screen keeps its saved status and a clipped Disable action
+# in the top hierarchy while the success message is not composed below the fold.
+# A raw grep of that XML cannot prove the action, and the clipped Disable is not
+# a tappable identity until the measured scroll reveals it.
+weather_enabled_top_xml="$TMP_DIR/weather-enabled-top.xml"
+cat > "$weather_enabled_top_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). No forecast is requested in this version. Disabling stops the session and clears this location cache. The shared provider throttle is kept." bounds="[84,1600][996,1780]" />
+      <node index="1" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,1901][996,1920]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the CI250 enabled top hierarchy measures its clipped Disable action' \
+    '84 1901 996 1920' \
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Disable and clear location')"
+assert_false 'the CI250 clipped Disable action is not tappable without scrolling' \
+    ui_bounds_within '84 1901 996 1920' '0 72 1080 1794'
+assert_eq 'the CI250 enabled status is already visible in the top hierarchy' \
+    '84 1600 996 1780' \
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup is enabled for Emulator test (60.0000, 10.0000). No forecast is requested in this version. Disabling stops the session and clears this location cache. The shared provider throttle is kept.')"
+assert_eq 'the CI250 success message is absent from the unscrolled hierarchy' \
+    '' \
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. No forecast is loaded in this version.')"
+
+# Execute the actual post-action poll with stubbed device calls. A durable
+# enabled record alone must not pass while the success line is unreachable; it
+# must pass only after the measured reveal exposes the line and the real action
+# identity, and a total miss must retain failure evidence.
+weather_poll_body="$TMP_DIR/weather_poll_action_state.sh"
+sed -n '/^_weather_poll_action_state() {/,/^}/p' "$SMOKE" > "$weather_poll_body"
+assert_true 'the weather post-action poll function is extractable' \
+    test -s "$weather_poll_body"
+weather_poll_harness="$TMP_DIR/weather-poll-harness.sh"
+cat > "$weather_poll_harness" <<'EOF'
+set -eu
+. "$1"
+ARTIFACTS=$2
+MEASURE_MODE=$3
+sleep() { :; }
+_weather_capture_consent() {
+    printf 'enabled|4|Emulator test|60.0000|10.0000\n'
+}
+capture_ui_xml() {
+    mkdir -p "$ARTIFACTS"
+    printf 'xml\n' > "$ARTIFACTS/$1"
+}
+capture_screenshot_to() {
+    mkdir -p "$ARTIFACTS"
+    printf 'png\n' > "$ARTIFACTS/$1"
+}
+fail() { return 1; }
+poll_measure_calls=0
+_weather_measure_control() {
+    if [ "$MEASURE_MODE" = reveal ]; then
+        poll_measure_calls=$((poll_measure_calls + 1))
+        [ "$poll_measure_calls" -ge 2 ] || return 1
+        _weather_visible_xml="$ARTIFACTS/message.xml"
+        printf 'message\n' > "$_weather_visible_xml"
+        return 0
+    fi
+    return 1
+}
+ui_unique_label_bounds() {
+    [ -s "$1" ] || return 0
+    [ "$2" = 'Disable and clear location' ] || return 0
+    printf '84 1901 996 1920\n'
+}
+if _weather_poll_action_state enable enabled 'message' \
+    'Disable and clear location'; then
+    printf 'result=ok\nmessage=%s\n' "$_weather_action_message"
+else
+    printf 'result=fail\n'
+fi
+EOF
+weather_poll_absent=$(sh "$weather_poll_harness" "$weather_poll_body" \
+    "$TMP_DIR/weather-poll-absent" absent) ||
+    weather_poll_absent=
+case "$weather_poll_absent" in
+    *result=fail*)
+        pass 'an unrevealed below-fold success line cannot pass from durable state alone'
+        ;;
+    *)
+        fail 'an unrevealed below-fold success line cannot pass from durable state alone'
+        ;;
+esac
+assert_true 'a failed poll retains the final poll XML and failure PNG' \
+    test -s "$TMP_DIR/weather-poll-absent/weather-enabled-failure.png"
+weather_poll_reveal=$(sh "$weather_poll_harness" "$weather_poll_body" \
+    "$TMP_DIR/weather-poll-reveal" reveal) ||
+    weather_poll_reveal=
+case "$weather_poll_reveal" in
+    *result=ok*message=*)
+        pass 'the poll passes after the measured reveal exposes the message and identity'
+        ;;
+    *)
+        fail 'the poll passes after the measured reveal exposes the message and identity'
+        ;;
+esac
+
 # --- static regression on the weather runtime gate --------------------------
 
 weather_body="$TMP_DIR/capture_weather_settings.sh"
@@ -4220,6 +4323,38 @@ assert_true 'the weather gate retains a timeout/failure PNG' \
     grep -Fq 'weather-$_wws_tag-screen-failure.png' "$weather_body"
 assert_true 'the weather gate scrolls from the measured target direction' \
     grep -Fq '_weather_scroll_direction' "$weather_body"
+assert_true 'the weather gate captures post-action consent and PNG before asserting' \
+    grep -Fq '_weather_capture_action_evidence enabled-postaction' "$weather_body"
+assert_true 'the weather gate captures post-disable consent and PNG before asserting' \
+    grep -Fq '_weather_capture_action_evidence disabled-postaction' "$weather_body"
+assert_true 'the enabled poll records durable consent on every attempt' \
+    grep -Fq '$_wpas_tag-poll-$_wpas_attempt' "$weather_body"
+assert_true 'the enabled poll polls the real enabled state and message' \
+    grep -Fq '_weather_poll_action_state enable enabled' "$weather_body"
+assert_true 'the disabled poll polls the real disabled state and message' \
+    grep -Fq '_weather_poll_action_state disable disabled' "$weather_body"
+assert_true 'the enabled success message is a shared exact constant' \
+    grep -Fq "WEATHER_ENABLED_MESSAGE='Weather setup saved. No forecast is loaded in this version.'" "$weather_body"
+assert_true 'the disabled success message is a shared exact constant' \
+    grep -Fq "WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'" "$weather_body"
+assert_true 'the enabled poll reveals the message through measured scrolling' \
+    grep -Fq '_weather_measure_control label "$_wpas_message"' "$weather_body"
+assert_true 'the enabled poll requires the real enabled control identity' \
+    grep -Fq 'ui_unique_label_bounds "$_wpas_xml" "$_wpas_identity"' "$weather_body"
+assert_true 'the action poll retains the scrolled message XML and PNG' \
+    grep -Fq 'weather-$_wpas_tag-message-visible.png' "$weather_body"
+assert_true 'the action poll retains a failure XML and PNG' \
+    grep -Fq 'weather-$_wpas_tag-failure.png' "$weather_body"
+assert_false 'the weather gate never greps the success message from an unscrolled XML' \
+    grep -Eq "grep -Fq 'Weather (setup saved|disabled)\\." "$weather_body"
+assert_true 'the valid longitude keeps a focused capture before blur' \
+    grep -Fq 'weather-valid-longitude-focused.png' "$weather_body"
+assert_true 'the valid longitude is blurred with the measured harmless hint' \
+    grep -Fq 'valid-blur-target' "$weather_body"
+assert_true 'the valid longitude keeps a blurred capture after the hint tap' \
+    grep -Fq 'weather-valid-longitude-blurred.png' "$weather_body"
+assert_true 'the blurred valid longitude asserts no semantic validation error' \
+    grep -Fq 'the valid longitude field exposed a semantic validation error after blur' "$weather_body"
 assert_true 'the weather gate measures the existing draft before typing' \
     grep -Fq 'the weather field $_wty_tag still held' "$weather_body"
 assert_true 'the weather gate clears a measured existing draft before typing' \

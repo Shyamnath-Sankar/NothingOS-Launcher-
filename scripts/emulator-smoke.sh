@@ -1799,6 +1799,10 @@ read_wm_size() (
 # request a location permission, write a preference directly or seed workspace
 # state. A synthetic manual location is typed like a user would type it.
 
+WEATHER_ENABLED_MESSAGE='Weather setup saved. No forecast is loaded in this version.'
+WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
+WEATHER_COORDINATES_HINT='Use 4 decimal places or fewer. No GPS, network geocoding or device location is used.'
+
 _weather_snapshot() {
     _ws_tag=$1
     capture_ui_xml "weather-$_ws_tag.xml" ||
@@ -2304,6 +2308,65 @@ _weather_field_value_present() {
     grep -Fq "text=\"$_wfp_value\"" "$_wfp_xml"
 }
 
+# Capture the durable app-private consent record plus the top-of-screen XML and
+# PNG immediately after an Enable/Disable tap. This runs before any scroll or
+# assertion so a later failure still leaves the real store state and pixels in
+# the CI artifacts instead of failing before the store was read.
+_weather_capture_action_evidence() {
+    _wcae_tag=$1
+    _weather_action_state=$(_weather_capture_consent "$_wcae_tag")
+    capture_ui_xml "weather-$_wcae_tag.xml" ||
+        fail "could not capture the post-action weather screen ($_wcae_tag)"
+    capture_screenshot_to "weather-$_wcae_tag.png"
+    [ -s "$ARTIFACTS/weather-$_wcae_tag.png" ] ||
+        fail "the post-action weather screenshot is empty ($_wcae_tag)"
+    printf 'consent=%s\n' "$_weather_action_state" \
+        > "$ARTIFACTS/weather-$_wcae_tag.state"
+}
+
+# Bounded post-action poll. The consent record is read on every attempt, then the
+# exact status line is revealed by scrolling the measured container because the
+# success message is commonly below the fold and absent from the composed
+# hierarchy. Success requires the durable expected state, the exact message fully
+# inside the measured viewport and the real enabled/disabled control identity;
+# a raw grep of one unscrolled XML is not accepted.
+_weather_poll_action_state() {
+    _wpas_kind=$1
+    _wpas_tag=$2
+    _wpas_message=$3
+    _wpas_identity=$4
+    _wpas_attempt=0
+    _weather_action_message=
+    _weather_action_consent=
+    while [ "$_wpas_attempt" -lt 10 ]; do
+        _wpas_attempt=$((_wpas_attempt + 1))
+        sleep 1
+        _wpas_state=$(_weather_capture_consent \
+            "$_wpas_tag-poll-$_wpas_attempt")
+        capture_ui_xml "weather-$_wpas_tag-poll-$_wpas_attempt.xml" ||
+            fail "could not capture the $_wpas_kind poll XML"
+        capture_screenshot_to "weather-$_wpas_tag-poll-$_wpas_attempt.png"
+        case "$_wpas_kind:$_wpas_state" in
+            enable:enabled\|* | disable:disabled\|*) ;;
+            *) continue ;;
+        esac
+        _weather_measure_control label "$_wpas_message" \
+            "$_wpas_tag-message-$_wpas_attempt" 6 || continue
+        _wpas_xml=$_weather_visible_xml
+        [ -n "$(ui_unique_label_bounds "$_wpas_xml" "$_wpas_identity")" ] ||
+            continue
+        _weather_action_message=$_wpas_xml
+        _weather_action_consent=$_wpas_state
+        cp "$_wpas_xml" "$ARTIFACTS/weather-$_wpas_tag-message-visible.xml"
+        capture_screenshot_to "weather-$_wpas_tag-message-visible.png"
+        return 0
+    done
+    cp "$ARTIFACTS/weather-$_wpas_tag-poll-$_wpas_attempt.xml" \
+        "$ARTIFACTS/weather-$_wpas_tag-failure.xml" 2>/dev/null || true
+    capture_screenshot_to "weather-$_wpas_tag-failure.png"
+    return 1
+}
+
 capture_weather_settings() {
     return_home weather-baseline
     wait_for_launcher_idle "$ARTIFACTS/weather-home-idle.txt" 10 ||
@@ -2411,6 +2474,31 @@ capture_weather_settings() {
         fail "could not measure the valid longitude field"
     _weather_type "$_weather_measured" '10.0000' valid-longitude \
         "$_weather_field_text" 'Longitude'
+    # A red outline on a focused valid field can be the normal theme focus
+    # accent. Capture the focused state, then blur with a measured harmless hint
+    # that is neither a provider link nor an action, and prove no semantic error
+    # is exposed. Production UI is not changed from colour alone.
+    capture_ui_xml weather-valid-longitude-focused.xml ||
+        fail "could not capture the focused valid longitude field"
+    capture_screenshot_to weather-valid-longitude-focused.png
+    [ -s "$ARTIFACTS/weather-valid-longitude-focused.png" ] ||
+        fail "the focused valid longitude screenshot is empty"
+    _weather_measure_control label "$WEATHER_COORDINATES_HINT" \
+        valid-blur-target 4 ||
+        fail "could not measure a harmless target to blur the valid longitude field"
+    _cws_blur_target=$_weather_measured
+    tap_center_of_bounds "$_cws_blur_target" ||
+        fail "could not blur the valid longitude field on the measured hint"
+    sleep 1
+    capture_ui_xml weather-valid-longitude-blurred.xml ||
+        fail "could not capture the blurred valid longitude field"
+    capture_screenshot_to weather-valid-longitude-blurred.png
+    [ -s "$ARTIFACTS/weather-valid-longitude-blurred.png" ] ||
+        fail "the blurred valid longitude screenshot is empty"
+    if grep -Fq 'Longitude must be a number from -180 to 180' \
+        "$ARTIFACTS/weather-valid-longitude-blurred.xml"; then
+        fail "the valid longitude field exposed a semantic validation error after blur"
+    fi
     _weather_measure_checkbox valid-checkbox ||
         fail "could not measure the unchecked weather consent checkbox"
     [ "${_weather_measured##*|}" = false ] ||
@@ -2477,20 +2565,15 @@ capture_weather_settings() {
         fail "Save and enable is not enabled after consent and valid coordinates"
     tap_center_of_bounds "$_cws_enable" ||
         fail "could not tap the enabled Save and enable control"
-    _cws_enabled_message=
-    _cws_poll=1
-    while [ "$_cws_poll" -le 10 ]; do
-        sleep 1
-        if capture_ui_xml "weather-enabled-poll-$_cws_poll.xml" &&
-            grep -Fq 'Weather setup saved. No forecast is loaded in this version.' \
-                "$ARTIFACTS/weather-enabled-poll-$_cws_poll.xml"; then
-            _cws_enabled_message="$ARTIFACTS/weather-enabled-poll-$_cws_poll.xml"
-            break
-        fi
-        _cws_poll=$((_cws_poll + 1))
-    done
-    [ -n "$_cws_enabled_message" ] ||
-        fail "the real Weather screen did not report the saved opt-in"
+    sleep 1
+    _weather_capture_action_evidence enabled-postaction
+    _weather_snapshot enabled
+    if ! _weather_poll_action_state enable enabled \
+        "$WEATHER_ENABLED_MESSAGE" 'Disable and clear location'; then
+        _cws_enabled_failure=$(_weather_capture_consent enabled-failure)
+        fail "the real Weather screen did not report the saved opt-in after measured scrolling, found '$_cws_enabled_failure'"
+    fi
+    _cws_enabled_message=$_weather_action_message
     _cws_consent=$(_weather_capture_consent enabled)
     case "$_cws_consent" in
         enabled\|*) ;;
@@ -2498,7 +2581,6 @@ capture_weather_settings() {
     esac
     printf '%s\n' "$_cws_consent" | grep -Fq '|Emulator test|60.0000|10.0000' ||
         fail "the stored weather location is not the synthetic Emulator test location"
-    _weather_snapshot enabled
     grep -Fq 'Disable and clear location' "$ARTIFACTS/weather-enabled.xml" ||
         fail "the enabled Weather screen exposes no Disable control"
     grep -Fq 'Emulator test' "$ARTIFACTS/weather-enabled.xml" ||
@@ -2559,20 +2641,15 @@ capture_weather_settings() {
     _cws_disable=$_weather_measured
     tap_center_of_bounds "$_cws_disable" ||
         fail "could not tap the measured Disable control"
-    _cws_disabled_message=
-    _cws_poll=1
-    while [ "$_cws_poll" -le 10 ]; do
-        sleep 1
-        if capture_ui_xml "weather-disabled-poll-$_cws_poll.xml" &&
-            grep -Fq 'Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.' \
-                "$ARTIFACTS/weather-disabled-poll-$_cws_poll.xml"; then
-            _cws_disabled_message="$ARTIFACTS/weather-disabled-poll-$_cws_poll.xml"
-            break
-        fi
-        _cws_poll=$((_cws_poll + 1))
-    done
-    [ -n "$_cws_disabled_message" ] ||
-        fail "the real Weather screen did not report the completed disable"
+    sleep 1
+    _weather_capture_action_evidence disabled-postaction
+    _weather_snapshot disabled
+    if ! _weather_poll_action_state disable disabled \
+        "$WEATHER_DISABLED_MESSAGE" 'Save and enable'; then
+        _cws_disabled_failure=$(_weather_capture_consent disabled-failure)
+        fail "the real Weather screen did not report the completed disable after measured scrolling, found '$_cws_disabled_failure'"
+    fi
+    _cws_disabled_message=$_weather_action_message
     _cws_consent=$(_weather_capture_consent disabled)
     case "$_cws_consent" in
         disabled\|*) ;;
@@ -2583,7 +2660,6 @@ capture_weather_settings() {
     fi
     adb_cmd shell run-as "$PKG" ls -l "$WEATHER_CACHE_REL" \
         > "$ARTIFACTS/weather-cache-after-disable.txt" 2>&1 || true
-    _weather_snapshot disabled
     grep -Fq 'Save and enable' "$ARTIFACTS/weather-disabled.xml" ||
         fail "the disabled Weather screen exposes no Save and enable control"
     _weather_back_to_home_screen disabled-back

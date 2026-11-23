@@ -3,31 +3,82 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather smoke false negative fixed for screen detection; helper/fixtures and
-  wiring committed, PENDING NEW RUNTIME.** CI243 compile/style/units were green (weather tests 132)
-  but runtime failed `_weather_wait_screen fresh`: its 10 real XML captures showed the Weather
-  destination with the privacy heading, Terms/Source/License links, Weather heading, `Location
-  label` and a clipped `Latitude`, while Save/Enable was below the fold. The wait now identifies the
-  screen from that unique destination/privacy/field evidence without demanding an offscreen button,
-  saves a PNG for every probe plus a timeout/failure PNG, associates the three fields by stable
-  labels (own semantics, descendant/ancestor, preceding sibling) instead of visible EditText index,
-  chooses measured up/down scrolling from the target rectangle vs measured viewport, clears any
-  measured existing draft before typing, and leaves every later consent/enable/restart/disable/
-  cache/prefs/no-backup assertion intact.
+- current_phase: **Weather smoke CI250 post-enable/disable offscreen evidence fixed; scripts and
+  fixtures committed, PENDING ACTUAL RUNTIME STORE/RELOAD/DISABLE PROOF.** CI250 compile/style/units
+  were green and runtime now passed fresh/off, invalid, no-consent and draft-reset and clicked the
+  actual enabled Save, then `_weather_enabled_poll` waited for the exact success message in one
+  unscrolled XML and failed. Its 10 real XML captures showed the enabled status with `Emulator test`
+  and `60.0000,10.0000` plus `Disable and clear location` clipped at `1901..1920`, while the success
+  line was below the fold. CI250 therefore never read the store after enable; durable enabled state
+  is **not yet confirmed** and no new runtime result exists for this fix. The gate now captures
+  consent JSON/state and a top PNG/XML immediately after Enable/Disable, polls the durable expected
+  state on every bounded attempt, reveals the exact success line by scrolling the measured
+  container, requires the real enabled (`Disable and clear location`) or disabled (`Save and enable`)
+  identity in that revealed XML, and retains poll/message/failure XML+PNG. The valid-longitude red
+  outline is treated as unproven theme focus: focused and measured-hint-blurred captures are kept and
+  no semantic longitude error may appear, without a production UI change from colour alone.
 - branch: `agent/home-widget-composition-v1-new`
-- head: the branch tip after `88ff535` (STATE pointer); the runtime wiring is `c4ad8e9`, the
-  helper/fixture commit is `e9becce`, on top of checkpoint `ed4e9e2` and the earlier weather work.
+- head: the branch tip after this run's smoke fix; the previous runtime wiring was `c4ad8e9` on top of
+  helper/fixture `e9becce` and checkpoint `ed4e9e2`.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **actual CI241 was green (compile/style/units, 132 weather tests) and CI243 compile/style/units
-  were also green, but CI243's runtime failed screen detection.** No new CI or runtime result exists
-  for `c4ad8e9`; the new runtime is PENDING and must be the evidence, not these shell fixtures.
-- next: the next API 37 CI must show `_weather_wait_screen` succeeding on the real Weather screen,
-  then exercise the unchanged fresh/invalid/no-consent/draft-reset/enable/reload/disable/restart
-  assertions with the label-keyed fields, measured both-way scrolling and per-probe PNGs. Release,
-  hosting and merge stay paused; visible HOME lifecycle/network wiring, PrivateSpace, settings
-  round-trip, non-Play, large-screen and performance audits stay open.
+- ci: **actual CI250 compile/style/units were green; its runtime failed only the post-enable
+  offscreen success-message check.** No new CI or runtime result exists for this fix; the next API 37
+  runtime must confirm the durable enabled store, reload and Disable, not these shell fixtures.
+- next: the next API 37 CI must show the enabled poll confirming the durable store and the
+  measured/lower success line, then reload the saved label/coordinates, disable, clear the seeded
+  cache, survive restarts and finish disabled. Release, hosting and merge stay paused; visible HOME
+  lifecycle/network wiring, PrivateSpace, settings round-trip, non-Play, large-screen and performance
+  audits stay open.
 
-## done (this run — CI243 Weather screen false negative, PENDING NEW RUNTIME)
+## done (this run — CI250 post-enable/disable offscreen evidence, PENDING ACTUAL RUNTIME)
+
+- **Exact CI250 false negative:** compile/style/units were green and the runtime passed
+  fresh/off, invalid, no-consent and draft-reset and clicked the actual enabled Save, then
+  `_weather_enabled_poll` timed out. The 10 real enabled XML captures held the saved status
+  (`Emulator test`, `60.0000,10.0000`) and a `Disable and clear location` control clipped at
+  `[.,1901][.,1920]`, but the success line `Weather setup saved. No forecast is loaded in this
+  version.` was below the fold and absent from the composed hierarchy. The old poll grep'd one
+  unscrolled XML, so it failed before the store was read and before any scroll; CI250 never proved
+  durable enabled state.
+- **Post-action evidence first:** new `_weather_capture_action_evidence` reads the app-private
+  consent record (JSON plus a `.state` file) and captures the top XML/PNG immediately after the
+  Enable/Disable tap, before any assertion or scroll. A later failure therefore still leaves the real
+  store state and pixels in CI artifacts.
+- **Durable + measured + identity poll:** new `_weather_poll_action_state` makes at most 10
+  one-second attempts. Each attempt reads the durable consent record and captures top XML/PNG; only
+  an `enabled|*` or `disabled|*` record proceeds. It then uses the existing measured
+  `_weather_measure_control` to scroll the measured container until the exact success line is fully
+  inside the viewport, requires the real `Disable and clear location` (enable) or `Save and enable`
+  (disable) identity in that revealed XML, and saves the scrolled XML/PNG. Exhaustion retains the
+  final poll XML plus a failure XML/PNG. A raw grep of one unscrolled XML is no longer accepted.
+- **Both directions covered:** the enabled flow and the disable flow both use the new poll, so the
+  disable success line has the same below-fold protection. Top `weather-enabled.xml` and
+  `weather-disabled.xml` snapshots are still captured for the existing saved-status, saved-label,
+  Disable and Save assertions.
+- **Focused vs blurred valid longitude:** after typing valid `10.0000`, the gate captures
+  `weather-valid-longitude-focused.xml/png`, taps the measured harmless coordinates hint (neither a
+  provider link nor an action), captures `weather-valid-longitude-blurred.xml/png`, and fails only if
+  the exact longitude validation string appears. The red outline alone is not treated as an error and
+  no production UI, validation or theme code changed.
+- **No distant-pair requirement:** reentry/reopen still uses the existing privacy/field identity and
+  measured scrolling; nothing requires the privacy notice and a distant button in one viewport.
+- **Preserved:** every fresh/invalid/no-consent/draft-reset/enable/reload/disable/cache-clear/app-
+  private consent/no-backup/restart assertion, the synthetic seeded cache proof, and the final
+  disabled state. No Gradle/Android build, emulator, workflow, dependency, permission, SDK,
+  applicationId, signing, network/provider, Home integration, private-widget, merge, release or
+  hosting change. Existing HOME/widgets/layout/theme/wallpaper/non-Play code is untouched.
+- **Verification actually run (shell only; no Gradle, Android build or emulator):**
+  `sh scripts/emulator-smoke-test.sh` **854 ok** and `all emulator-smoke tests passed** (including the
+  new CI250 clipped-Disable/unscrolled-message fixture, an executed poll that fails while the success
+  line is unrevealed, an executed reveal that only then passes, and the blur/semantic-error checks);
+  `sh scripts/emulator-smoke-drawer-test.sh` **38 ok** and all passed; `sh -n` is clean on all three
+  edited scripts; `git diff --check` is clean.
+- **Missing evidence / not claimed:** no new runtime proof, screenshot, APK or CI result for this
+  fix. The executed poll uses stubbed device calls; it proves the control flow and fail-closed
+  evidence retention, not the real Compose hierarchy. The next CI runtime must prove the durable
+  enabled store, the measured lower success line, reload, disable, cache clearing and restart.
+
+## done (previous run — CI243 Weather screen false negative, PENDING NEW RUNTIME)
 
 - **Exact CI243 false negative:** compile/style/units were green, but `_weather_wait_screen fresh`
   failed. The 10 real `weather-fresh-screen-1..10` XML captures showed the Weather destination
