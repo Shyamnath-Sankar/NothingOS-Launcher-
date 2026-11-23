@@ -23,7 +23,7 @@ import android.os.HandlerThread
 import android.service.wallpaper.WallpaperService
 import android.util.Log
 import android.view.SurfaceHolder
-import app.lawnchair.BuildConfig
+import com.android.launcher3.BuildConfig
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 

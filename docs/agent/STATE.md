@@ -3,23 +3,25 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **P6 original dot-field live wallpaper — PR19 independent-review correction merged
-  into the branch: preview smoke now preserves the shared logcat history and proves the engine from a
-  fail-closed post-baseline slice with `visibility=true` only, and the engine gates/enqueues/cancels
-  frames and waits for an in-flight draw under one lock. Actual system confirmation, HOME dots,
-  destination choice, the pause/resume draw gate and Lock/widget proofs remain CI runtime gates.**
+- current_phase: **P6 original dot-field live wallpaper — CI205 compile/style repair only: the new
+  service now imports the real `com.android.launcher3.BuildConfig` (not the nonexistent
+  `app.lawnchair.BuildConfig`), and the two `DotFieldWallpaperPolicy` expression bodies are joined to
+  one line as the formatter requires. Service/engine behavior, rendering, manifest/permissions, themes,
+  HOME, widgets and static wallpaper are untouched. Runtime gates remain open.**
 - branch: `agent/home-widget-composition-v1-new`
-- head: this STATE commit on top of `69b3541` (`fix(smoke): keep logcat history and require fresh
-  visible evidence`); the service lock protocol is `71a7c90`. Feature `8bbc25e`, guards `25398e2`,
-  preview smoke `2f225c0`, phase fix `f659bbb`, docs `8f4906c`.
+- head: this STATE commit on top of `92a3469` (`docs(agent): correct the fallback to CI196`); the
+  feature is `8bbc25e`, guards `25398e2`, smoke `2f225c0`, phase fix `f659bbb`, service lock
+  `71a7c90`, logcat/frame correction `69b3541`.
   The known-good fallback is `2f619da` (CI196); CI181 `6824907` and CI195 are superseded candidate
   history and are not the fallback.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No new CI result exists for this head.** Only shell fixtures/source guards, `sh -n` and
-  `git diff --check` were run locally (no Gradle, no emulator, no APK). The JUnit policy test,
-  spotless, the Play debug build and the extended API 37 smoke remain CI gates.
-- next: a fresh CI must run spotless, the unit tests (including `DotFieldWallpaperPolicyTest`),
-  assemble the Play debug APK and run the API 37 emulator smoke. The smoke must prove the measured
+- ci: **CI205 was red; no new CI result exists for this repair head.** Unit job 137516923479 failed
+  to compile `DotFieldWallpaperService.kt` (lines 26 and 241: unresolved `BuildConfig`); style job
+  137516923552 reported only the two `DotFieldWallpaperPolicy.kt` expression-wrap violations.
+  Locally only shell guards, `sh -n` and `git diff --check` were run (no Gradle, no ktlint binary,
+  no emulator, no APK). The JUnit test did **not** execute; do not claim test success.
+- next: a fresh normal CI must recompile the unit job (compile fix + `DotFieldWallpaperPolicyTest`),
+  pass spotless/style, assemble the Play debug APK and run the API 37 emulator smoke. The smoke must prove the measured
   `Preview live wallpaper` action opens the real system picker, retain preview pixels, keep the
   whole-run logcat for crash/ANR checks, and accept only a fresh post-baseline `DotFieldWallpaper`
   `visibility=true` transition. Then decide whether to accept the system confirmation on the
@@ -29,7 +31,34 @@ when no task input is given, and continues from "next".
   the launcher and pending a separate phase; PrivateSpace, settings-roundtrip, non-Play, large-screen
   and performance audits stay open.
 
-## done (this run — PR19 review correction: logcat boundary and frame lifecycle)
+## done (this run — CI205 compile/style repair)
+
+- **Exact CI205 failure:** unit job 137516923479 failed at `DotFieldWallpaperService.kt` line 26 and
+  line 241 with unresolved `BuildConfig`; the service imported `app.lawnchair.BuildConfig` while the
+  real generated class is `com.android.launcher3.BuildConfig` (module `namespace` in `build.gradle`
+  line 151; `NothingUiFeature` and the rest of the fork use it). The unit tests did not run.
+- **Compile fix (one import):** `DotFieldWallpaperService.kt` now imports
+  `com.android.launcher3.BuildConfig`. No logic, lifecycle, lock, rendering, log text or line of engine
+  behavior changed; `BuildConfig.DEBUG` still gates the transition trace.
+- **Exact style failure:** style job 137516923552 reported only `DotFieldWallpaperPolicy.kt`
+  `canDraw` and `verticalOffset`, each split after `=`. Both are now single-line expression bodies,
+  exactly as ktlint requires; all tokens are preserved.
+- **Narrow source regression:** `scripts/nothingui-wallpaper-guard.sh` now requires the service to
+  import `com.android.launcher3.BuildConfig`, rejects `app.lawnchair.BuildConfig`, and requires the
+  `BuildConfig.DEBUG` trace gate.
+- **Preserved:** service/engine logic, rendering, manifest/permissions, themes, HOME, widgets, static
+  wallpaper, workflow, dependencies, SDK, signing and applicationId are untouched; fixes `69b3541`
+  and `71a7c90` remain intact. No private widget code or artifact.
+- **Verification actually run (no Gradle, no Android build, no ktlint binary, no emulator):**
+  `nothingui-wallpaper-guard.sh` OK (compiled sentinel skipped, no APK);
+  `nothingui-polish-guard.sh` OK; `sh -n` clean on the edited guard; `git diff --check` clean.
+  Unit compilation/tests were **not** executed this run.
+- **Still open:** `2f619da` (CI196) remains the verified fallback; no new APK is ready. Runtime preview,
+  actual system apply and the pause/resume draw gate are unproven. Weather, PrivateSpace,
+  settings/backup round-trip, non-Play, large-screen and performance audits remain open. No merge,
+  release or submission.
+
+## done (previous run — PR19 review correction: logcat boundary and frame lifecycle)
 
 - **Issue 1 — logcat history:** `_cwg_preview_live_wallpaper` no longer calls `logcat -c`. It saves a
   read-only `live-wallpaper-logcat-before.txt` baseline before the measured tap, captures the full

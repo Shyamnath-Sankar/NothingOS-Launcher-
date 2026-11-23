@@ -361,6 +361,13 @@ grep -Fq 'canvas.drawCircle' "$LIVE_SERVICE" ||
     fail "the live wallpaper does not draw the dot field on canvas"
 grep -Fq 'Log.d(TAG, "$transition $counters")' "$LIVE_SERVICE" ||
     fail "the live wallpaper has no DEBUG-only transition trace"
+grep -Fq 'import com.android.launcher3.BuildConfig' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not use the real com.android.launcher3.BuildConfig"
+if grep -Fq 'app.lawnchair.BuildConfig' "$LIVE_SERVICE"; then
+    fail "the live wallpaper imports a non-existent app.lawnchair.BuildConfig"
+fi
+grep -Fq 'BuildConfig.DEBUG' "$LIVE_SERVICE" ||
+    fail "the live wallpaper does not use BuildConfig.DEBUG"
 
 # The preview phase must never clear the shared log buffer; it keeps a
 # read-only baseline and isolates only the appended tail.

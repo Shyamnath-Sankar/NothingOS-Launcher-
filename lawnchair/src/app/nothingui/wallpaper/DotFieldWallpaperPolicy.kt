@@ -74,8 +74,7 @@ class DotFieldFramePolicy(
         geometry = null
     }
 
-    fun canDraw(): Boolean =
-        !isDestroyed && isVisible && isSurfaceValid && geometry != null
+    fun canDraw(): Boolean = !isDestroyed && isVisible && isSurfaceValid && geometry != null
 
     fun frameDelayMs(): Long = frameIntervalMs.coerceAtLeast(MIN_FRAME_INTERVAL_MS)
 
@@ -146,6 +145,5 @@ object DotFieldMotion {
         return BASE_RADIUS_SCALE + PULSE_RANGE * ((wave + 1f) * 0.5f)
     }
 
-    fun verticalOffset(phase: Float, spacingPx: Float): Float =
-        sin(phase) * spacingPx * DRIFT_FRACTION
+    fun verticalOffset(phase: Float, spacingPx: Float): Float = sin(phase) * spacingPx * DRIFT_FRACTION
 }
