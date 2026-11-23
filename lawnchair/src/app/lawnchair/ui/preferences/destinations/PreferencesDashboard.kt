@@ -148,6 +148,18 @@ fun PreferencesDashboard(
         }
 
         val deckLayout = prefs2.deckLayout.getAdapter()
+        if (isPlayStoreFlavor()) {
+            PreferenceGroup(heading = stringResource(R.string.customize_launcher_label)) {
+                PreferenceCategory(
+                    label = stringResource(R.string.icon_size_and_home_screen_label),
+                    description = stringResource(R.string.customize_launcher_description),
+                    iconResource = R.drawable.ic_home_screen,
+                    onNavigate = { onNavigate(HomeScreen) },
+                    isSelected = currentRoute is HomeScreen,
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
         PreferenceGroup {
             PreferenceCategory(
                 label = stringResource(R.string.general_label),
@@ -157,13 +169,15 @@ fun PreferencesDashboard(
                 isSelected = currentRoute is General,
             )
 
-            PreferenceCategory(
-                label = stringResource(R.string.home_screen_label),
-                description = stringResource(R.string.home_screen_description),
-                iconResource = R.drawable.ic_home_screen,
-                onNavigate = { onNavigate(HomeScreen) },
-                isSelected = currentRoute is HomeScreen,
-            )
+            if (!isPlayStoreFlavor()) {
+                PreferenceCategory(
+                    label = stringResource(R.string.home_screen_label),
+                    description = stringResource(R.string.home_screen_description),
+                    iconResource = R.drawable.ic_home_screen,
+                    onNavigate = { onNavigate(HomeScreen) },
+                    isSelected = currentRoute is HomeScreen,
+                )
+            }
 
             if (isPlayStoreFlavor()) {
                 PreferenceCategory(

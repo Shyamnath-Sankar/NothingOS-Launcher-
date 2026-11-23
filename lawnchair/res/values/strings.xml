@@ -196,6 +196,10 @@
     <string name="home_screen_label">Home screen</string>
     <string name="home_screen_description">Feed, grid, icons</string>
 
+    <string name="customize_launcher_label">Customize launcher</string>
+    <string name="customize_launcher_description">Icon size, labels and widgets</string>
+    <string name="icon_size_and_home_screen_label">Icon size and home screen</string>
+
     <string name="home_screen_actions">Home screen actions</string>
 
     <string name="dock_label">Dock</string>
