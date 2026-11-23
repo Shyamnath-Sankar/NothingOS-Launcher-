@@ -3,31 +3,78 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Weather HOME widget render phase — implemented and locally verified, PENDING CI.
-  The user-placeable weather tile now renders the shared owner state; the real provider is still
-  unconnected.** This run is bounded to a render-only `DotWelWeatherWidgetProvider`: a coordinate-free
-  pure render model, a paper/charcoal rounded RemoteViews tile with 2x1/2x2 resizing, a Play-only
-  receiver and metadata, a tap into the existing Weather settings route, shared session/result
-  publication from the process-wide runtime, and a pure-state test set. Production still uses
-  `NoNetworkWeatherWork`; no repository, transport, worker, alarm, device location, permission or
-  dependency was added, and the widget is deliberately not auto-seeded.
+- current_phase: **CI269 HOME readiness correction — diagnosis/fix committed as `9ecfa82` on the
+  `dacff49` checkpoint, PENDING ACTUAL CI. The runtime failed before any Weather placement: after
+  `capture_grid_settings` returned HOME, `verify_nothing_home` could not see the clock. This run
+  makes that confirmation a bounded state-based poll (15 attempts) with a fresh XML and PNG plus the
+  resumed activity, HOME-role / default-home and appwidget state per attempt, while still requiring
+  the actual clock/date text and all three original widget children. No app source, manifest, SDK,
+  applicationId, workflow or dependency changed.** Production Weather network stays OFF, the final
+  consent stays disabled, and the tile remains original render-only.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `b0bb658` (format/monitor follow-up); feature commits `b6e0781` (pure model) and `20efa5a`
-  (provider/resources/wiring/guard); base `5899de0`. The STATE commit follows this list.
+- head: `9ecfa82` (this readiness fix); checkpoint `dacff49` (previous worker run 103 stalled but
+  saved this checkpoint); earlier `f7158e5` placement helpers and `b0bb658` weather render work.
+  The STATE commit follows this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI263 was FULL GREEN and independently audited: 273 tests total, 162 weather tests.** The
-  audited artifact installed (APK SHA-256
-  `49dee8da4fa3f6fa38516e159c0f29fbb371d582a08b26887c0f7ea53c03c283`) and the settings run ended
-  final disabled generation 2. **No CI result exists for `b6e0781`, `20efa5a` or `b0bb658`.** The
-  next API 37 CI is the compile gate for the provider and the runtime publication.
-- next: **repository activation** (wire the real MET repository behind the owner's injected
-  `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle instrumentation**
-  (specific screen/keyguard cases still pending), then the **backup/SAF broader audit**. Release,
-  hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play, large-screen,
-  backup/restore and performance audits stay open. Do not claim a forecast is connected or the
-  launcher is complete.
+- ci: **CI45289110969 (CI269) compiled the widget (`widget102`) and passed 287 unit tests and 176
+  weather tests, but the runtime failed BEFORE Weather placement.** `verify_nothing_home` after
+  `capture_grid_settings` could not see the clock: the final `home.xml` held the `MON23NOV` date,
+  battery and device hosts but no clock host/text, the earlier `home.png` was stale, and logcat
+  showed repeated `PendingAppWidgetHostView` reinflation near the final return. The Weather gate
+  was **never reached** and produced no weather-widget artifacts; this is **not** a Weather tile
+  failure or success. CI263's full-green audit remains historical for an earlier commit.
+- next: parent dispatches actual API 37 CI on `9ecfa82`; only a green runtime may prove the clock
+  readiness. Native optional Weather placement/tap/restart/conditional-resize evidence is still
+  pending actual CI. Then **repository activation** (wire the real MET repository behind the owner's
+  injected `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle
+  instrumentation**, then the **backup/SAF broader audit**. Release, hosting and merge stay paused.
+  PrivateSpace, settings round-trip, non-Play, large-screen, backup/restore and performance audits
+  stay open. Do not claim a forecast is connected or that the Weather tile has runtime evidence.
 
-## done (this run — Weather HOME widget render phase, PENDING CI)
+## done (this run — CI269 HOME readiness correction, PENDING ACTUAL CI)
+
+- **Exact CI269 failure, not a Weather failure:** `capture_grid_settings` completed its read-only
+  grid read and returned with the normal HOME key. `verify_nothing_home` then saw the
+  `MON23NOV` date pill plus the battery and device hosts, but the clock host was still a
+  `PendingAppWidgetHostView` and no live clock text was present. The old check made only four
+  captures of one fixed `home.xml` and could not write a fresh PNG/appwidget/activity diagnosis for
+  each attempt, so it failed while the launcher was still rebinding. The runtime never reached the
+  Weather placement/tap/restart/resize gate and has no Weather artifact; do not report that gate as
+  failed or passed.
+- **Bounded STATE-based readiness:** `verify_nothing_home` now makes at most 15 one-second
+  attempts. Each attempt captures its own `home-readiness-N.xml` and `home-readiness-N.png`, the
+  resumed `dumpsys activity activities` and `dumpsys appwidget` state, and a readiness log line
+  with foreground component, clock/date presence, clock/battery/device child ids, pending host
+  count and PNG presence. Role holders and the resolved default HOME are captured once for the run.
+  Readiness requires the exact `PKG/app.lawnchair.LawnchairLauncher` foreground and
+  `primary_home_is_ready` on the fresh XML; the ready attempt is copied to `home.xml`/`home.png`
+  and then `verify_home_widgets` still requires the real launcher-owned ids and child values.
+- **No waiver, no reset:** the actual clock time text, date strip and all three original widget
+  child ids remain required. A permanently missing clock still fails after the bounded attempts
+  and writes `home-readiness-failure.txt` plus the last attempt XML/PNG/activity/appwidget evidence.
+  No data reset, reseed, direct bind, database/preference edit, item removal/move or clock waiver
+  was added. No app source or production behavior was changed.
+- **Targeted fixtures:** new executed fixtures cover a transiently pending clock that is absent on
+  attempts 1-4 and ready on attempt 5, and a permanently missing clock. They prove fresh per-attempt
+  XML/PNG and diagnostics, promotion of the ready attempt, and fail-closed behavior when the clock
+  never returns.
+- **Stale run 103 corrected:** the previous worker run stalled before updating STATE but saved the
+  `dacff49` checkpoint. This run resumed from that checkpoint rather than claiming the stalled work
+  completed.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or new CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **935 ok, 0 not ok, all passed** (the 922-check
+  baseline plus 13 new readiness checks); `sh scripts/emulator-smoke-drawer-test.sh` all passed;
+  `sh -n` is clean on the edited scripts; `git diff --check` is clean;
+  `nothingui-home-guard.sh`, `nothingui-widget-guard.sh`, `nothingui-polish-guard.sh`,
+  `nothingui-weather-guard.sh`, `nothingui-wallpaper-guard.sh`, `nothingui-icon-render-guard.sh`,
+  `nothingui-home-role-guard.sh` and their selected mutation tests pass.
+- **Missing evidence / not claimed:** no actual CI runtime, APK, screenshot or device proof for
+  `9ecfa82`. The executed fixtures use stubbed captures and a fixed launcher activity; they prove
+  the poll/fail-closed control flow, not that the real emulator clock recovers or that CI269 will
+  pass. Weather placement/tap/restart/conditional-resize evidence is still pending actual CI.
+
+## done (previous run — Weather HOME widget render phase, PENDING CI)
+
 
 - **Pure coordinate-free render model** — new `WeatherWidgetRender.kt`:
   `WeatherWidgetForecast` carries only `temperatureCelsius`, `symbolCode`, `asOf` and `stale`; the
