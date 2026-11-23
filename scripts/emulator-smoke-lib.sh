@@ -1754,8 +1754,10 @@ ui_label_present() (
 # of the same parent. Exactly one label node and exactly one matching field are
 # required; a missing, duplicated or otherwise ambiguous association prints
 # nothing so a caller never types into the wrong field. The result is
-# "<x1> <y1> <x2> <y2>|<current text>".
-ui_labelled_edit_text_state() (
+# "<x1> <y1> <x2> <y2>|<current text>|<focused>"; the focused flag is the node's
+# measured XML attribute, so a caller can prove a field was actually blurred
+# instead of assuming a tap moved focus.
+_ui_labelled_edit_text_field() (
     xml=${1:-}
     label=${2:-}
     [ -s "$xml" ] || return 0
@@ -1788,6 +1790,7 @@ ui_labelled_edit_text_state() (
                 txt[n] = attr($0, "text")
                 desc[n] = attr($0, "content-desc")
                 bnd[n] = attr($0, "bounds")
+                foc[n] = attr($0, "focused")
                 selfclose = ($0 ~ /\/[[:space:]]*$/)
                 if (selfclose) {
                     depth[n] = sp + 1
@@ -1842,9 +1845,22 @@ ui_labelled_edit_text_state() (
                 sub(/^[[:space:]]+/, "", s)
                 sub(/[[:space:]]+$/, "", s)
                 pn = split(s, p, /[[:space:]]+/)
-                if (pn == 4) print p[1], p[2], p[3], p[4] "|" txt[match_e]
+                if (pn == 4) print p[1], p[2], p[3], p[4] "|" txt[match_e] "|" foc[match_e]
             }
         '
+)
+
+ui_labelled_edit_text_state() (
+    field=$(_ui_labelled_edit_text_field "${1:-}" "${2:-}")
+    [ -n "$field" ] || return 0
+    rest=${field#*|}
+    printf '%s|%s\n' "${field%%|*}" "${rest%|*}"
+)
+
+ui_labelled_edit_text_focused() (
+    field=$(_ui_labelled_edit_text_field "${1:-}" "${2:-}")
+    [ -n "$field" ] || return 0
+    printf '%s\n' "${field##*|}"
 )
 
 ui_labelled_edit_text_bounds() (
@@ -1984,6 +2000,42 @@ ime_is_shown() (
     dump=${1:-}
     [ -s "$dump" ] || return 1
     grep -Eq 'mInputShown[=:] *true|mIsInputViewShown[=:] *true|isInputViewShown[=:] *true' "$dump"
+)
+
+# Quote one value for a POSIX shell as a single argument. Used to build one
+# device command string that survives adb joining its arguments; values never
+# leave their quotes on the remote shell.
+shell_single_quote() (
+    printf "'"
+    printf '%s' "${1:-}" |
+        awk 'BEGIN { ORS = "" } { gsub(/\047/, "\047\\\047\047"); print }'
+    printf "'"
+)
+
+# Build the single device command string that runs an app-private shell script
+# through `run-as`. The result must be passed to `adb shell` as exactly one
+# argument. adb joins multiple arguments with spaces (and does not preserve
+# quoting), so a multi-argument `run-as PKG sh -c "script"` becomes
+# `sh -c script`, which executes only the first word of the script. Quoting the
+# package and the whole script here keeps the inner command intact.
+weather_app_shell_command() (
+    pkg=${1:-}
+    script=${2:-}
+    [ -n "$pkg" ] || return 0
+    [ -n "$script" ] || return 0
+    printf 'run-as %s sh -c %s\n' \
+        "$(shell_single_quote "$pkg")" "$(shell_single_quote "$script")"
+)
+
+# Print the parent directory of an app-relative path so a failed probe can list
+# the private directory as evidence. A path with no slash maps to the app data
+# directory ".".
+weather_private_dir() (
+    path=${1:-}
+    case "$path" in
+        */*) printf '%s\n' "${path%/*}" ;;
+        *) printf '.\n' ;;
+    esac
 )
 
 # Print the URL-safe, unpadded base64 file name used by FileWeatherCacheStore

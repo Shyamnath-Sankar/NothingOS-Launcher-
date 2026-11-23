@@ -1801,7 +1801,6 @@ read_wm_size() (
 
 WEATHER_ENABLED_MESSAGE='Weather setup saved. No forecast is loaded in this version.'
 WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
-WEATHER_COORDINATES_HINT='Use 4 decimal places or fewer. No GPS, network geocoding or device location is used.'
 
 _weather_snapshot() {
     _ws_tag=$1
@@ -1812,32 +1811,89 @@ _weather_snapshot() {
         fail "weather $_ws_tag screenshot capture failed"
 }
 
+# Probe one app-private file without an unquoted `sh -c`. adb joins arguments,
+# so `run-as PKG sh -c "test -f path"` reaches the device as
+# `sh -c test -f path`: the inner `sh -c` receives only `test`, and `test` gets
+# no operand, so an existing file is reported missing. Passing `test` directly
+# after `run-as` keeps every argument intact. Prints "present", "absent" or
+# "error". An error is a run-as/transport failure, never a missing file, and
+# always retains the probe exit, stderr and a private directory listing.
+_weather_probe_private_file() {
+    _wpp_path=$1
+    _wpp_tag=$2
+    _wpp_dir=$(weather_private_dir "$_wpp_path")
+    _wpp_err="$ARTIFACTS/weather-probe-$_wpp_tag.err"
+    _wpp_log="$ARTIFACTS/weather-probe-$_wpp_tag.txt"
+    rm -f "$_wpp_err"
+    _wpp_exit=0
+    ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" test -f "$_wpp_path" \
+        > /dev/null 2> "$_wpp_err" || _wpp_exit=$?
+    {
+        printf 'path=%s\ncommand=run-as %s test -f %s\nexit=%s\n' \
+            "$_wpp_path" "$PKG" "$_wpp_path" "$_wpp_exit"
+        printf 'stderr:\n'
+        cat "$_wpp_err" 2>/dev/null || true
+    } > "$_wpp_log"
+    if [ "$_wpp_exit" -eq 0 ] && [ ! -s "$_wpp_err" ]; then
+        printf 'present\n'
+        return 0
+    fi
+    {
+        printf 'private-directory-listing:%s\n' "$_wpp_dir"
+        ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" ls -l "$_wpp_dir" 2>&1 || true
+    } >> "$_wpp_log"
+    if [ "$_wpp_exit" -eq 1 ] && [ ! -s "$_wpp_err" ]; then
+        printf 'absent\n'
+    else
+        printf 'error\n'
+    fi
+}
+
 _weather_capture_consent() {
     _wcc_tag=$1
     _wcc_out="$ARTIFACTS/weather-consent-$_wcc_tag.json"
     _wcc_err="$ARTIFACTS/weather-consent-$_wcc_tag.err"
     rm -f "$_wcc_out" "$_wcc_err"
-    if adb_cmd shell run-as "$PKG" sh -c \
-        "test -f '$WEATHER_CONSENT_REL'" > /dev/null 2>&1; then
-        if ! ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" cat \
-            "$WEATHER_CONSENT_REL" > "$_wcc_out" 2> "$_wcc_err"; then
-            _wcc_state=malformed
-        else
-            _wcc_state=$(weather_consent_state "$_wcc_out")
-        fi
-    else
-        _wcc_state=missing
-    fi
+    _wcc_probe=$(_weather_probe_private_file "$WEATHER_CONSENT_REL" "$_wcc_tag")
+    case "$_wcc_probe" in
+        present)
+            if ! ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" cat \
+                "$WEATHER_CONSENT_REL" > "$_wcc_out" 2> "$_wcc_err"; then
+                _wcc_state=malformed
+            else
+                _wcc_state=$(weather_consent_state "$_wcc_out")
+            fi
+            ;;
+        absent)
+            _wcc_state=missing
+            ;;
+        *)
+            _wcc_state=probe-error
+            ;;
+    esac
     printf '%s\n' "$_wcc_state" > "$ARTIFACTS/weather-consent-$_wcc_tag.state"
     printf '%s\n' "$_wcc_state"
 }
 
 _weather_cache_exists() {
-    adb_cmd shell run-as "$PKG" sh -c "test -f '$1'" > /dev/null 2>&1
+    _wce_path=$1
+    _wce_tag=${2:-cache-exists}
+    _wce_state=$(_weather_probe_private_file "$_wce_path" "$_wce_tag")
+    case "$_wce_state" in
+        present) return 0 ;;
+        absent) return 1 ;;
+        *)
+            fail "could not probe the app-private weather cache file '$_wce_path' (run-as/transport error; see weather-probe-$_wce_tag.txt)"
+            return 2
+            ;;
+    esac
 }
 
 _weather_seed_cache() {
     _wsc_rel=$1
+    _wsc_dir=$(weather_private_dir "$_wsc_rel")
+    _wsc_expected="$ARTIFACTS/weather-cache-fixture.expected"
+    _wsc_actual="$ARTIFACTS/weather-cache-fixture.actual"
     printf '%s\n' \
         'v1' \
         '60.0000,10.0000' \
@@ -1845,11 +1901,20 @@ _weather_seed_cache() {
         '-' \
         '-' \
         '-' \
-        'synthetic fixture for the cache-clear gate; not weather data' |
-        ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" sh -c \
-            "mkdir -p '$WEATHER_CACHE_REL'; cat > '$_wsc_rel'" \
-            > "$ARTIFACTS/weather-cache-seed.txt" 2>&1 || return 1
-    _weather_cache_exists "$_wsc_rel"
+        'synthetic fixture for the cache-clear gate; not weather data' \
+        > "$_wsc_expected"
+    _wsc_script="mkdir -p $(shell_single_quote "$_wsc_dir"); cat > $(shell_single_quote "$_wsc_rel")"
+    _wsc_command=$(weather_app_shell_command "$PKG" "$_wsc_script")
+    [ -n "$_wsc_command" ] || return 1
+    printf '%s\n' "$_wsc_command" \
+        > "$ARTIFACTS/weather-cache-seed-command.txt"
+    ADB_TIMEOUT=30 adb_cmd shell "$_wsc_command" \
+        < "$_wsc_expected" \
+        > "$ARTIFACTS/weather-cache-seed.txt" 2>&1 || return 1
+    _weather_cache_exists "$_wsc_rel" cache-seeded || return 1
+    ADB_TIMEOUT=30 adb_cmd shell run-as "$PKG" cat "$_wsc_rel" \
+        > "$_wsc_actual" 2> "$ARTIFACTS/weather-cache-fixture.err" || return 1
+    cmp -s "$_wsc_expected" "$_wsc_actual"
 }
 
 _weather_viewport() {
@@ -2475,26 +2540,42 @@ capture_weather_settings() {
     _weather_type "$_weather_measured" '10.0000' valid-longitude \
         "$_weather_field_text" 'Longitude'
     # A red outline on a focused valid field can be the normal theme focus
-    # accent. Capture the focused state, then blur with a measured harmless hint
-    # that is neither a provider link nor an action, and prove no semantic error
-    # is exposed. Production UI is not changed from colour alone.
+    # accent. Capture the actual focused state, then move focus to another
+    # measured EditText without changing its draft and dismiss the IME. Tapping
+    # non-focusable hint text left Longitude focused, so that could never prove
+    # a blurred capture. Production UI is not changed from colour alone.
     capture_ui_xml weather-valid-longitude-focused.xml ||
         fail "could not capture the focused valid longitude field"
     capture_screenshot_to weather-valid-longitude-focused.png
     [ -s "$ARTIFACTS/weather-valid-longitude-focused.png" ] ||
         fail "the focused valid longitude screenshot is empty"
-    _weather_measure_control label "$WEATHER_COORDINATES_HINT" \
-        valid-blur-target 4 ||
-        fail "could not measure a harmless target to blur the valid longitude field"
-    _cws_blur_target=$_weather_measured
-    tap_center_of_bounds "$_cws_blur_target" ||
-        fail "could not blur the valid longitude field on the measured hint"
+    [ "$(ui_labelled_edit_text_focused \
+        "$ARTIFACTS/weather-valid-longitude-focused.xml" 'Longitude')" = true ] ||
+        fail "the focused valid longitude capture does not report Longitude focused"
+    _weather_measure_field 'Latitude' valid-blur-field 4 ||
+        fail "could not measure the latitude field to move focus"
+    _cws_blur_bounds=$_weather_measured
+    _cws_blur_value=$_weather_field_text
+    tap_center_of_bounds "$_cws_blur_bounds" ||
+        fail "could not move focus to the measured latitude field"
+    sleep 1
+    _weather_hide_ime valid-blur
     sleep 1
     capture_ui_xml weather-valid-longitude-blurred.xml ||
         fail "could not capture the blurred valid longitude field"
     capture_screenshot_to weather-valid-longitude-blurred.png
     [ -s "$ARTIFACTS/weather-valid-longitude-blurred.png" ] ||
         fail "the blurred valid longitude screenshot is empty"
+    [ "$(ui_labelled_edit_text_focused \
+        "$ARTIFACTS/weather-valid-longitude-blurred.xml" 'Longitude')" = false ] ||
+        fail "the valid longitude field is still focused after focus moved to latitude"
+    [ "$(ui_labelled_edit_text_focused \
+        "$ARTIFACTS/weather-valid-longitude-blurred.xml" 'Latitude')" = true ] ||
+        fail "the measured latitude field did not take focus from longitude"
+    [ "$(ui_labelled_edit_text_text \
+        "$ARTIFACTS/weather-valid-longitude-blurred.xml" 'Latitude')" = \
+        "$_cws_blur_value" ] ||
+        fail "moving focus changed the latitude draft"
     if grep -Fq 'Longitude must be a number from -180 to 180' \
         "$ARTIFACTS/weather-valid-longitude-blurred.xml"; then
         fail "the valid longitude field exposed a semantic validation error after blur"
@@ -2655,7 +2736,7 @@ capture_weather_settings() {
         disabled\|*) ;;
         *) fail "the disabled weather opt-in was not stored, found '$_cws_consent'" ;;
     esac
-    if _weather_cache_exists "$_cws_cache_rel"; then
+    if _weather_cache_exists "$_cws_cache_rel" cache-after-disable; then
         fail "Disable did not clear the location's weather cache file"
     fi
     adb_cmd shell run-as "$PKG" ls -l "$WEATHER_CACHE_REL" \

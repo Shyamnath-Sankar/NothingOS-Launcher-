@@ -4184,6 +4184,52 @@ assert_eq 'duplicate field labels fail closed instead of picking one' \
 assert_eq 'an absent field label yields no field' \
     '' "$(ui_labelled_edit_text_state "$weather_initial_xml" 'Not a field')"
 
+# A focus tap on the Longitude field is real only while that EditText reports
+# focused="true". The blurred fixture below swaps the focus attribute to the
+# latitude field, so a capture named "blurred" can be asserted instead of
+# assumed. The hint-tap fixture keeps Longitude focused, reproducing why tapping
+# a non-focusable hint text could never prove a blurred state.
+weather_focused_xml="$TMP_DIR/weather-longitude-focused.xml"
+cat > "$weather_focused_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="60.0000" content-desc="Latitude" focused="false" bounds="[40,320][1040,420]" />
+  <node index="1" class="android.widget.EditText" text="10.0000" content-desc="Longitude" focused="true" bounds="[40,440][1040,540]" />
+</hierarchy>
+EOF
+assert_eq 'the focused longitude capture reports measured focus' \
+    'true' "$(ui_labelled_edit_text_focused "$weather_focused_xml" 'Longitude')"
+assert_eq 'the latitude field is not focused in the focused capture' \
+    'false' "$(ui_labelled_edit_text_focused "$weather_focused_xml" 'Latitude')"
+assert_eq 'the focused helper does not change the existing state format' \
+    '40 440 1040 540|10.0000' \
+    "$(ui_labelled_edit_text_state "$weather_focused_xml" 'Longitude')"
+
+weather_blurred_xml="$TMP_DIR/weather-longitude-blurred.xml"
+cat > "$weather_blurred_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="60.0000" content-desc="Latitude" focused="true" bounds="[40,320][1040,420]" />
+  <node index="1" class="android.widget.EditText" text="10.0000" content-desc="Longitude" focused="false" bounds="[40,440][1040,540]" />
+</hierarchy>
+EOF
+assert_eq 'the longitude field is measurably blurred after focus moves' \
+    'false' "$(ui_labelled_edit_text_focused "$weather_blurred_xml" 'Longitude')"
+assert_eq 'the measured latitude field took focus from longitude' \
+    'true' "$(ui_labelled_edit_text_focused "$weather_blurred_xml" 'Latitude')"
+assert_eq 'moving focus does not change the latitude draft' \
+    '60.0000' "$(ui_labelled_edit_text_text "$weather_blurred_xml" 'Latitude')"
+
+weather_hint_tap_xml="$TMP_DIR/weather-hint-tap-still-focused.xml"
+cat > "$weather_hint_tap_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="10.0000" content-desc="Longitude" focused="true" bounds="[40,440][1040,540]" />
+  <node index="1" class="android.widget.TextView" text="Use 4 decimal places or fewer." bounds="[40,560][1040,600]" />
+</hierarchy>
+EOF
+assert_eq 'a hint tap that leaves longitude focused cannot prove a blur' \
+    'true' "$(ui_labelled_edit_text_focused "$weather_hint_tap_xml" 'Longitude')"
+assert_eq 'an ambiguous or missing field reports no focus state' \
+    '' "$(ui_labelled_edit_text_focused "$weather_blurred_xml" 'Not a field')"
+
 assert_eq 'a target below the viewport scrolls down' \
     'down' "$(weather_target_scroll_direction '126 1826 954 1966' '0 72 1080 1794')"
 assert_eq 'a target above the viewport scrolls up' \
@@ -4298,6 +4344,175 @@ case "$weather_poll_reveal" in
         ;;
 esac
 
+# --- executable app-private probe/seed fixtures ----------------------------
+# Simulate adb's argument joining and the device shell/run-as boundary. adb
+# joins every argument after `shell` with spaces, so the old
+# `run-as PKG sh -c "test -f path"` becomes `sh -c test -f path`; the inner
+# `sh -c` runs only `test` and reports a real file missing. The fake run-as
+# switches to the app data directory, so a wrong-UID/outside-path write is
+# detectable in the separate device root.
+weather_probe_body="$TMP_DIR/weather-private-probe.sh"
+awk '/^_weather_probe_private_file\(\) \{/ { f = 1 }
+     /^_weather_viewport\(\)/ { f = 0 }
+     f' "$SMOKE" > "$weather_probe_body"
+assert_true 'the app-private probe/seed functions are extractable' \
+    test -s "$weather_probe_body"
+assert_true 'the extracted probe block includes the seed helper' \
+    grep -Fq '_weather_seed_cache() {' "$weather_probe_body"
+
+weather_probe_harness="$TMP_DIR/weather-probe-harness.sh"
+cat > "$weather_probe_harness" <<'EOF'
+set -eu
+BODY=$1
+ROOT=$2
+MODE=$3
+LIB_FILE=$4
+. "$LIB_FILE"
+APPDIR="$ROOT/app"
+DEVICE_ROOT="$ROOT/device"
+FAKE_BIN="$ROOT/bin"
+ARTIFACTS="$ROOT/artifacts"
+mkdir -p "$APPDIR/no_backup/dotwel-weather-private/consent" \
+    "$APPDIR/no_backup/dotwel-weather-private/cache" \
+    "$DEVICE_ROOT/no_backup/dotwel-weather-private/cache" \
+    "$FAKE_BIN" "$ARTIFACTS"
+cat > "$FAKE_BIN/run-as" <<'RUNAS'
+#!/bin/sh
+pkg=$1
+shift
+if [ "${FAKE_PROBE_ERROR:-0}" = 1 ] && [ "$1" = test ]; then
+    printf 'fake-run-as: transport failure\n' >&2
+    exit 2
+fi
+cd "$APPDIR" || exit 1
+exec "$@"
+RUNAS
+chmod +x "$FAKE_BIN/run-as"
+export APPDIR
+adb_cmd() {
+    [ "$1" = shell ] || return 2
+    shift
+    if [ "$#" -eq 1 ]; then
+        joined=$1
+    else
+        joined=
+        for arg in "$@"; do
+            joined="$joined${joined:+ }$arg"
+        done
+    fi
+    (
+        cd "$DEVICE_ROOT" || exit 1
+        PATH="$FAKE_BIN:$PATH" FAKE_PROBE_ERROR="${FAKE_PROBE_ERROR:-0}" \
+            sh -c "$joined"
+    )
+}
+PKG=com.launchersim.debug
+WEATHER_CONSENT_REL=no_backup/dotwel-weather-private/consent/consent-state.json
+fail() {
+    printf 'probe harness failure: %s\n' "$*" >&2
+    exit 1
+}
+. "$BODY"
+case "$MODE" in
+    present)
+        printf '%s\n' '{"version":1,"enabled":false,"generation":4,"label":null,"latitude":null,"longitude":null}' \
+            > "$APPDIR/$WEATHER_CONSENT_REL"
+        printf 'state=%s\n' "$(_weather_capture_consent present)"
+        ;;
+    absent)
+        printf 'state=%s\n' "$(_weather_capture_consent absent)"
+        ;;
+    error)
+        FAKE_PROBE_ERROR=1
+        export FAKE_PROBE_ERROR
+        printf 'state=%s\n' "$(_weather_capture_consent error)"
+        ;;
+    misquote)
+        printf 'x\n' > "$APPDIR/$WEATHER_CONSENT_REL"
+        misquote_rc=0
+        adb_cmd shell run-as "$PKG" sh -c \
+            "test -f '$WEATHER_CONSENT_REL'" || misquote_rc=$?
+        printf 'misquote_rc=%s\n' "$misquote_rc"
+        printf 'direct=%s\n' \
+            "$(_weather_probe_private_file "$WEATHER_CONSENT_REL" direct)"
+        ;;
+    seed)
+        cache_rel=no_backup/dotwel-weather-private/cache/fixture.weather
+        if _weather_seed_cache "$cache_rel"; then
+            printf 'seed=ok\n'
+        else
+            printf 'seed=failed\n'
+        fi
+        cp "$APPDIR/$cache_rel" "$ARTIFACTS/seed-readback.txt" 2>/dev/null || true
+        printf 'seeded=%s\n' \
+            "$(_weather_probe_private_file "$cache_rel" seeded)"
+        rm -f "$APPDIR/$cache_rel"
+        if _weather_cache_exists "$cache_rel" cleared; then
+            printf 'cleared=present\n'
+        else
+            printf 'cleared=absent\n'
+        fi
+        ;;
+esac
+EOF
+
+weather_probe_present=$(sh "$weather_probe_harness" "$weather_probe_body" \
+    "$TMP_DIR/weather-probe-present" present "$LIB") ||
+    weather_probe_present=
+assert_eq 'an existing app-private consent file is not reported missing' \
+    'state=disabled|4' "$weather_probe_present"
+assert_true 'the existing-file probe records a zero exit' \
+    grep -Fq 'exit=0' \
+    "$TMP_DIR/weather-probe-present/artifacts/weather-probe-present.txt"
+
+weather_probe_absent=$(sh "$weather_probe_harness" "$weather_probe_body" \
+    "$TMP_DIR/weather-probe-absent-run" absent "$LIB") ||
+    weather_probe_absent=
+assert_eq 'a genuinely absent consent file is reported missing' \
+    'state=missing' "$weather_probe_absent"
+assert_true 'the absent probe records exit 1 with empty stderr' \
+    grep -Fq 'exit=1' \
+    "$TMP_DIR/weather-probe-absent-run/artifacts/weather-probe-absent.txt"
+assert_true 'the absent probe lists the private directory as evidence' \
+    grep -Fq 'private-directory-listing:' \
+    "$TMP_DIR/weather-probe-absent-run/artifacts/weather-probe-absent.txt"
+
+weather_probe_error=$(sh "$weather_probe_harness" "$weather_probe_body" \
+    "$TMP_DIR/weather-probe-error" error "$LIB") ||
+    weather_probe_error=
+assert_eq 'a run-as/transport error is not reported as a missing file' \
+    'state=probe-error' "$weather_probe_error"
+assert_true 'the error probe retains the nonzero exit and stderr' \
+    grep -Fq 'exit=2' \
+    "$TMP_DIR/weather-probe-error/artifacts/weather-probe-error.txt"
+assert_true 'the error probe retains the transport stderr text' \
+    grep -Fq 'fake-run-as: transport failure' \
+    "$TMP_DIR/weather-probe-error/artifacts/weather-probe-error.txt"
+assert_true 'the error probe still lists the private directory' \
+    grep -Fq 'private-directory-listing:' \
+    "$TMP_DIR/weather-probe-error/artifacts/weather-probe-error.txt"
+
+weather_probe_misquote=$(sh "$weather_probe_harness" "$weather_probe_body" \
+    "$TMP_DIR/weather-probe-misquote" misquote "$LIB") ||
+    weather_probe_misquote=
+assert_eq 'the adb join misquote reproduces the false-missing probe' \
+    'misquote_rc=1
+direct=present' "$weather_probe_misquote"
+
+weather_probe_seed=$(sh "$weather_probe_harness" "$weather_probe_body" \
+    "$TMP_DIR/weather-probe-seed" seed "$LIB") ||
+    weather_probe_seed=
+assert_eq 'the cache fixture is created through the quoted app shell and cleared' \
+    'seed=ok
+seeded=present
+cleared=absent' "$weather_probe_seed"
+assert_true 'the seeded cache content round-trips exactly' \
+    grep -Fq 'synthetic fixture for the cache-clear gate; not weather data' \
+    "$TMP_DIR/weather-probe-seed/artifacts/seed-readback.txt"
+assert_false 'the seed never writes to the outer device-shell path' \
+    test -e \
+    "$TMP_DIR/weather-probe-seed/device/no_backup/dotwel-weather-private/cache/fixture.weather"
+
 # --- static regression on the weather runtime gate --------------------------
 
 weather_body="$TMP_DIR/capture_weather_settings.sh"
@@ -4349,10 +4564,23 @@ assert_false 'the weather gate never greps the success message from an unscrolle
     grep -Eq "grep -Fq 'Weather (setup saved|disabled)\\." "$weather_body"
 assert_true 'the valid longitude keeps a focused capture before blur' \
     grep -Fq 'weather-valid-longitude-focused.png' "$weather_body"
-assert_true 'the valid longitude is blurred with the measured harmless hint' \
-    grep -Fq 'valid-blur-target' "$weather_body"
-assert_true 'the valid longitude keeps a blurred capture after the hint tap' \
+assert_true 'the focused capture is asserted to report Longitude focused' \
+    grep -Fq "weather-valid-longitude-focused.xml\" 'Longitude')\" = true" \
+    "$weather_body"
+assert_true 'focus is moved to the measured latitude field' \
+    grep -Fq "_weather_measure_field 'Latitude' valid-blur-field" "$weather_body"
+assert_true 'the keyboard is dismissed after focus moves' \
+    grep -Fq '_weather_hide_ime valid-blur' "$weather_body"
+assert_true 'the blurred capture asserts Longitude is not focused' \
+    grep -Fq "weather-valid-longitude-blurred.xml\" 'Longitude')\" = false" \
+    "$weather_body"
+assert_true 'the blurred capture asserts latitude took focus unchanged' \
+    grep -Fq "weather-valid-longitude-blurred.xml\" 'Latitude')\" = true" \
+    "$weather_body"
+assert_true 'the valid longitude keeps a blurred capture after focus moves' \
     grep -Fq 'weather-valid-longitude-blurred.png' "$weather_body"
+assert_false 'the blurred capture is not named from a hint tap' \
+    grep -Fq 'valid-blur-target' "$weather_body"
 assert_true 'the blurred valid longitude asserts no semantic validation error' \
     grep -Fq 'the valid longitude field exposed a semantic validation error after blur' "$weather_body"
 assert_true 'the weather gate measures the existing draft before typing' \
@@ -4369,6 +4597,24 @@ assert_true 'the weather gate reads the app-private consent store' \
     grep -Fq 'WEATHER_CONSENT_REL' "$weather_body"
 assert_true 'the weather gate reads the app-private cache path' \
     grep -Fq 'WEATHER_CACHE_REL' "$weather_body"
+assert_true 'the app-private probe calls run-as test without sh -c' \
+    grep -Fq 'adb_cmd shell run-as "$PKG" test -f "$_wpp_path"' "$weather_body"
+assert_false 'the app-private probe never uses an unquoted run-as sh -c' \
+    grep -Fq 'run-as "$PKG" sh -c' "$weather_body"
+assert_true 'the probe records its exit and stderr evidence' \
+    grep -Fq 'weather-probe-$_wpp_tag.txt' "$weather_body"
+assert_true 'the probe lists the private directory after a failed test' \
+    grep -Fq 'private-directory-listing:' "$weather_body"
+assert_true 'the consent reader maps a probe failure to probe-error' \
+    grep -Fq '_wcc_state=probe-error' "$weather_body"
+assert_true 'the cache seed builds one fully quoted device command' \
+    grep -Fq 'weather_app_shell_command "$PKG" "$_wsc_script"' "$weather_body"
+assert_true 'the cache seed pipes the fixture into the single quoted command' \
+    grep -Fq 'adb_cmd shell "$_wsc_command"' "$weather_body"
+assert_true 'the cache seed reads back and compares the exact bytes' \
+    grep -Fq 'cmp -s "$_wsc_expected" "$_wsc_actual"' "$weather_body"
+assert_false 'the cache seed never writes through an unquoted sh -c' \
+    grep -Fq 'sh -c "mkdir -p' "$weather_body"
 assert_true 'the weather gate derives the production cache filename' \
     grep -Fq 'weather_cache_filename' "$weather_body"
 assert_true 'the weather gate seeds a synthetic cache fixture only' \
