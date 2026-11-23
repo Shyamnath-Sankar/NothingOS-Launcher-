@@ -40,6 +40,12 @@ reset_fixture() {
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherHomeOwner.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt'
     copy_file 'lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt'
+    copy_file 'lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt'
+    copy_file 'lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt'
+    copy_file 'lawnchair/res/layout/nothingui_widget_weather.xml'
+    copy_file 'lawnchair/res/xml/nothingui_weather_widget_info.xml'
+    copy_file 'play/AndroidManifest.xml'
+    copy_file 'play/res/xml/default_workspace_4x5.xml'
 }
 
 run_guard() {
@@ -102,6 +108,52 @@ expect_fail 'reusing a closed runtime owner is rejected'
 reset_fixture
 printf '\n// OkHttpClient must not appear here\n' >>"$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
 expect_fail 'a runtime that constructs a transport is rejected'
+
+reset_fixture
+printf '\n// requestLoad()\n' >>"$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a weather widget broadcast that starts a load is rejected'
+
+reset_fixture
+printf '\n// WeatherHttpTransport\n' >>"$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a weather widget that constructs a transport is rejected'
+
+reset_fixture
+sed -i 's/updateAppWidget(appWidgetId, views)/partiallyUpdateAppWidget(appWidgetId, views)/' \
+    "$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a weather widget partial update is rejected'
+
+reset_fixture
+sed -i 's/PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE/PendingIntent.FLAG_UPDATE_CURRENT/' \
+    "$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a mutable weather widget PendingIntent is rejected'
+
+reset_fixture
+sed -i 's/PreferenceActivity.createIntent(context, WeatherSettings)/Intent()/' \
+    "$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a weather tile that does not open the real weather settings is rejected'
+
+reset_fixture
+sed -i 's/android:updatePeriodMillis="0"/android:updatePeriodMillis="1800000"/' \
+    "$FIXTURE/lawnchair/res/xml/nothingui_weather_widget_info.xml"
+expect_fail 'a periodic weather widget update is rejected'
+
+reset_fixture
+printf '\n<View />\n' >>"$FIXTURE/lawnchair/res/layout/nothingui_widget_weather.xml"
+expect_fail 'a bare View in the weather RemoteViews layout is rejected'
+
+reset_fixture
+printf '\n// longitude\n' >>"$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"
+expect_fail 'a widget render model that can carry a location is rejected'
+
+reset_fixture
+sed -i '/app.dotwel.widgets.DotWelWeatherWidgetProvider/,/<\/receiver>/ s/android:exported="false"/android:exported="true"/' \
+    "$FIXTURE/play/AndroidManifest.xml"
+expect_fail 'an exported weather widget receiver is rejected'
+
+reset_fixture
+printf '\n<appwidget launcher:className="app.dotwel.widgets.DotWelWeatherWidgetProvider" />\n' \
+    >>"$FIXTURE/play/res/xml/default_workspace_4x5.xml"
+expect_fail 'auto-seeding the weather widget into the default layout is rejected'
 
 if [ "$failures" -ne 0 ]; then
     printf 'nothingui-weather-guard-test: %s failure(s)\n' "$failures" >&2

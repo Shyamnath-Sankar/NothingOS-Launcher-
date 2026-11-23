@@ -1119,6 +1119,23 @@
     <string name="nothingui_device_wifi">Wi-Fi settings</string>
     <string name="nothingui_device_sound">Sound settings</string>
     <string name="nothingui_device_display">Display settings</string>
+    <string name="nothingui_weather_widget_description">Weather, opens weather settings</string>
+    <string name="nothingui_weather_label">WEATHER</string>
+    <string name="nothingui_weather_value_unknown" translatable="false">--</string>
+    <string name="nothingui_weather_value_loading" translatable="false">…</string>
+    <string name="nothingui_weather_state_off">Weather off · tap to set up</string>
+    <string name="nothingui_weather_state_not_connected">No forecast yet</string>
+    <string name="nothingui_weather_state_not_connected_detail">Provider not connected</string>
+    <string name="nothingui_weather_state_not_connected_content_description">No forecast yet. The weather provider is not connected. Tap to open weather settings.</string>
+    <string name="nothingui_weather_state_loading">Updating weather</string>
+    <string name="nothingui_weather_state_unavailable">Weather unavailable</string>
+    <string name="nothingui_weather_state_retry">Retry later</string>
+    <string name="nothingui_weather_updated">Updated %1$s</string>
+    <string name="nothingui_weather_stale_as_of">As of %1$s</string>
+    <string name="nothingui_weather_last_updated">Last updated %1$s</string>
+    <string name="nothingui_weather_last_updated_retry">Last updated %1$s · retry later</string>
+    <string name="nothingui_weather_forecast_content_description">%1$s, %2$s, updated %3$s</string>
+    <string name="nothingui_weather_last_forecast_content_description">Weather unavailable. Last forecast %1$s, %2$s, last updated %3$s.</string>
 
     <!-- Offline AMOLED wallpaper gallery. -->
     <string name="dotwel_amoled_wallpapers_label">AMOLED Wallpapers</string>

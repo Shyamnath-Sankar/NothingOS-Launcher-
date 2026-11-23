@@ -17,6 +17,9 @@
 package app.nothingui.weather
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import app.dotwel.widgets.DotWelWeatherWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -37,6 +40,7 @@ import kotlinx.coroutines.cancel
  */
 object WeatherHomeRuntime {
     private val lock = Any()
+    private val mainHandler: Handler by lazy { Handler(Looper.getMainLooper()) }
     private var instance: WeatherHomeOwner? = null
     private var ownerScope: CoroutineScope? = null
 
@@ -48,6 +52,8 @@ object WeatherHomeRuntime {
         val created = create(context.applicationContext, scope)
         ownerScope = scope
         instance = created
+        WeatherWidgetStateStore.onSession(created.current())
+        refreshWeatherWidgets(context.applicationContext)
         created
     }
 
@@ -61,6 +67,23 @@ object WeatherHomeRuntime {
         ),
         work = NoNetworkWeatherWork,
         scope = scope,
-        resultSink = WeatherResultSink {},
+        resultSink = WeatherResultSink { result ->
+            WeatherWidgetStateStore.onResult(result)
+            refreshWeatherWidgets(context)
+        },
+        onSessionChanged = { session ->
+            WeatherWidgetStateStore.onSession(session)
+            refreshWeatherWidgets(context)
+        },
     )
+
+    /**
+     * Re-render the placed weather tiles after the shared state changes. This is
+     * a main-thread `updateAppWidget`, not a new load, alarm, worker or receiver;
+     * the provider itself stays render-only.
+     */
+    private fun refreshWeatherWidgets(context: Context) {
+        val appContext = context.applicationContext
+        mainHandler.post { DotWelWeatherWidgetProvider.refreshAll(appContext) }
+    }
 }

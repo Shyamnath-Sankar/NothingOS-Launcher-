@@ -209,6 +209,25 @@
         </receiver>
 
         <!--
+          Original compact weather tile. Render-only: the provider reads the
+          process-wide shared render state published by the launcher owner and
+          never loads, schedules or reads the device location. It is declared
+          only in the Play overlay and adds no permission. It is user-placeable
+          and is deliberately not seeded into the default workspace.
+        -->
+        <receiver
+            android:name="app.dotwel.widgets.DotWelWeatherWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_weather_widget_info" />
+        </receiver>
+
+        <!--
           Original dot-field live wallpaper. Play-only and protected by the
           platform BIND_WALLPAPER permission; it adds no uses-permission and no
           wider access. The user reaches it only through the explicit live

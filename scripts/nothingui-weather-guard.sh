@@ -39,8 +39,15 @@ LAUNCHER="$ROOT/lawnchair/src/app/lawnchair/LawnchairLauncher.kt"
 OWNER="$ROOT/lawnchair/src/app/nothingui/weather/WeatherHomeOwner.kt"
 RUNTIME="$ROOT/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
 PREFS="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt"
+WIDGET_PROVIDER="$ROOT/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+WIDGET_MODEL="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"
+WIDGET_LAYOUT="$ROOT/lawnchair/res/layout/nothingui_widget_weather.xml"
+WIDGET_INFO="$ROOT/lawnchair/res/xml/nothingui_weather_widget_info.xml"
+PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
+DEFAULT_LAYOUT="$ROOT/play/res/xml/default_workspace_4x5.xml"
 
-for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$PREFS"; do
+for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$PREFS" "$WIDGET_PROVIDER" \
+    "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT"; do
     [ -f "$file" ] || fail "missing required file: ${file#"$ROOT"/}"
 done
 
@@ -158,5 +165,89 @@ forbid_text "$RUNTIME" 'AlarmManager' 'the runtime must not schedule an alarm'
 
 require_text "$PREFS" 'WeatherHomeRuntime.observeConsent(appContext, state)' \
     'settings must share the same process-wide owner'
+
+# --- Shared render publication -------------------------------------------
+
+require_text "$RUNTIME" 'WeatherWidgetStateStore.onSession(created.current())' \
+    'the runtime must publish the initial session to the widget render state'
+require_text "$RUNTIME" 'WeatherWidgetStateStore.onSession(session)' \
+    'the runtime must publish every session change to the widget render state'
+require_text "$RUNTIME" 'WeatherWidgetStateStore.onResult(result)' \
+    'the runtime must publish every result to the widget render state'
+
+# --- Render-only weather widget ------------------------------------------
+
+require_text "$WIDGET_PROVIDER" 'class DotWelWeatherWidgetProvider : AppWidgetProvider()' \
+    'the Play weather widget provider is missing'
+require_text "$WIDGET_PROVIDER" 'override fun onUpdate' \
+    'the weather widget does not render on update'
+require_text "$WIDGET_PROVIDER" 'override fun onAppWidgetOptionsChanged' \
+    'the weather widget does not render on resize'
+require_text "$WIDGET_PROVIDER" 'fun refreshAll' \
+    'the weather widget cannot be refreshed by the shared runtime'
+require_text "$WIDGET_PROVIDER" 'WeatherWidgetStateStore.render()' \
+    'the weather widget does not read the shared render state'
+require_text "$WIDGET_PROVIDER" 'updateAppWidget(' \
+    'the weather widget does not use full RemoteViews updates'
+forbid_text "$WIDGET_PROVIDER" 'partiallyUpdateAppWidget' \
+    'the weather widget uses partial RemoteViews updates'
+require_text "$WIDGET_PROVIDER" 'PreferenceActivity.createIntent(context, WeatherSettings)' \
+    'the weather tile does not open the real weather settings destination'
+require_text "$WIDGET_PROVIDER" 'PendingIntent.FLAG_IMMUTABLE' \
+    'the weather tile tap does not use an immutable PendingIntent'
+
+# A widget broadcast must never start a load, construct a network/transport,
+# schedule background work, register a receiver or read the device location.
+for forbidden in \
+    'requestLoad' 'WeatherLoadWork' 'WeatherSessionController' 'MetWeatherRepository' \
+    'OkHttp' 'WeatherHttpTransport' 'WeatherConsentStore' 'LocationManager' \
+    'WorkManager' 'AlarmManager' 'registerReceiver' 'CoroutineScope' 'launch(' \
+    'Thread(' 'Executor' 'WakeLock' 'Service'; do
+    forbid_text "$WIDGET_PROVIDER" "$forbidden" \
+        "the weather widget references forbidden load/background symbol: $forbidden"
+done
+
+require_text "$WIDGET_MODEL" 'data class WeatherWidgetForecast' \
+    'the coordinate-free widget forecast model is missing'
+require_text "$WIDGET_MODEL" 'object WeatherWidgetText' \
+    'the widget text helpers are missing'
+require_text "$WIDGET_MODEL" 'WeatherFailureReason.CACHE_MISS -> WeatherWidgetOutcome.NotConnected' \
+    'the no-network cache miss must render provider-not-connected, not a forecast'
+for forbidden in 'WeatherCoordinates' '.location' 'latitude' 'longitude' 'cacheKey'; do
+    forbid_text "$WIDGET_MODEL" "$forbidden" \
+        "the widget render model references private location data: $forbidden"
+done
+
+require_text "$WIDGET_LAYOUT" 'nothingui_weather_surface' \
+    'the weather layout has no rounded tile surface'
+require_text "$WIDGET_LAYOUT" 'nothingui_weather_value' \
+    'the weather layout has no temperature value'
+require_text "$WIDGET_LAYOUT" 'nothingui_weather_detail' \
+    'the weather layout has no condition line'
+require_text "$WIDGET_LAYOUT" 'nothingui_weather_asof' \
+    'the weather layout has no as-of line'
+if grep -Eq '<View([[:space:]]|>|$)' "$WIDGET_LAYOUT"; then
+    fail 'the weather layout uses an unsupported bare View in a RemoteViews layout'
+fi
+
+require_text "$WIDGET_INFO" 'android:initialLayout="@layout/nothingui_widget_weather"' \
+    'the weather widget metadata does not use the weather layout'
+require_text "$WIDGET_INFO" 'android:updatePeriodMillis="0"' \
+    'the weather widget must not request a periodic update'
+require_text "$WIDGET_INFO" 'android:resizeMode="horizontal|vertical"' \
+    'the weather widget is not resizable to 2x1 and 2x2'
+require_text "$WIDGET_INFO" 'android:minResizeHeight="40dp"' \
+    'the weather widget cannot shrink to a compact one-row size'
+
+require_text "$PLAY_MANIFEST" 'app.dotwel.widgets.DotWelWeatherWidgetProvider' \
+    'the Play manifest does not register the weather widget'
+if ! grep -A6 'app.dotwel.widgets.DotWelWeatherWidgetProvider' "$PLAY_MANIFEST" |
+    grep -Fq 'android:exported="false"'; then
+    fail 'the weather widget receiver is exported or has no exported=false declaration'
+fi
+require_text "$PLAY_MANIFEST" '@xml/nothingui_weather_widget_info' \
+    'the Play manifest does not point the weather receiver at its metadata'
+forbid_text "$DEFAULT_LAYOUT" 'DotWelWeatherWidgetProvider' \
+    'the weather widget must remain user-placeable and must not be auto-seeded'
 
 printf 'nothingui-weather-guard: ok\n'
