@@ -1134,4 +1134,10 @@
     <string name="dotwel_wallpaper_io_failed">Could not read or write the wallpaper</string>
     <string name="dotwel_wallpaper_unconfirmed">The system did not confirm the new Home wallpaper</string>
     <string name="dotwel_wallpaper_failed">Could not apply the wallpaper</string>
+    <string name="dotwel_live_wallpaper_section">Live wallpaper</string>
+    <string name="dotwel_live_wallpaper_label">Dot Field (Live)</string>
+    <string name="dotwel_live_wallpaper_description">A quiet monochrome dot field that drifts slowly. The system preview opens first; nothing changes until you confirm there.</string>
+    <string name="dotwel_live_wallpaper_preview">Preview live wallpaper</string>
+    <string name="dotwel_live_wallpaper_unavailable">The system live-wallpaper preview is unavailable on this device.</string>
+    <string name="dotwel_live_wallpaper_preview_failed">Could not open the system live-wallpaper preview.</string>
 </resources>

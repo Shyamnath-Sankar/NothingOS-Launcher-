@@ -207,5 +207,25 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/nothingui_device_widget_info" />
         </receiver>
+
+        <!--
+          Original dot-field live wallpaper. Play-only and protected by the
+          platform BIND_WALLPAPER permission; it adds no uses-permission and no
+          wider access. The user reaches it only through the explicit live
+          preview action in the AMOLED wallpaper settings, and the system
+          preview/confirmation owns the actual selection.
+        -->
+        <service
+            android:name="app.nothingui.wallpaper.DotFieldWallpaperService"
+            android:label="@string/dotwel_live_wallpaper_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/dotwel_dot_field_wallpaper" />
+        </service>
     </application>
 </manifest>

@@ -16,7 +16,12 @@
 
 package app.lawnchair.ui.preferences.destinations
 
+import android.app.Activity
 import android.app.WallpaperManager
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +66,7 @@ import app.nothingui.wallpaper.AmoledWallpaper
 import app.nothingui.wallpaper.AmoledWallpaperApplier
 import app.nothingui.wallpaper.AmoledWallpaperApplyResult
 import app.nothingui.wallpaper.AmoledWallpaperCatalog
+import app.nothingui.wallpaper.DotFieldWallpaperService
 import com.android.launcher3.R
 import kotlinx.coroutines.launch
 
@@ -75,6 +81,7 @@ fun AmoledWallpaperPreferences(
     val selected = selectedId?.let { AmoledWallpaperCatalog.byId(it) }
     var applying by remember { mutableStateOf(false) }
     var messageRes by remember { mutableStateOf<Int?>(null) }
+    var liveMessageRes by remember { mutableStateOf<Int?>(null) }
     val manager = remember { context.getSystemService<WallpaperManager>() }
 
     PreferenceLayout(
@@ -121,6 +128,41 @@ fun AmoledWallpaperPreferences(
                     vertical = NothingUiSpacing.Md,
                 ),
             )
+        }
+
+        PreferenceGroup(heading = stringResource(R.string.dotwel_live_wallpaper_section)) {
+            Text(
+                text = stringResource(R.string.dotwel_live_wallpaper_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(
+                    horizontal = NothingUiSpacing.Lg,
+                    vertical = NothingUiSpacing.Sm,
+                ),
+            )
+            Button(
+                onClick = {
+                    if (!applying) {
+                        liveMessageRes = openLiveWallpaperPreview(context)
+                    }
+                },
+                enabled = !applying && manager != null,
+                modifier = Modifier
+                    .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Sm)
+                    .heightIn(min = NothingUiSpacing.Xxxl),
+            ) {
+                Text(stringResource(R.string.dotwel_live_wallpaper_preview))
+            }
+            liveMessageRes?.let { res ->
+                Text(
+                    text = stringResource(res),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(
+                        horizontal = NothingUiSpacing.Lg,
+                        vertical = NothingUiSpacing.Sm,
+                    ),
+                )
+            }
         }
 
         selected?.let { wallpaper ->
@@ -231,6 +273,28 @@ fun AmoledWallpaperPreferences(
             }
         }
         Spacer(modifier = Modifier.height(NothingUiSpacing.Xxl))
+    }
+}
+
+/**
+ * Opens the platform live-wallpaper preview for our own service. The system
+ * preview and its confirmation own selection; the app never sets the component
+ * itself and never replaces the current wallpaper from here.
+ */
+private fun openLiveWallpaperPreview(context: Context): Int? {
+    val component = ComponentName(context, DotFieldWallpaperService::class.java)
+    val intent = Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER)
+        .putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, component)
+    if (context !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return try {
+        context.startActivity(intent)
+        null
+    } catch (notFound: ActivityNotFoundException) {
+        R.string.dotwel_live_wallpaper_unavailable
+    } catch (error: RuntimeException) {
+        R.string.dotwel_live_wallpaper_preview_failed
     }
 }
 
