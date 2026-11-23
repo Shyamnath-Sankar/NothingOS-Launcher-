@@ -202,9 +202,10 @@ for forbidden in \
     'requestLoad' 'WeatherLoadWork' 'WeatherSessionController' 'MetWeatherRepository' \
     'OkHttp' 'WeatherHttpTransport' 'WeatherConsentStore' 'LocationManager' \
     'WorkManager' 'AlarmManager' 'registerReceiver' 'CoroutineScope' 'launch(' \
-    'Thread(' 'Executor' 'WakeLock' 'Service'; do
+    'Thread(' 'Executor' 'WakeLock' 'Service' 'SharedPreferences' 'DataStore' \
+    'Log.' 'println' 'printStackTrace'; do
     forbid_text "$WIDGET_PROVIDER" "$forbidden" \
-        "the weather widget references forbidden load/background symbol: $forbidden"
+        "the weather widget references a forbidden load/background/location/log symbol: $forbidden"
 done
 
 require_text "$WIDGET_MODEL" 'data class WeatherWidgetForecast' \

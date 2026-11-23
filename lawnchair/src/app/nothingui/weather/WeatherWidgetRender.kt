@@ -119,12 +119,18 @@ data class WeatherWidgetState(
 
     fun render(): WeatherWidgetRender = when {
         !initialized -> WeatherWidgetRender.NotConnected
+
         !enabled -> WeatherWidgetRender.Off
+
         loading -> WeatherWidgetRender.Loading
+
         else -> when (val current = outcome) {
             null -> WeatherWidgetRender.NotConnected
+
             WeatherWidgetOutcome.NotConnected -> WeatherWidgetRender.NotConnected
+
             is WeatherWidgetOutcome.Current -> WeatherWidgetRender.Forecast(current.forecast)
+
             is WeatherWidgetOutcome.Unavailable -> WeatherWidgetRender.Unavailable(
                 lastForecast = current.lastForecast,
                 retryAt = current.retryAt,
@@ -132,13 +138,14 @@ data class WeatherWidgetState(
         }
     }
 
-    private fun WeatherLoadResult.Success.toWidgetForecast(): WeatherWidgetForecast =
-        WeatherWidgetForecast(
+    private fun WeatherLoadResult.Success.toWidgetForecast(): WeatherWidgetForecast {
+        return WeatherWidgetForecast(
             temperatureCelsius = forecast.temperatureCelsius,
             symbolCode = forecast.symbolCode,
             asOf = forecast.evidenceAt,
             stale = stale,
         )
+    }
 
     private fun WeatherLoadResult.Unavailable.toWidgetOutcome(): WeatherWidgetOutcome {
         val lastForecast = lastSuccess?.let {

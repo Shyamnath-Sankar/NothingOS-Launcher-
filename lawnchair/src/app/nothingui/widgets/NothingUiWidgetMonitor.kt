@@ -24,15 +24,17 @@ import androidx.core.content.ContextCompat
 import app.dotwel.widgets.DotWelBatteryWidgetProvider
 import app.dotwel.widgets.DotWelClockWidgetProvider
 import app.dotwel.widgets.DotWelDeviceWidgetProvider
+import app.dotwel.widgets.DotWelWeatherWidgetProvider
 
 /**
  * Lifecycle-bounded foreground monitor for the Play home widgets.
  *
  * [Intent.ACTION_BATTERY_CHANGED] is sticky and is never delivered to manifest receivers, so the
  * Play launcher activity registers this while it is resumed and unregisters it in `onPause`.
- * Resume, theme and configuration changes refresh both the clock and battery widgets, while
- * battery and power events only need the battery. Power events do not carry the level/scale extras,
- * so they re-read the sticky battery broadcast instead of rendering `--`. This is not a service,
+ * Resume, theme and configuration changes refresh the home widgets (including the render-only
+ * weather tile), while battery and power events only need the battery. Power events do not carry
+ * the level/scale extras, so they re-read the sticky battery broadcast instead of rendering `--`.
+ * This is not a service,
  * holds no wake lock and does no work while another app is foreground.
  */
 object NothingUiWidgetMonitor {
@@ -85,5 +87,6 @@ object NothingUiWidgetMonitor {
         DotWelClockWidgetProvider.refreshAll(context)
         DotWelBatteryWidgetProvider.refreshAll(context)
         DotWelDeviceWidgetProvider.refreshAll(context)
+        DotWelWeatherWidgetProvider.refreshAll(context)
     }
 }
