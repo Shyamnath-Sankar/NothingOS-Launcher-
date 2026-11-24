@@ -5,12 +5,13 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -99,12 +100,32 @@ fun RestoreBackupScreen(
             }
 
             is RestoreBackupUiState.Error -> {
-                val context = LocalContext.current
-                val backDispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-                DisposableEffect(null) {
-                    Toast.makeText(context, R.string.invalid_backup_file, Toast.LENGTH_SHORT).show()
-                    backDispatcher?.onBackPressed()
-                    onDispose { }
+                val navController = LocalNavController.current
+                PreferenceGroup {
+                    Text(
+                        text = stringResource(id = R.string.invalid_backup_file),
+                        modifier = Modifier.padding(16.dp),
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    Button(
+                        onClick = { navController.popBackStack() },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(id = android.R.string.cancel))
+                    }
+                    Button(
+                        onClick = { viewModel.retry() },
+                        shapes = ButtonDefaults.shapes(),
+                    ) {
+                        Text(text = stringResource(id = R.string.backup_retry))
+                    }
                 }
             }
         }

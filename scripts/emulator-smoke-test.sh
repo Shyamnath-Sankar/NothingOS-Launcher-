@@ -4930,6 +4930,26 @@ assert_false 'the pause/resume phase never clears the shared logcat buffer' \
 assert_true 'the service stamps transitions with a per-engine identity token' \
     grep -Fq 'engine=$engineToken' "$SERVICE_ENGINE"
 
+# Static wallpaper capture must happen only after the exact HOME and its live
+# widgets are ready, and the readiness must still hold after the capture.
+wallpaper_apply_body="$TMP_DIR/cwg_apply_wallpaper.sh"
+sed -n '/^_cwg_apply_wallpaper() {/,/^}/p' "$SMOKE" > "$wallpaper_apply_body"
+assert_true 'the wallpaper HOME capture waits for primary_home_is_ready first' \
+    awk '/primary_home_is_ready/ { if (!ready) ready = NR }
+         /capture_screenshot_to "wallpaper-home-after-\$_caw_slug.png"/ { shot = NR }
+         END { exit(ready && shot && ready < shot ? 0 : 1) }' "$wallpaper_apply_body"
+assert_true 'the wallpaper HOME readiness is bounded' \
+    grep -Fq 'while [ "$_caw_ready_attempt" -lt 15 ]' "$wallpaper_apply_body"
+assert_true 'the settled screenshot is followed by a fresh readiness check' \
+    grep -Fq 'primary_home_is_ready "$ARTIFACTS/$_caw_settled_xml"' "$wallpaper_apply_body"
+assert_true 'the settled XML feeds the real widget proof' \
+    grep -Fq 'verify_home_widgets "$ARTIFACTS/$_caw_settled_xml"' "$wallpaper_apply_body"
+assert_false 'the wallpaper capture never races a fixed sleep after HOME' \
+    awk '/return_home "wallpaper-\$_caw_slug"/ { seen = NR }
+         seen && /sleep 1/ { if (!other) bad = 1 }
+         /primary_home_is_ready/ { other = 1 }
+         END { exit(bad ? 0 : 1) }' "$wallpaper_apply_body"
+
 # Focused structure regression for the frame protocol. This checks the exact
 # lock placement (not concurrency behaviour): gate+enqueue share one lock,
 # teardown removes queued callbacks and waits for an in-flight draw, and the

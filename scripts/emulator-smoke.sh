@@ -5428,17 +5428,36 @@ _cwg_apply_wallpaper() {
 
     capture_screenshot_to "wallpaper-apply-$_caw_slug.png"
     return_home "wallpaper-$_caw_slug"
-    sleep 1
+    _caw_ready=
+    _caw_ready_attempt=0
+    while [ "$_caw_ready_attempt" -lt 15 ]; do
+        _caw_ready_attempt=$((_caw_ready_attempt + 1))
+        _caw_ready_xml="wallpaper-home-after-$_caw_slug-$_caw_ready_attempt.xml"
+        if capture_ui_xml "$_caw_ready_xml" &&
+            primary_home_is_ready "$ARTIFACTS/$_caw_ready_xml"; then
+            _caw_ready=1
+            cp "$ARTIFACTS/$_caw_ready_xml" \
+                "$ARTIFACTS/wallpaper-home-after-$_caw_slug.xml"
+            break
+        fi
+        sleep 1
+    done
+    [ -n "$_caw_ready" ] ||
+        fail "HOME did not settle with the live widgets after applying $_caw_label"
     capture_screenshot_to "wallpaper-home-after-$_caw_slug.png"
     [ -s "$ARTIFACTS/wallpaper-home-after-$_caw_slug.png" ] ||
-        fail "could not capture the HOME pixels after applying $_caw_label"
+        fail "could not capture the settled HOME pixels after applying $_caw_label"
+    _caw_settled_xml="wallpaper-home-after-$_caw_slug-settled.xml"
+    capture_ui_xml "$_caw_settled_xml" ||
+        fail "could not re-capture HOME after the settled screenshot for $_caw_label"
+    primary_home_is_ready "$ARTIFACTS/$_caw_settled_xml" ||
+        fail "HOME stopped being ready after the settled screenshot for $_caw_label"
     _caw_widgets=$(_cwg_widget_ids "$ARTIFACTS/wallpaper-apply-$_caw_slug-widgets.txt") ||
         fail "could not re-dump widgets after applying $_caw_label"
     [ "$_caw_widgets" = "$_cwg_widgets_before" ] ||
         fail "applying $_caw_label changed the widget IDs"
-    verify_home_widgets
-    capture_ui_xml "wallpaper-home-after-$_caw_slug.xml" ||
-        fail "could not capture HOME after applying $_caw_label"
+    verify_home_widgets "$ARTIFACTS/$_caw_settled_xml"
+    cp "$ARTIFACTS/$_caw_settled_xml" "$ARTIFACTS/wallpaper-home-after-$_caw_slug.xml"
     _cwg_home_before=$_caw_after_home
     _cwg_lock_before=$_caw_after_lock
 }

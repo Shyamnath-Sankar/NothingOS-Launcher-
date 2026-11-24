@@ -382,9 +382,13 @@ class BackupArchiveTest {
     fun metadataValidationAcceptsCurrentAndLegacyButRejectsUnknownAndMalformed() {
         BackupArchive.validateMetadata(BackupArchive.BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "4,6", 5)
         BackupArchive.validateMetadata(BackupArchive.LEGACY_BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "4,6", 5)
+        BackupArchive.validateMetadata(BackupArchive.LEGACY_BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "", 5)
 
         expectValidation { BackupArchive.validateMetadata(99, BackupArchive.SUPPORTED_CONTENTS, "4,6", 5) }
         expectValidation { BackupArchive.validateMetadata(BackupArchive.BACKUP_VERSION, 0, "4,6", 5) }
+        expectValidation {
+            BackupArchive.validateMetadata(BackupArchive.BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "", 5)
+        }
         expectValidation {
             BackupArchive.validateMetadata(BackupArchive.BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "wide", 5)
         }

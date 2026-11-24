@@ -120,6 +120,10 @@ object BackupArchive {
     ) {
         val installedEntryNames: Set<String> get() = installed.map { it.entryName }.toSet()
 
+        fun discard() {
+            runCatching { rollbackDirectory.deleteRecursively() }
+        }
+
         fun rollback() {
             installed.asReversed().forEach { file ->
                 runCatching { Files.deleteIfExists(file.target.toPath()) }
@@ -212,7 +216,11 @@ object BackupArchive {
         if (contents and SUPPORTED_CONTENTS == 0) {
             throw ValidationException("The backup does not contain any supported content")
         }
-        if (!GRID_SIZE_PATTERN.matches(gridSize)) {
+        if (gridSize.isBlank()) {
+            if (backupVersion != LEGACY_BACKUP_VERSION) {
+                throw ValidationException("The backup has malformed grid metadata")
+            }
+        } else if (!GRID_SIZE_PATTERN.matches(gridSize)) {
             throw ValidationException("The backup has malformed grid metadata")
         }
         if (hotseatCount < 0 || hotseatCount > MAX_HOTSEAT_COUNT) {
