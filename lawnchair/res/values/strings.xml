@@ -1124,7 +1124,9 @@
     <string name="nothingui_weather_value_unknown" translatable="false">--</string>
     <string name="nothingui_weather_value_loading" translatable="false">…</string>
     <string name="nothingui_weather_state_off">Weather off · tap to set up</string>
+    <string name="nothingui_weather_state_off_short">Off</string>
     <string name="nothingui_weather_state_not_connected">No forecast yet</string>
+    <string name="nothingui_weather_state_not_connected_short">Not connected</string>
     <string name="nothingui_weather_state_not_connected_detail">Provider not connected</string>
     <string name="nothingui_weather_state_not_connected_content_description">No forecast yet. The weather provider is not connected. Tap to open weather settings.</string>
     <string name="nothingui_weather_state_loading">Updating weather</string>

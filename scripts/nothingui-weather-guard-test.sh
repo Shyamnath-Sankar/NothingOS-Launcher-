@@ -44,6 +44,7 @@ reset_fixture() {
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt'
     copy_file 'lawnchair/res/layout/nothingui_widget_weather.xml'
     copy_file 'lawnchair/res/xml/nothingui_weather_widget_info.xml'
+    copy_file 'lawnchair/res/values/strings.xml'
     copy_file 'play/AndroidManifest.xml'
     copy_file 'play/res/xml/default_workspace_4x5.xml'
 }
@@ -140,6 +141,21 @@ expect_fail 'a periodic weather widget update is rejected'
 reset_fixture
 printf '\n<View />\n' >>"$FIXTURE/lawnchair/res/layout/nothingui_widget_weather.xml"
 expect_fail 'a bare View in the weather RemoteViews layout is rejected'
+
+reset_fixture
+sed -i 's/<string name="nothingui_weather_state_off_short">Off<\/string>/<string name="nothingui_weather_state_off_short">Weather off · tap to set up<\/string>/' \
+    "$FIXTURE/lawnchair/res/values/strings.xml"
+expect_fail 'long setup copy in the short off label is rejected'
+
+reset_fixture
+sed -i 's/android:maxLines="2"/android:maxLines="1"/' \
+    "$FIXTURE/lawnchair/res/layout/nothingui_widget_weather.xml"
+expect_fail 'a compact weather status that cannot wrap is rejected'
+
+reset_fixture
+sed -i 's/detail = context.getString(R.string.nothingui_weather_state_off_short),/detail = context.getString(R.string.nothingui_weather_state_off),/' \
+    "$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+expect_fail 'a widget detail that reintroduces the long off copy is rejected'
 
 reset_fixture
 printf '\n// longitude\n' >>"$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"

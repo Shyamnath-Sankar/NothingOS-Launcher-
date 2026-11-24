@@ -139,15 +139,15 @@ class DotWelWeatherWidgetProvider : AppWidgetProvider() {
             val text = when (render) {
                 WeatherWidgetRender.Off -> RenderText(
                     value = context.getString(R.string.nothingui_weather_value_unknown),
-                    detail = context.getString(R.string.nothingui_weather_state_off),
+                    detail = context.getString(R.string.nothingui_weather_state_off_short),
                     asOf = "",
                     contentDescription = context.getString(R.string.nothingui_weather_state_off),
                 )
 
                 WeatherWidgetRender.NotConnected -> RenderText(
                     value = context.getString(R.string.nothingui_weather_value_unknown),
-                    detail = context.getString(R.string.nothingui_weather_state_not_connected),
-                    asOf = context.getString(R.string.nothingui_weather_state_not_connected_detail),
+                    detail = context.getString(R.string.nothingui_weather_state_not_connected_short),
+                    asOf = context.getString(R.string.nothingui_weather_state_not_connected),
                     contentDescription = context.getString(
                         R.string.nothingui_weather_state_not_connected_content_description,
                     ),

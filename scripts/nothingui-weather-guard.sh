@@ -43,11 +43,13 @@ WIDGET_PROVIDER="$ROOT/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvi
 WIDGET_MODEL="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"
 WIDGET_LAYOUT="$ROOT/lawnchair/res/layout/nothingui_widget_weather.xml"
 WIDGET_INFO="$ROOT/lawnchair/res/xml/nothingui_weather_widget_info.xml"
+WIDGET_STRINGS="$ROOT/lawnchair/res/values/strings.xml"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 DEFAULT_LAYOUT="$ROOT/play/res/xml/default_workspace_4x5.xml"
 
 for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$PREFS" "$WIDGET_PROVIDER" \
-    "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$PLAY_MANIFEST" "$DEFAULT_LAYOUT"; do
+    "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$WIDGET_STRINGS" \
+    "$PLAY_MANIFEST" "$DEFAULT_LAYOUT"; do
     [ -f "$file" ] || fail "missing required file: ${file#"$ROOT"/}"
 done
 
@@ -227,6 +229,29 @@ require_text "$WIDGET_LAYOUT" 'nothingui_weather_detail' \
     'the weather layout has no condition line'
 require_text "$WIDGET_LAYOUT" 'nothingui_weather_asof' \
     'the weather layout has no as-of line'
+require_text "$WIDGET_STRINGS" '<string name="nothingui_weather_state_off_short">Off</string>' \
+    'the off state has no short visual label'
+require_text "$WIDGET_STRINGS" '<string name="nothingui_weather_state_not_connected_short">Not connected</string>' \
+    'the not-connected state has no short visual label'
+require_text "$WIDGET_PROVIDER" 'R.string.nothingui_weather_state_off_short' \
+    'the off widget detail does not use the short visible label'
+require_text "$WIDGET_PROVIDER" 'R.string.nothingui_weather_state_not_connected_short' \
+    'the not-connected widget detail does not use the short visible label'
+require_text "$WIDGET_PROVIDER" 'R.string.nothingui_weather_state_not_connected_content_description' \
+    'the not-connected widget lost its full accessibility copy'
+for full_detail in \
+    'detail = context.getString(R.string.nothingui_weather_state_off),' \
+    'detail = context.getString(R.string.nothingui_weather_state_not_connected),'; do
+    forbid_text "$WIDGET_PROVIDER" "$full_detail" \
+        'the widget detail reintroduced long setup copy that clips in a compact cell'
+done
+weather_detail=$(sed -n '/android:id="@+id\/nothingui_weather_detail"/,/\/>/p' "$WIDGET_LAYOUT")
+printf '%s\n' "$weather_detail" | grep -Fq 'android:maxLines="2"' ||
+    fail 'the compact weather status cannot wrap to two short lines'
+printf '%s\n' "$weather_detail" | grep -Fq 'android:autoSizeTextType="uniform"' ||
+    fail 'the compact weather status does not adapt its font to available width'
+printf '%s\n' "$weather_detail" | grep -Fq '@string/nothingui_weather_state_not_connected_short' ||
+    fail 'the compact weather status default text is not the short label'
 if grep -Eq '<View([[:space:]]|>|$)' "$WIDGET_LAYOUT"; then
     fail 'the weather layout uses an unsupported bare View in a RemoteViews layout'
 fi

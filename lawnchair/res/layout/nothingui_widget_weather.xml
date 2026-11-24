@@ -44,14 +44,14 @@
         android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="16dp"
+        android:paddingHorizontal="12dp"
         android:paddingVertical="10dp">
 
         <TextView
             android:id="@+id/nothingui_weather_value"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1.15"
+            android:layout_weight="1"
             android:autoSizeMaxTextSize="30sp"
             android:autoSizeMinTextSize="14sp"
             android:autoSizeStepGranularity="2sp"
@@ -66,8 +66,8 @@
         <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1.15"
             android:gravity="center_vertical"
             android:orientation="vertical">
 
@@ -87,19 +87,28 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="1dp"
+                android:autoSizeMaxTextSize="11sp"
+                android:autoSizeMinTextSize="8sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
+                android:breakStrategy="simple"
                 android:fontFamily="@font/doto_regular"
-                android:maxLines="1"
-                android:text="@string/nothingui_weather_state_not_connected"
+                android:maxLines="2"
+                android:text="@string/nothingui_weather_state_not_connected_short"
                 android:textColor="#F2F2F2"
-                android:textSize="12sp" />
+                android:textSize="11sp" />
 
             <TextView
                 android:id="@+id/nothingui_weather_asof"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:autoSizeMaxTextSize="9sp"
+                android:autoSizeMinTextSize="7sp"
+                android:autoSizeStepGranularity="1sp"
+                android:autoSizeTextType="uniform"
                 android:fontFamily="@font/doto_regular"
                 android:maxLines="1"
-                android:text="@string/nothingui_weather_state_not_connected_detail"
+                android:text="@string/nothingui_weather_state_not_connected"
                 android:textColor="#B3B3B3"
                 android:textSize="9sp" />
         </LinearLayout>
