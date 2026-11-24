@@ -3,27 +3,62 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — presence-proof transport hardening on
-  `8662ac4` (state 119), shell-only, PENDING ACTUAL CI.** `weather_harness_package_state` now
-  requires a successful adb transport exit (0) in addition to a complete sentinel/list and a
-  corroborating `pm path` before it reports present/absent. A nonzero transport (1 or 124) with a
-  complete-looking payload is now `query_failure`, so cleanup fails closed instead of proving
-  absence or presence. The list parser also rejects malformed `package:` lines as corrupt output.
+- current_phase: **home-widget-composition-v1-new — awk single-quote repair on `41362cc`, shell-only,
+  PENDING ACTUAL CI.** The state 121 checkpoint (commit `41362cc`) was **not valid**: its "workflow
+  green" did not prove the source was parseable. The real `scripts/emulator-smoke.sh` had unescaped
+  apostrophes inside the single-quoted `weather_harness_pm_list_state` awk program, so an independent
+  `sh -n scripts/emulator-smoke.sh` failed at line 5577 and the real fixture stopped after 1234 ok
+  with a `weather-presence-functions.sh` syntax error. The comments now use neutral wording
+  (`equals sign`, `platform framework package`) with no backslash escaping and **no logic change**.
   No Android build, app source, Kotlin, workflow, manifest, permission, applicationId, build type,
   dependency, network policy, merge, release or signing change.
 - branch: `agent/home-widget-composition-v1-new`
-- head: **`d095ce5`**; this STATE update follows.
+- head: **`11c9571`** (awk single-quote fix); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **No CI run for this shell-only commit.** Parent-recorded facts: CI310 passed with **301 unit
-  tests and 187 Weather tests**; **0 native instrumentation cases executed** here. The last
-  compile proof remains the state 117 test-APK build on `24d8f98`.
-- next: parent decides whether to dispatch actual Android CI on `d095ce5`. Release, hosting, merge,
+  tests and 187 Weather tests**; **0 native instrumentation cases executed** here. State 121
+  (`41362cc`) was never validated as a green source tree; do not treat its checkpoint as proof.
+- next: parent decides whether to dispatch actual Android CI on `11c9571`. Release, hosting, merge,
   signing and any new build type stay paused.
 - blockers: no emulator, no `am instrument`, no device runtime and no Android CI rerun here by
-  instruction. The executed fixtures prove orchestrator fail-closed behavior; runtime, forecast and
-  native instrumentation remain unproven.
+  instruction. The executed fixtures prove the shell parser/orchestrator, not Android runtime,
+  forecast or native instrumentation, which remain unproven.
 
-## done (this run — presence-proof transport hardening on `8662ac4`, shell-only, PENDING ACTUAL CI)
+## done (this run — awk single-quote repair on `41362cc`, shell-only, PENDING ACTUAL CI)
+
+- **Root cause confirmed, not guessed:** `weather_harness_pm_list_state` is an awk program opened
+  with a shell single quote (`awk -v pkg=... '`). Its new/edited comments contained apostrophes:
+  `'='` twice (the final-separator and base64-path notes) and the possessive `platform's`. The first
+  `'` closed the shell string, so `sh -n scripts/emulator-smoke.sh` reported
+  `Syntax error: "(" unexpected` at line 5577 and the extracted
+  `weather-presence-functions.sh` failed to parse. This is why the real suite stopped after
+  1234 ok even though the wrapper checkpoint was reported green.
+- **Fix is comment-only, no escaping:** the three comment lines now say `equals sign`,
+  `equals signs`, and `platform framework package`; no backslash was inserted inside the awk block.
+  The awk regex, control flow, outputs and every assertion are unchanged.
+- **Audited other single-quoted awk comments:** the remaining `awk '...'` blocks in
+  `emulator-smoke.sh` (`weather_harness_pm_path_state` and the one-line programs) and the
+  multi-line awk blocks in `emulator-smoke-test.sh` contain no apostrophe-bearing comments. The
+  only apostrophes left in the fixed block are the two shell delimiters and a `printf` argument
+  outside awk.
+- **Verification actually executed to a terminal (not inferred from a wrapper):**
+  `sh -n scripts/emulator-smoke.sh` → exit 0; `sh -n scripts/emulator-smoke-test.sh` → exit 0;
+  `sh scripts/emulator-smoke-test.sh` → **exit 0, 1352 ok, 0 not ok, "all emulator-smoke tests
+  passed"**; `sh scripts/nothingui-weather-guard.sh` → ok; `sh scripts/nothingui-weather-guard-test.sh`
+  → all passed; `sh scripts/manifest-guard-test.sh` → all passed; `git diff --check` → clean.
+- **Required parser fixtures ran and passed:** `a single-component framework package name is valid`,
+  `a realistic platform list with the target anchors presence`, `a realistic platform list without
+  the target proves absence`, plus the executed orchestration present/absent cases and
+  `the platform android row never turns the present target into query failure` /
+  `... never turns an absent target into query failure`.
+- **Truthful correction:** state 121 (`41362cc`) is recorded as **not validated** (native
+  instrumentation is still 0 cases executed here). The new parser does allow a single-component
+  `android` package and realistic platform lists with the target present/absent, as proven by the
+  fixtures above.
+- **Missing evidence / not claimed:** no Android build, emulator, `am instrument`, forecast, APK,
+  merge, release or hosting. This run fixes shell parsing and re-runs the shell suite only.
+
+## done (previous run — presence-proof transport hardening on `8662ac4`, shell-only, PENDING ACTUAL CI)
 
 - **Root cause confirmed, not guessed:** `weather_harness_package_state` recorded
   `_whq_enum_status` but only logged it; `weather_harness_presence_state` classified from the
