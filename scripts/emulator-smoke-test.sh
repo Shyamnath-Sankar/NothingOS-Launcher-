@@ -6069,6 +6069,76 @@ assert_true 'the weather widget tap uses the same two-stage destination confirma
     "$weather_widget_body"
 assert_false 'the weather widget tap no longer uses the single-snapshot identity' \
     grep -Fq 'weather_settings_screen_identity' "$weather_widget_body"
+assert_true 'the widget-tap caller copies the returned notice XML artifact' \
+    grep -Fq 'cp "$_weather_screen_notice_xml"' "$weather_widget_body"
+assert_true 'the widget-tap caller copies the returned notice activities artifact' \
+    grep -Fq 'cp "$_weather_screen_notice_activities"' "$weather_widget_body"
+assert_false 'the widget-tap caller never reconstructs the helper artifact path' \
+    grep -Fq 'weather-widget-tap-screen-notice' "$weather_widget_body"
+
+# --- executable Weather screen artifact-path contract ----------------------
+# Source the real two-stage helper and the real widget-tap post-confirmation
+# copies out of emulator-smoke.sh, then run them against stubbed device
+# captures. A copied source path the helper did not actually produce fails
+# here, instead of after a full emulator run.
+weather_screen_body="$TMP_DIR/weather-confirm-settings-screen.sh"
+sed -n '/^_weather_confirm_settings_screen() {/,/^}/p' "$SMOKE" > "$weather_screen_body"
+assert_true 'the two-stage Weather screen helper is extractable' \
+    test -s "$weather_screen_body"
+weather_screen_tap_body="$TMP_DIR/weather-widget-tap-block.sh"
+sed -n '/_weather_confirm_settings_screen weather-widget-tap/,/fail "WeatherPreferences screenshot capture failed"/p' \
+    "$SMOKE" > "$weather_screen_tap_body"
+assert_true 'the real widget-tap post-confirmation copies are extractable' \
+    test -s "$weather_screen_tap_body"
+
+weather_screen_harness="$TMP_DIR/weather-screen-path-harness.sh"
+cat > "$weather_screen_harness" <<'EOF'
+set -eu
+BODY=$1
+TAP_BLOCK=$2
+ROOT=$3
+ARTIFACTS="$ROOT/artifacts"
+mkdir -p "$ARTIFACTS"
+PKG=com.launchersim.debug
+PREFERENCES_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
+WEATHER_RUNTIME_NOTICE_MODE=debug
+fail() {
+    printf 'weather screen path harness failure: %s\n' "$*" >&2
+    exit 1
+}
+_weather_ensure_nav_top() { return 0; }
+capture_screenshot_to() { printf 'png %s\n' "$1" > "$ARTIFACTS/$1"; }
+adb_cmd() { printf 'fake activity dump\n'; }
+foreground_is_component() { return 0; }
+capture_ui_xml() {
+    printf '<hierarchy><node text="Before you enable"/></hierarchy>\n' \
+        > "$ARTIFACTS/$1"
+}
+weather_settings_notice_identity() { return 0; }
+_weather_measure_field() {
+    printf '<hierarchy><node text="%s"/></hierarchy>\n' "$1" \
+        > "$ARTIFACTS/field.xml"
+    _weather_visible_xml="$ARTIFACTS/field.xml"
+    return 0
+}
+weather_settings_screen_provenance() { return 0; }
+. "$BODY"
+. "$TAP_BLOCK"
+EOF
+weather_screen_root="$TMP_DIR/weather-screen-paths"
+if sh "$weather_screen_harness" "$weather_screen_body" \
+    "$weather_screen_tap_body" "$weather_screen_root" \
+    > "$TMP_DIR/weather-screen-path-harness.log" 2>&1; then
+    pass 'the real Weather screen helper produces every widget-tap copied artifact'
+else
+    fail 'the real Weather screen helper produces every widget-tap copied artifact'
+fi
+assert_true 'the widget-tap caller retains its same-screen XML alias' \
+    test -s "$weather_screen_root/artifacts/weather-widget-tap.xml"
+assert_true 'the widget-tap caller retains its same-screen activities alias' \
+    test -s "$weather_screen_root/artifacts/weather-widget-tap-activities.txt"
+assert_true 'the widget-tap caller retains its immediate PNG alias' \
+    test -s "$weather_screen_root/artifacts/weather-widget-tap.png"
 
 # --- static regression on the weather runtime gate --------------------------
 
@@ -6101,6 +6171,12 @@ assert_true 'stage one retains the initial notice XML' \
     grep -Fq 'weather-$_wcss_tag-screen-notice.xml' "$weather_body"
 assert_true 'stage one retains the initial notice PNG' \
     grep -Fq 'weather-$_wcss_tag-screen-notice.png' "$weather_body"
+assert_true 'stage one retains the initial notice activities' \
+    grep -Fq 'weather-$_wcss_tag-screen-notice-activities.txt' "$weather_body"
+assert_true 'stage one returns the notice activities artifact' \
+    grep -Fq '_weather_screen_notice_activities=' "$weather_body"
+assert_true 'stage two returns the fields activities artifact' \
+    grep -Fq '_weather_screen_fields_activities=' "$weather_body"
 assert_true 'stage two measures the real Location label field' \
     grep -Fq "_weather_measure_field 'Location label'" "$weather_body"
 assert_true 'stage two measures the real Latitude field' \

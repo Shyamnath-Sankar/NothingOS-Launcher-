@@ -2363,6 +2363,12 @@ _weather_ensure_nav_top() {
 _weather_confirm_settings_screen() {
     _wcss_tag=$1
     _wcss_mode=${2:-$WEATHER_RUNTIME_NOTICE_MODE}
+    _weather_screen_notice_xml=
+    _weather_screen_notice_png=
+    _weather_screen_notice_activities=
+    _weather_screen_fields_xml=
+    _weather_screen_fields_png=
+    _weather_screen_fields_activities=
     _weather_ensure_nav_top ||
         fail "could not measure the navigation bar for the weather screen ($_wcss_tag)"
     _wcss_attempt=1
@@ -2417,8 +2423,10 @@ _weather_confirm_settings_screen() {
         "$_wcss_fields_xml" "$_wcss_mode" || return 1
     _weather_screen_notice_xml="$ARTIFACTS/weather-$_wcss_tag-screen-notice.xml"
     _weather_screen_notice_png="$ARTIFACTS/weather-$_wcss_tag-screen-notice.png"
+    _weather_screen_notice_activities="$ARTIFACTS/weather-$_wcss_tag-screen-notice-activities.txt"
     _weather_screen_fields_xml="$_wcss_fields_xml"
     _weather_screen_fields_png="$ARTIFACTS/weather-$_wcss_tag-screen-fields.png"
+    _weather_screen_fields_activities="$ARTIFACTS/weather-$_wcss_tag-screen-fields-activities.txt"
     _weather_screen_xml=$_wcss_fields_xml
     printf 'mode=%s notice=%s fields=%s\n' \
         "$_wcss_mode" "$_weather_screen_notice_xml" "$_weather_screen_fields_xml" \
@@ -3989,9 +3997,9 @@ capture_weather_widget() {
     _weather_confirm_settings_screen weather-widget-tap \
         "$WEATHER_RUNTIME_NOTICE_MODE" ||
         fail "tapping the Weather widget did not open the exact real WeatherPreferences destination"
-    cp "$ARTIFACTS/weather-widget-tap-screen-notice-activities.txt" \
+    cp "$_weather_screen_notice_activities" \
         "$ARTIFACTS/weather-widget-tap-activities.txt"
-    cp "$ARTIFACTS/weather-widget-tap-screen-notice.xml" \
+    cp "$_weather_screen_notice_xml" \
         "$ARTIFACTS/weather-widget-tap.xml"
     capture_screenshot_to weather-widget-tap.png
     [ -s "$ARTIFACTS/weather-widget-tap.png" ] ||
