@@ -227,7 +227,7 @@ sed -i 's/WeatherSettingsCopy.settingsDescription(networkEnabled)/R.string.dotwe
 expect_fail 'a Home-screen subtitle that ignores the build mode is rejected'
 
 reset_fixture
-sed -i "s/coordinates and this device's IP address/selected coordinates/" \
+sed -i 's/coordinates and the IP address of this device/selected coordinates/' \
     "$FIXTURE/lawnchair/res/values/strings.xml"
 expect_fail 'a privacy notice that hides the device-IP transmission is rejected'
 

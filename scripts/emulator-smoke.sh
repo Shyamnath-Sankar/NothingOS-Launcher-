@@ -2539,7 +2539,7 @@ capture_weather_settings() {
         fail "the real Weather screen did not show its privacy notice"
     grep -Fq 'This debug build has network requests disabled' "$ARTIFACTS/weather-fresh.xml" ||
         fail "the real debug Weather screen did not show its setup-only network-off copy"
-    grep -Fq "this device's IP address" "$ARTIFACTS/weather-fresh.xml" ||
+    grep -Fq "the IP address of this device" "$ARTIFACTS/weather-fresh.xml" ||
         fail "the real Weather screen did not disclose the device-IP transmission"
     _cws_consent=$(_weather_capture_consent before)
     case "$_cws_consent" in

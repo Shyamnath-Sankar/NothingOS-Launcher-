@@ -68,6 +68,18 @@ require_text() {
     grep -Fq -- "$text" "$file" || fail "$message"
 }
 
+# Decode the Android string escapes so the copy assertions compare against the
+# value the runtime sees, not the raw source spelling. An escaped apostrophe is
+# valid to aapt2, so a correct runtime value must still pass here.
+android_string_runtime_value() {
+    printf '%s\n' "$1" | awk '{
+        gsub(/\\\047/, "\047")
+        gsub(/\\"/, "\"")
+        gsub(/\\\\/, "\\")
+        print
+    }'
+}
+
 forbid_text() {
     file=$1
     text=$2
@@ -260,26 +272,29 @@ require_text "$HOME_PREFS" 'WeatherSettingsCopy.settingsDescription(networkEnabl
 
 for mode in release debug; do
     for phrase in \
-        "coordinates and this device's IP address" \
+        'coordinates and the IP address of this device' \
         'MET Norway' \
         'label stays on this device' \
         'No GPS' \
         'background tracking'; do
         require_text "$WIDGET_STRINGS" "<string name=\"dotwel_weather_privacy_notice_$mode\">" \
             "the $mode privacy notice is missing"
-        if ! sed -n "s/.*<string name=\"dotwel_weather_privacy_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
-            "$WIDGET_STRINGS" | grep -Fq -- "$phrase"; then
+        if ! android_string_runtime_value "$(sed -n \
+            "s/.*<string name=\"dotwel_weather_privacy_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+            "$WIDGET_STRINGS")" | grep -Fq -- "$phrase"; then
             fail "the $mode privacy notice lacks: $phrase"
         fi
     done
     for phrase in 'last successful forecast' 'as-of age' 'never replaced by a made-up value'; do
-        if ! sed -n "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
-            "$WIDGET_STRINGS" | grep -Fq -- "$phrase"; then
+        if ! android_string_runtime_value "$(sed -n \
+            "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+            "$WIDGET_STRINGS")" | grep -Fq -- "$phrase"; then
             fail "the $mode forecast notice lacks: $phrase"
         fi
     done
-    if sed -n "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
-        "$WIDGET_STRINGS" | grep -Fq -- 'instead of showing a stale'; then
+    if android_string_runtime_value "$(sed -n \
+        "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+        "$WIDGET_STRINGS")" | grep -Fq -- 'instead of showing a stale'; then
         fail "the $mode forecast notice contradicts the marked stale display"
     fi
 done

@@ -66,12 +66,39 @@ assert_false() {
     fi
 }
 
-# Resolve one exact <string name="...">value</string> from the shipped values
-# resource. The Weather fixtures and helper constants are checked against this,
-# so a production copy change cannot silently drift from the runtime gate.
-prod_string() {
-    sed -n "s/.*<string name=\"$1\"[^>]*>\(.*\)<\/string>.*/\1/p" "$PROD_STRINGS" |
+# Return the raw source body of one exact <string name="...">value</string>.
+prod_string_raw() {
+    _psr_name=$1
+    _psr_file=${2:-$PROD_STRINGS}
+    sed -n "s/.*<string name=\"$_psr_name\"[^>]*>\(.*\)<\/string>.*/\1/p" "$_psr_file" |
         head -n 1
+}
+
+# aapt2 decodes backslash escapes before the runtime ever sees the value.
+# Decode them here so copy assertions compare against the runtime value, never
+# the raw source spelling such as \' or \". The escaping guard below still
+# inspects the raw source.
+android_string_runtime_value() {
+    printf '%s\n' "$1" | awk '{
+        gsub(/\\\047/, "\047")
+        gsub(/\\"/, "\"")
+        gsub(/\\\\/, "\\")
+        print
+    }'
+}
+
+# Resolve one exact <string name="...">value</string> from the shipped values
+# resource as the runtime value. The Weather fixtures and helper constants are
+# checked against this, so a production copy change cannot silently drift from
+# the runtime gate.
+prod_string() {
+    android_string_runtime_value "$(prod_string_raw "$1" "${2:-}")"
+}
+
+# True when a raw resource body has an apostrophe that aapt2 rejects. Escaped
+# apostrophes are removed first, so only unescaped ones remain.
+android_string_has_unescaped_apostrophe() {
+    printf '%s\n' "$1" | sed "s/\\\\'//g" | grep -Fq "'"
 }
 
 prod_string_contains() {
@@ -105,7 +132,7 @@ prod_string_lacks() {
 
 for mode in debug release; do
     prod_string_contains "dotwel_weather_privacy_notice_$mode" \
-        'coordinates and this device'"'"'s IP address' \
+        'coordinates and the IP address of this device' \
         "the $mode privacy notice discloses coordinate and device-IP transmission"
     prod_string_contains "dotwel_weather_privacy_notice_$mode" \
         'MET Norway' \
@@ -184,7 +211,7 @@ prod_string_contains dotwel_weather_enabled_status_release \
     'MET Norway' \
     'the release enabled status names MET Norway'
 prod_string_contains dotwel_weather_enabled_status_release \
-    'device'"'"'s IP address' \
+    'the IP address of this device' \
     'the release enabled status discloses device-IP transmission'
 prod_string_contains dotwel_weather_message_enabled_debug \
     'network requests disabled' \
@@ -196,7 +223,7 @@ prod_string_contains dotwel_weather_message_enabled_release \
     'MET Norway' \
     'the release enabled confirmation names MET Norway'
 prod_string_contains dotwel_weather_message_enabled_release \
-    'device'"'"'s IP address' \
+    'the IP address of this device' \
     'the release enabled confirmation discloses device-IP transmission'
 
 debug_privacy=$(prod_string dotwel_weather_privacy_notice_debug)
@@ -209,6 +236,54 @@ release_message=$(prod_string dotwel_weather_message_enabled_release)
 [ "$debug_message" != "$release_message" ] &&
     pass 'the debug and release enabled confirmations are distinct build-mode copy' ||
     fail 'the debug and release enabled confirmations are not distinct'
+
+# --- Weather string resource escaping -------------------------------------
+# AAPT2 rejects an unescaped apostrophe in a string value even though the XML
+# is well formed. Guard the shipped Weather strings, and prove that copy
+# assertions consume the decoded runtime value rather than the raw escape.
+
+for _wse_name in \
+    dotwel_weather_privacy_notice_debug \
+    dotwel_weather_privacy_notice_release \
+    dotwel_weather_enabled_status_debug \
+    dotwel_weather_enabled_status_release \
+    dotwel_weather_forecast_notice_debug \
+    dotwel_weather_forecast_notice_release \
+    dotwel_weather_message_enabled_debug \
+    dotwel_weather_message_enabled_release; do
+    _wse_raw=$(prod_string_raw "$_wse_name")
+    if [ -z "$_wse_raw" ]; then
+        fail "the $_wse_name string is missing"
+    elif android_string_has_unescaped_apostrophe "$_wse_raw"; then
+        fail "the $_wse_name string has an unescaped apostrophe that aapt2 rejects"
+    else
+        pass "the $_wse_name string has no unescaped apostrophe"
+    fi
+done
+
+_escaped_strings="$TMP_DIR/escaped-strings.xml"
+cat > "$_escaped_strings" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="escaped_apostrophe">save this device\'s setting</string>
+    <string name="unescaped_apostrophe">save this device's setting</string>
+</resources>
+EOF
+assert_false 'the escaping guard accepts a backslash-escaped apostrophe' \
+    android_string_has_unescaped_apostrophe \
+    "$(prod_string_raw escaped_apostrophe "$_escaped_strings")"
+assert_true 'the escaping guard rejects an unescaped apostrophe' \
+    android_string_has_unescaped_apostrophe \
+    "$(prod_string_raw unescaped_apostrophe "$_escaped_strings")"
+assert_eq 'copy assertions consume the decoded runtime value' \
+    "save this device's setting" \
+    "$(prod_string escaped_apostrophe "$_escaped_strings")"
+printf '%s\n' "$(prod_string escaped_apostrophe "$_escaped_strings")" \
+    > "$TMP_DIR/decoded-escaped-string"
+assert_true 'the decoded runtime value keeps the real apostrophe' \
+    grep -Fq "device's" "$TMP_DIR/decoded-escaped-string"
+assert_false 'the decoded runtime value never exposes the raw escape sequence' \
+    grep -Fq "device\\'s" "$TMP_DIR/decoded-escaped-string"
 
 # The Compose screen and the Home-screen entry must select through the single
 # build-aware copy object, not a hard-coded string. The copy object itself must
@@ -5741,7 +5816,7 @@ assert_true 'the enabled success message is the shipped debug setup-only confirm
 assert_true 'the runtime gate asserts the real debug network-off privacy copy' \
     grep -Fq "This debug build has network requests disabled" "$weather_body"
 assert_true 'the runtime gate asserts the real device-IP disclosure' \
-    grep -Fq "this device's IP address" "$weather_body"
+    grep -Fq "the IP address of this device" "$weather_body"
 assert_true 'the runtime gate asserts the debug enabled status says nothing is sent' \
     grep -Fq 'no coordinates or device IP address are sent' "$weather_body"
 assert_true 'the disabled success message is a shared exact constant' \

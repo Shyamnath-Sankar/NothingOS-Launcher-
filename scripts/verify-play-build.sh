@@ -102,6 +102,13 @@ if [ -f "$ROOT/src/com/android/launcher3/touch/DotwelDrawerTrace.java" ]; then
     sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
 fi
 
+# Focused Android resource compile (skipped for minimal test fixtures). aapt2,
+# not the XML parser, rejects an unescaped apostrophe in a string value, so
+# fail the build verification with the real AAPT diagnostic.
+if [ -f "$ROOT/lawnchair/res/values/strings.xml" ]; then
+    sh "$SCRIPT_DIR/verify-android-resources.sh" "$ROOT"
+fi
+
 # 2. Locate the merged manifest for the Play debug variant.
 INTERMEDIATES="$ROOT/build/intermediates"
 if [ ! -d "$INTERMEDIATES" ]; then
