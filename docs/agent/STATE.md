@@ -3,31 +3,74 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — TINY110AUDITCORRECTION committed as `1a1d1c1`,
-  PENDING ACTUAL CI.** Weather settings copy is now build-mode aware: debug is explicitly setup-only
-  with network off, release describes the real opt-in HOME request, and both privacy variants
-  disclose that enabled requests share the selected coordinates and device IP with MET Norway while
-  the label stays on device and no GPS/background tracking is used. The forecast notice now matches
-  the retained last-success marked as-of behavior instead of denying stale display. Real repository
-  wiring, no-backup cache, persisted throttle, no export/backdoor and the existing consent gates are
+- current_phase: **home-widget-composition-v1-new — TINYRESOURCEFIXONLY committed as `c4933cb`,
+  PENDING ACTUAL CI.** The four new Weather strings that failed AAPT2 flattening now use
+  apostrophe-free wording that keeps the coordinate/device-IP disclosure, the manual opt-in
+  visible/unlocked HOME behavior, the debug network-off copy, the release copy and the retained
+  last-success stale notice. A focused aapt2 resource compile, an executed apostrophe guard and
+  runtime-value copy decoding were added. The MET factory and mode-aware Compose implementation are
   unchanged.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `1a1d1c1` (build-mode-aware truthful copy plus executed contract checks) on `198dce5`
-  (STATE record) on `368b40d` (MET wiring); this STATE update follows.
+- head: `c4933cb` (AAPT2-safe Weather strings plus resource/escaping guards) on `71cc407`
+  (truthful copy STATE record) on `1a1d1c1` (build-mode-aware copy); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Parent-reported CI28645325785121 was FULL GREEN in 30m51 with 290 units and 176 Weather
-  tests.** That result predates the copy correction. There is no actual CI result for `1a1d1c1`, and
-  this is not all-green for this run.
-- next: parent audits this source-only correction, then dispatches actual CI on `1a1d1c1` to compile
-  the new copy object/Compose wiring and run the updated smoke exact messages. The research-only
-  runtime-proof plan is in `docs/agent/weather-runtime-proof-plan.md`; the parent decides whether to
-  schedule the instrumentation harness. A controlled live forecast test still needs a release build
-  and explicit approval. Release, hosting, merge, signing and any new build type stay paused.
-- blockers: no actual CI for `1a1d1c1`; ktlint is not installed in this environment, so only the
-  stub `kotlinc` compile plus shell/XML checks were run. No APK, emulator, live MET request,
-  forecast pixel or release behavior is claimed.
+- ci: **Actual CI29445333776461 is TERMINAL failed at 7m36.** Style passed and 2m43 of unit tests
+  ran before the build failure; runtime/tests never completed. The raw AAPT output was
+  `unescaped apostrophe in string` / `not a valid string` / `file failed to compile` for the four
+  new Weather strings at `strings.xml` lines 1180, 1181, 1189 and 1205. This is a resource-build
+  failure, not a unit-assertion failure. There is no actual CI result for `c4933cb`.
+- next: parent audits this source-only resource correction, then dispatches actual CI on `c4933cb`
+  to flatten the corrected resources and run the existing units/style/tests/runtime. The
+  research-only runtime-proof plan remains in `docs/agent/weather-runtime-proof-plan.md`; a
+  controlled live forecast still needs a release build and explicit approval. Release, hosting,
+  merge, signing and any new build type stay paused.
+- blockers: no actual CI for `c4933cb`. No Gradle/Android build or emulator was run locally by
+  instruction, so the fix is proven by a directly executed SDK `aapt2` compile plus shell guards,
+  not by an APK. No live MET request, forecast pixel or release behavior is claimed.
 
-## done (this run — build-mode-aware truthful Weather copy, source-only, PENDING ACTUAL CI)
+## done (this run — AAPT2 apostrophe resource fix, source-only, PENDING ACTUAL CI)
+
+- **Actual failure recorded before the tests, not a unit assertion:** CI29445333776461 failed at
+  resource flattening in 7m36. The raw AAPT diagnostics named
+  `dotwel_weather_privacy_notice_debug`, `_privacy_notice_release`, `_enabled_status_release` and
+  `_message_enabled_release` with `unescaped apostrophe in string`, `not a valid string` and
+  `file failed to compile`. Reproduced locally with the Android SDK build-tools 37.0.0 `aapt2`
+  compile of `lawnchair/res/values/strings.xml`: the four source values contained unescaped
+  possessive apostrophes (`device's`, `location's`) even though the XML itself parsed.
+- **Apostrophe-free, meaning-preserving wording:** `this device's IP address` became
+  `the IP address of this device`, and `this location's cached forecast` became
+  `the cached forecast for this location`. Both privacy variants still disclose that the selected
+  coordinates and the device IP are shared with MET Norway only while Home is visible and unlocked,
+  the debug notice still says network requests are disabled/setup-only, the release copy still
+  describes the real opt-in request, and the forecast notice still describes the retained
+  last-success value marked with its as-of age. No Kotlin, manifest, SDK, dependency, applicationId,
+  Gradle or unrelated resource changed.
+- **Focused AAPT validation:** new `scripts/verify-android-resources.sh` locates the SDK `aapt2`
+  (PATH, `ANDROID_HOME`, `ANDROID_SDK_ROOT`, standard SDK paths) and compiles
+  `lawnchair/res/values/strings.xml` without running Gradle or an Android build.
+  `scripts/verify-play-build.sh` invokes it for the real tree (minimal test fixtures skip it). A
+  temporary fixture with `device's` fails with the real AAPT error; the shipped file compiles.
+- **Executed regression guard and runtime-value copy:** `scripts/emulator-smoke-test.sh` now has
+  `prod_string_raw` (raw source), `android_string_runtime_value` (decodes `\'`, `\"`, `\\`) and an
+  unescaped-apostrophe detector. The copy assertions consume the decoded runtime value; a fixture
+  proves a raw `device\'s` is rejected by the escaping guard and decoded to `device's` for copy,
+  never leaving the raw escape in the assertion value. All eight Weather strings are guarded.
+- **Static guard made escape-aware:** `scripts/nothingui-weather-guard.sh` decodes the runtime value
+  before checking the privacy/forecast phrases, so a valid escaped apostrophe cannot cause a false
+  failure; the mutation suite was updated to the new device-IP phrase.
+- **Verification actually run (aapt2/shell only; no Gradle, Android build or emulator):** the
+  pre-fix `aapt2 compile` failed with the exact four errors above; the post-fix compile succeeds.
+  `sh scripts/emulator-smoke-test.sh` reports **1073 ok, 0 not ok, all passed** (the 1060 baseline
+  plus 13 escaping/runtime checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/nothingui-weather-guard-test.sh` reports **34 ok, 0 not ok**; the drawer smoke suite
+  all passed; `sh scripts/verify-play-build-test.sh` all passed; `sh -n` is clean on every edited
+  script and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for `c4933cb`, no APK and no emulator. The local
+  aapt2 compile validates resource flattening, not Compose/runtime behavior. The existing CI does
+  not early-run this script before assemble (workflow files were not changed); it runs inside the
+  CI-invoked Play verification and fails with the real AAPT diagnostic.
+
+## done (previous run — build-mode-aware truthful Weather copy, source-only, PENDING ACTUAL CI)
 
 - **Critical copy bug fixed:** `WeatherNetworkMode` keeps debug/test builds network-off, but the
   shared settings strings still promised a forecast request. New pure
