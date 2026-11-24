@@ -6749,7 +6749,7 @@ assert_true 'the cleanup passes the enumeration transport status into presence p
 assert_true 'the presence proof rejects a nonzero enumeration transport' \
     grep -Fq '"$_whpv_enum_status" -ne 0' "$SMOKE"
 assert_true 'the cleanup rejects a malformed package line as a corrupt query' \
-    grep -Fq '^package:[^=]+=[A-Za-z]' "$SMOKE"
+    grep -Fq '^package:[^[:space:]]+=[A-Za-z]' "$SMOKE"
 assert_true 'the cleanup logs stdout, stderr and status for every query' \
     grep -Fq 'pm_list_transport_status=' "$SMOKE" &&
     grep -Fq 'pm_path_status=' "$SMOKE" &&
@@ -6814,6 +6814,12 @@ if command -v weather_harness_pm_list_state >/dev/null 2>&1; then
         > "$_presence_valid"
     assert_eq 'a complete valid enumeration anchors the exact package' 'present' \
         "$(weather_harness_pm_list_state "$_presence_valid" "$_presence_pkg")"
+
+    _presence_real_path="$TMP_DIR/weather-presence-real-path.txt"
+    printf 'package:/data/app/~~QGx==/com.example-abc==/base.apk=%s\nPM_ENUM_RC=0\n' \
+        "$_presence_pkg" > "$_presence_real_path"
+    assert_eq 'a real base64 path containing equals still anchors the package' 'present' \
+        "$(weather_harness_pm_list_state "$_presence_real_path" "$_presence_pkg")"
 
     _presence_other="$TMP_DIR/weather-presence-other.txt"
     printf 'package:/data/app/other.apk=com.example.other\nPM_ENUM_RC=0\n' \
