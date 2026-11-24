@@ -3,34 +3,68 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — HARNESS-ONLY two-stage Weather screen identity,
-  PENDING ACTUAL CI.** The single-snapshot `weather_settings_screen_identity` is replaced by an
-  executed two-stage proof: exact resumed `PreferenceActivity` foreground plus unique privacy
-  heading/Terms/title and the mode-correct notice first, then a bounded measured scroll on the
-  same screen to the real Location label and Latitude fields, with the initial notice XML/PNG and
-  the post-scroll fields XML/PNG retained. No app source, resource, layout, manifest, workflow,
-  dependency, SDK, applicationId or build change was made.
+- current_phase: **home-widget-composition-v1-new — HARNESS-ONLY Weather screen artifact-path fix,
+  PENDING ACTUAL CI.** The CI302 attempt2 Weather settings proof (consent, invalid/draft, enable,
+  restart, disable, cache clear) passed with the private state finally disabled, and the native
+  Weather binding/tap reached the exact Preferences screen. `capture_weather_widget` then copied a
+  reconstructed `weather-widget-tap-screen-notice.*` path while the helper (given tag
+  `weather-widget-tap`) retained `weather-weather-widget-tap-screen-notice.*`; the missing-source
+  `cp` failed under `set -e`. No app source, resource, layout, manifest, workflow, dependency, SDK,
+  applicationId or build change was made.
 - branch: `agent/home-widget-composition-v1-new`
-- head: harness fix commit on `c371536` (AAPT2 Weather string STATE record); this STATE update
-  follows.
+- head: `fe76343` (returned Weather screen artifact fixture/fix); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Parent facts, not rerun here:** CI29745336528197 was a terminal runtime failure at 14m01;
-  the build succeeded and 301 units / 187 Weather tests passed with 0 errors. The actual fresh
-  screen XML/PNG artifact `14894926038` proves the real WeatherPreferences opened with the
-  `Weather` heading, `Before you enable`, `Terms/Source/License`, and the long debug network-off /
-  device-IP privacy disclosure. The Location label and Latitude fields were below the fold; the
-  old identity required them simultaneously with the top notice, so its 10 identical captures
-  failed closed. No actual CI exists for the new harness commit.
-- next: parent dispatches actual CI on the harness commit. The runtime should now pass stage 1 on
-  the notice-only screen and stage 2 on the measured field scroll. The research-only runtime-proof
-  plan remains in `docs/agent/weather-runtime-proof-plan.md`; a controlled live forecast still
-  needs a release build and explicit approval. Release, hosting, merge, signing and any new build
-  type stay paused.
+- ci: **Parent facts, not rerun here:** CI30245346657551 attempt2 ended at 21m49 after the real
+  Weather settings flow and native placement tap succeeded; artifact `14899669684` contains the
+  double-prefixed success proof. CI300's failure was a stale Viewport record, not an app
+  regression. CI302 attempt1's SystemUI ANR was environmental, not an app regression; attempt2
+  reached the real Weather settings and native Weather tap before the harness copy bug. No actual
+  CI exists for `fe76343`.
+- next: parent dispatches actual CI on `fe76343`. The widget-tap caller now copies the helper's
+  returned `_weather_screen_notice_xml`/`_weather_screen_notice_activities`, so the same-screen
+  immediate artifacts match what the helper actually wrote. The executed fixture runs the real
+  orchestrator helper and caller block, so a future missing-source `cp` fails locally. Release,
+  hosting, merge, signing and any new build type stay paused.
 - blockers: no actual CI, APK or emulator run here by instruction. The network stays debug OFF and
-  the release wire is still unproven. The new gates are proven by executed pure fixtures and shell
-  guards, not by a device.
+  the release wire is still unproven. The new path contract is proven by an executed pure shell
+  fixture, not by a device.
 
-## done (this run — two-stage Weather screen identity, harness-only, PENDING ACTUAL CI)
+## done (this run — Weather widget-tap artifact-path fix, scripts-only, PENDING ACTUAL CI)
+
+- **Exact CI302 attempt2 finding, not a Weather failure:** the full Weather consent, invalid/draft,
+  enable, restart, disable and cache-clear settings proof passed and the private state ended
+  disabled. The native Weather widget produced one new binding, and tapping it opened the exact
+  real `WeatherPreferences`; `_weather_confirm_settings_screen` succeeded and wrote its proof file.
+  The next `capture_weather_widget` step copied `weather-widget-tap-screen-notice-activities.txt`
+  and `.xml`, but the helper had been given tag `weather-widget-tap` and therefore produced
+  `weather-weather-widget-tap-screen-notice-activities.txt`/`.xml`. The missing-source `cp` exited
+  1 under `set -e`. Artifact `14899669684` holds the double-prefixed success proof.
+- **Returned artifacts, no duplicated path:** `_weather_confirm_settings_screen` now also returns
+  `_weather_screen_notice_activities` and `_weather_screen_fields_activities` (and clears all its
+  returned globals at entry). The widget-tap caller copies `_weather_screen_notice_activities` and
+  `_weather_screen_notice_xml`. It no longer reconstructs the helper's prefixed filename. The
+  immediate PNG alias and the same-screen XML/activities aliases are unchanged.
+- **Caller audit:** only `capture_weather_widget` passes a `weather-`-prefixed tag. Every
+  `_weather_wait_screen` caller uses a plain tag (`fresh`, `invalid`, `valid-unchecked`,
+  `draft-reset`, `draft-reset-enable`, `reload-enabled`, `reload-disabled`), so its
+  `weather-<tag>-screen-*` contract is unchanged. Exact Preferences, notice, field, new-binding,
+  preservation, tap, restart and resize gates were not weakened.
+- **Executed path regression:** the test extracts the real `_weather_confirm_settings_screen` and
+  the real widget-tap post-confirmation copy block from `scripts/emulator-smoke.sh`, runs them
+  under `set -eu` with stubbed device captures, and asserts the same-screen XML, activities and
+  immediate PNG aliases. The pre-fix code failed these checks (7 failures); the fix passes. Static
+  checks require the returned notice/fields activities globals and forbid the old reconstructed
+  `weather-widget-tap-screen-notice` path.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **1155 ok, 0 not ok, all passed**;
+  `sh scripts/nothingui-weather-guard.sh` passes; `sh scripts/nothingui-weather-guard-test.sh`
+  reports **34 ok, 0 not ok**; `sh scripts/emulator-smoke-drawer-test.sh` reports **38 ok,
+  0 not ok**; `sh scripts/verify-play-build-test.sh` reports **13 ok, 0 not ok**; `sh -n` is clean
+  on both edited scripts and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for `fe76343`, no APK, no emulator and no
+  forecast. The fixture proves the orchestrator helper/caller path contract, not the device run.
+
+## done (previous run — two-stage Weather screen identity, harness-only, PENDING ACTUAL CI)
 
 - **Exact CI297 false failure, not a real app defect:** the fresh WeatherPreferences opened and
   showed the mode-correct long debug privacy notice, but the Location label and Latitude fields
