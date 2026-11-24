@@ -17,6 +17,7 @@
 package app.nothingui.weather.harness
 
 import android.content.Context
+import android.os.Process
 import android.os.SystemClock
 import app.nothingui.weather.FileWeatherCacheStore
 import app.nothingui.weather.FileWeatherConsentStore
@@ -82,17 +83,25 @@ import okhttp3.ResponseBody.Companion.toResponseBody
  * permission, no MET endpoint and no other external traffic is used. The debug
  * launcher runtime is untouched: it still selects `NoNetworkWeatherWork`.
  *
- * Every case writes only below the test APK's own `noBackupFilesDir`; the
- * production consent, cache and throttle directories are never read or
- * written. The owner case drives the actual [WeatherHomeOwner] with synthetic
- * lifecycle calls, not a real Launcher activity transition, and is labelled as
- * such in its report detail.
+ * Every case writes only below a unique `dotwel-weather-harness-test/run-*`
+ * subtree of the target application's own `noBackupFilesDir`, never the test
+ * APK's directory (the instrumentation runs under the target uid and cannot
+ * write the test APK data directory) and never the production
+ * `dotwel-weather-private` directory. Before any case runs, a checked
+ * write/read/delete probe proves the process-owned storage is usable, so a
+ * storage failure is reported once with an actionable message rather than as
+ * six misleading network failures. Cleanup removes only the unique run
+ * directory this invocation created. The owner case drives the actual
+ * [WeatherHomeOwner] with synthetic lifecycle calls, not a real Launcher
+ * activity transition, and is labelled as such in its report detail.
  */
 object WeatherRuntimeHarness {
     const val VERSION: Int = 1
 
     private const val CASE_TIMEOUT_MS = 20_000L
     private const val TEMPERATURE_TOLERANCE = 0.0001
+    private const val STORAGE_ROOT_DIRECTORY = "dotwel-weather-harness-test"
+    private const val PRODUCTION_ROOT_DIRECTORY = "dotwel-weather-private"
 
     private val fixedNow: Instant = Instant.parse("2026-11-23T12:00:00Z")
     private val location: WeatherCoordinates = WeatherCoordinates.from(51.50744, -0.12783)!!
@@ -158,26 +167,143 @@ object WeatherRuntimeHarness {
         }
     """.trimIndent()
 
+    /**
+     * Runs the six named cases against process-owned storage below the target
+     * application's `noBackupFilesDir`. The caller must pass the target
+     * application context, not the test APK context: the instrumentation
+     * process runs under the target uid, so only the target app's data
+     * directory is writable.
+     */
     fun run(context: Context): WeatherHarnessReport {
-        val root = File(context.noBackupFilesDir, "dotwel-weather-harness-test")
-        val runRoot = File(root, "run-${System.currentTimeMillis()}")
-        runRoot.mkdirs()
+        val storage = try {
+            openStorage(context)
+        } catch (failure: Throwable) {
+            return WeatherHarnessReport(
+                listOf(
+                    WeatherHarnessCase(
+                        name = "storage-preflight",
+                        passed = false,
+                        detail = (
+                            "weather harness storage preflight failed before any case: " +
+                                (failure.message ?: failure.toString())
+                            ).oneLine(),
+                    ),
+                ),
+            )
+        }
         val outcomes = mutableListOf<WeatherHarnessCase>()
+        var cleanupFailure: String? = null
         try {
-            runCase(outcomes, "okhttp-request-shape") { caseRequestShape(runRoot) }
-            runCase(outcomes, "okhttp-parse-cache-expires") { caseParseCacheExpires(runRoot) }
-            runCase(outcomes, "okhttp-conditional-304") { caseConditional304(runRoot) }
+            runCase(outcomes, "okhttp-request-shape") { caseRequestShape(storage.runRoot) }
+            runCase(outcomes, "okhttp-parse-cache-expires") { caseParseCacheExpires(storage.runRoot) }
+            runCase(outcomes, "okhttp-conditional-304") { caseConditional304(storage.runRoot) }
             runCase(outcomes, "throttle-persistence-across-restart") {
-                caseThrottlePersistence(runRoot)
+                caseThrottlePersistence(storage.runRoot)
             }
-            runCase(outcomes, "cancel-late-response-dropped") { caseCancelLateResponse(runRoot) }
-            runCase(outcomes, "owner-lifecycle-seam") { caseOwnerSeam(runRoot) }
+            runCase(outcomes, "cancel-late-response-dropped") { caseCancelLateResponse(storage.runRoot) }
+            runCase(outcomes, "owner-lifecycle-seam") { caseOwnerSeam(storage.runRoot) }
         } finally {
-            runRoot.deleteRecursively()
-            root.delete()
+            cleanupFailure = cleanupStorage(storage)
+        }
+        cleanupFailure?.let {
+            outcomes += WeatherHarnessCase(name = "storage-cleanup", passed = false, detail = it.oneLine())
         }
         return WeatherHarnessReport(outcomes.toList())
     }
+
+    private class HarnessStorage(
+        val harnessRoot: File,
+        val runRoot: File,
+        val rootExisted: Boolean,
+    )
+
+    /**
+     * Opens a unique run directory below the process-owned no-backup root and
+     * proves it usable with a real write/read/delete probe. Every boundary is
+     * checked so a wrong uid, a canonical-path escape or an accidental overlap
+     * with production storage fails closed with a clear message.
+     */
+    private fun openStorage(context: Context): HarnessStorage {
+        val processUid = Process.myUid()
+        val targetUid = context.applicationInfo.uid
+        HarnessAssert.check(
+            processUid == targetUid,
+            "the harness uid $processUid does not own ${context.packageName} (uid $targetUid); " +
+                "the process-owned no-backup directory would not be writable",
+        )
+        val ownedRoot = context.noBackupFilesDir.canonicalFile
+        val harnessRoot = File(ownedRoot, STORAGE_ROOT_DIRECTORY).canonicalFile
+        HarnessAssert.check(
+            harnessRoot.parentFile == ownedRoot && harnessRoot.name == STORAGE_ROOT_DIRECTORY,
+            "the harness storage root ${harnessRoot.path} escaped its owned root ${ownedRoot.path}",
+        )
+        val productionRoot = File(ownedRoot, PRODUCTION_ROOT_DIRECTORY).canonicalFile
+        HarnessAssert.check(
+            harnessRoot != productionRoot && !isInside(harnessRoot, productionRoot),
+            "the harness storage root ${harnessRoot.path} overlaps production ${productionRoot.path}",
+        )
+        val rootExisted = harnessRoot.isDirectory
+        HarnessAssert.check(
+            harnessRoot.isDirectory || harnessRoot.mkdirs() || harnessRoot.isDirectory,
+            "the harness could not create its storage root ${harnessRoot.path}; " +
+                "check that the instrumentation runs under the target uid",
+        )
+        val runRoot = File(
+            harnessRoot,
+            "run-${System.currentTimeMillis()}-${Process.myPid()}",
+        ).canonicalFile
+        HarnessAssert.check(
+            runRoot.parentFile == harnessRoot,
+            "the harness run directory ${runRoot.path} escaped ${harnessRoot.path}",
+        )
+        HarnessAssert.check(
+            runRoot.isDirectory || runRoot.mkdirs() || runRoot.isDirectory,
+            "the harness could not create its run directory ${runRoot.path}; " +
+                "check that the instrumentation runs under the target uid",
+        )
+        try {
+            probeStorage(runRoot)
+        } catch (failure: Throwable) {
+            runRoot.deleteRecursively()
+            if (!rootExisted && harnessRoot.listFiles()?.isEmpty() != false) {
+                harnessRoot.delete()
+            }
+            throw failure
+        }
+        return HarnessStorage(harnessRoot = harnessRoot, runRoot = runRoot, rootExisted = rootExisted)
+    }
+
+    private fun probeStorage(runRoot: File) {
+        val payload = "dotwel-weather-harness-storage-probe-${System.nanoTime()}"
+        val probe = File(runRoot, "storage-probe.txt")
+        probe.writeText(payload)
+        HarnessAssert.check(probe.isFile, "the storage probe did not create ${probe.path}")
+        HarnessAssert.eq(payload, probe.readText(), "the storage probe read back")
+        HarnessAssert.check(probe.delete(), "the storage probe could not delete ${probe.path}")
+        HarnessAssert.check(!probe.exists(), "the storage probe survived deletion at ${probe.path}")
+    }
+
+    /**
+     * Removes only this invocation's unique run directory. The shared harness
+     * root is removed only when this invocation created it and it is empty, so
+     * a pre-existing directory or another run's files are never deleted.
+     */
+    private fun cleanupStorage(storage: HarnessStorage): String? {
+        storage.runRoot.deleteRecursively()
+        if (storage.runRoot.exists()) {
+            return "the harness could not delete its run directory ${storage.runRoot.path}"
+        }
+        if (!storage.rootExisted && storage.harnessRoot.listFiles()?.isEmpty() != false) {
+            storage.harnessRoot.delete()
+            if (storage.harnessRoot.exists()) {
+                return "the harness could not remove its empty storage root ${storage.harnessRoot.path}"
+            }
+        }
+        return null
+    }
+
+    private fun isInside(child: File, parent: File): Boolean =
+        child.path.startsWith(parent.path + File.separator)
 
     private fun runCase(
         outcomes: MutableList<WeatherHarnessCase>,

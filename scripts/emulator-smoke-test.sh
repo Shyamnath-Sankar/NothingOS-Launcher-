@@ -6670,10 +6670,32 @@ assert_false 'the harness interceptor never proceeds to a real socket' \
     grep -Fq 'chain.proceed' "$WEATHER_HARNESS_KT"
 assert_false 'the harness adds no INTERNET or other manifest permission' \
     grep -Eq 'uses-permission|android.permission.INTERNET' "$WEATHER_HARNESS_KT" "$WEATHER_RUNNER_KT"
-assert_true 'the harness uses the private no-backup test directory' \
+assert_true 'the harness uses the process-owned no-backup directory' \
     grep -Fq 'noBackupFilesDir' "$WEATHER_HARNESS_KT"
-assert_false 'the harness never touches the production weather storage roots' \
+assert_true 'the harness writes under a unique named harness subtree' \
+    grep -Fq 'dotwel-weather-harness-test' "$WEATHER_HARNESS_KT"
+assert_true 'the harness keeps its subtree separate from production weather storage' \
+    grep -Fq 'dotwel-weather-private' "$WEATHER_HARNESS_KT"
+assert_false 'the harness never imports the production storage helper' \
     grep -Fq 'WeatherPrivateStorage' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies it runs under the target application uid' \
+    grep -Fq 'Process.myUid()' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'context.applicationInfo.uid' "$WEATHER_HARNESS_KT"
+assert_true 'the harness canonicalizes and contains its owned storage root' \
+    grep -Fq 'canonicalFile' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'escaped its owned root' "$WEATHER_HARNESS_KT"
+assert_true 'the harness probes storage with a real write/read/delete before any case' \
+    grep -Fq 'probeStorage(' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'writeText' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'readText' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'probe.delete()' "$WEATHER_HARNESS_KT"
+assert_true 'the harness reports one actionable storage preflight failure' \
+    grep -Fq 'storage-preflight' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'storage preflight failed before any case' "$WEATHER_HARNESS_KT"
+assert_true 'the harness cleans only its unique run directory and never pre-existing storage' \
+    grep -Fq 'cleanupStorage(' "$WEATHER_HARNESS_KT" &&
+    grep -Fq 'storage.runRoot.deleteRecursively()' "$WEATHER_HARNESS_KT" &&
+    grep -Fq '!storage.rootExisted' "$WEATHER_HARNESS_KT"
 assert_true 'the harness labels the owner seam as synthetic, not a Launcher transition' \
     grep -Fq 'synthetic owner seam' "$WEATHER_HARNESS_KT"
 assert_true 'the harness verifies the User-Agent' \
@@ -6766,12 +6788,17 @@ assert_true 'the Kotlin harness calls async on the coroutineScope receiver' \
     grep -Fq 'val deferred = async(Dispatchers.IO)' "$WEATHER_HARNESS_KT"
 assert_false 'the Kotlin harness never calls the extension as a static function' \
     grep -Fq 'kotlinx.coroutines.async(Dispatchers.IO)' "$WEATHER_HARNESS_KT"
-assert_true 'the Kotlin runner uses the instrumentation test-APK context' \
+assert_true 'the Kotlin runner passes the target application context for process-owned storage' \
+    grep -Fq 'WeatherRuntimeHarness.run(target)' "$WEATHER_RUNNER_KT"
+assert_false 'the Kotlin runner never passes the test-APK context as the storage owner' \
     grep -Fq 'WeatherRuntimeHarness.run(harnessContext)' "$WEATHER_RUNNER_KT"
 assert_false 'the Kotlin runner never falls back to the target context' \
     grep -Fq 'targetContext ?: context' "$WEATHER_RUNNER_KT"
 assert_true 'the Kotlin runner fails closed unless it is the isolated test package' \
     grep -Fq '.packageName}.test' "$WEATHER_RUNNER_KT"
+assert_true 'the Kotlin runner verifies the process uid matches the target application uid' \
+    grep -Fq 'Process.myUid()' "$WEATHER_RUNNER_KT" &&
+    grep -Fq 'target.applicationInfo.uid' "$WEATHER_RUNNER_KT"
 
 assert_true 'the app APK discovery excludes the androidTest output tree' \
     grep -Fq "grep -v '/androidTest/'" "$SMOKE"

@@ -19,6 +19,7 @@ package app.nothingui.weather.harness
 import android.app.Activity
 import android.app.Instrumentation
 import android.os.Bundle
+import android.os.Process
 
 /**
  * The minimal platform runner for [WeatherRuntimeHarness].
@@ -53,7 +54,20 @@ class WeatherRuntimeInstrumentation : Instrumentation() {
                 finish(Activity.RESULT_CANCELED, results)
                 return
             }
-            val report = WeatherRuntimeHarness.run(harnessContext)
+            val processUid = Process.myUid()
+            if (processUid != target.applicationInfo.uid) {
+                results.putString("status", STATUS_FAIL)
+                results.putString(
+                    REPORT_KEY_STREAMRESULT,
+                    "the weather runtime harness is not running under the target application uid: " +
+                        "process=$processUid target=${target.applicationInfo.uid} " +
+                        "targetPackage=${target.packageName}; the process-owned no-backup storage " +
+                        "would not be writable",
+                )
+                finish(Activity.RESULT_CANCELED, results)
+                return
+            }
+            val report = WeatherRuntimeHarness.run(target)
             val cases = report.cases
             results.putInt("harness_version", WeatherRuntimeHarness.VERSION)
             results.putString("status", if (report.passed) STATUS_PASS else STATUS_FAIL)
