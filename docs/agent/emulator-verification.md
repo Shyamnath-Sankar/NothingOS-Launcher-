@@ -50,9 +50,10 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
   visible order, scrolls both ways only inside the measured settings container from the measured
   target direction, clears any measured leftover draft before typing, retains a PNG for every screen
   probe including timeout/failure, and keeps `weather-*.xml`/`.png` plus app-private consent JSON
-  evidence. It never opens a provider link, makes a network/API call,
-  requests a location permission, writes a workspace item or seeds launcher data. The seeded
-  `.weather` file is a synthetic cache-clear fixture, not forecast data
+  evidence. The debug smoke build uses the runtime's explicit network-off test mode, so its
+  synthetic enable cannot reach the live MET endpoint. It never opens a provider link, makes a
+  network/API call, requests a location permission, writes a workspace item or seeds launcher data.
+  The seeded `.weather` file is a synthetic cache-clear fixture, not forecast data
 - then exercises the three real device-card Settings pills (`nothingui_device_wifi`,
   `nothingui_device_sound`, `nothingui_device_display`) by the bounds of each measured child, not
   the card centre. For each pill it resolves the expected destination from the installed platform

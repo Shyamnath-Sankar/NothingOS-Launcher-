@@ -3,33 +3,76 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI283 attempt2 Weather picker collapse fix — committed as `638d25d`, PENDING ACTUAL
-  CI.** Parent-reported CI283 attempt2 failed in 24m16 at the Weather picker **before** placement.
-  Artifact 14889225168: `weather-widget-expand-1-1.xml` held an already-expanded DotWel header at
-  `239,1441,557,1498` and the actual `WeatherWidgetCell` (content-desc ending "Weather settings") at
-  `69,1610,1011,1920`, clipped at the bottom. The strict description helper found no complete
-  `widget_description`/`widget_preview_container` pair and returned empty, so the loop mistook the
-  clipped expanded provider for a collapsed one, tapped the header again (`expand-2-1.xml` collapsed)
-  and then scrolled past the provider four times. This run corrects only the smoke harness.
+- current_phase: **home-widget-composition-v1-new — MET repository and OkHttp transport wired behind the
+  owner load seam. Committed as `f3d53e0`, PENDING ACTUAL CI.** The release path now builds the real
+  MET work graph with the app-private no-backup cache, the persisted throttle store and the
+  owner-backed session provider. Debug/test builds use the explicit network-off mode so the emulator
+  smoke gate's synthetic enable cannot reach the live MET endpoint. No actual MET request was made in
+  this coding run.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `638d25d` (state-aware picker reveal) on `6da483a` (CI280 record) on `a14c630` (truthful
-  Weather test contract), from the `1c672fb` null-tag recycling checkpoint. The STATE commit follows
-  this list.
+- head: `f3d53e0` (MET work wiring) on `f3a2224` (CI283 attempt2 record); the STATE commit follows this
+  list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI283 attempt2 failed in 24m16 at the Weather picker before placement.** The provider was
-  already expanded but the Weather cell was clipped, so the strict pair was absent; the old loop
-  re-tapped the header and collapsed it. There is no CI result yet for `638d25d`, and this is not
-  all-green.
-- next: parent dispatches actual API 37 CI on `638d25d`; only that runtime can prove the state-aware
-  reveal reaches the fully visible Weather cell and unblocks Add/bind/tap/restart/resize. Attempt 1 on
-  `6da483a` passed the Weather replacement/tap/restart/measured vertical resize but later failed the
-  SECOND drawer open with a sparse MOVE; do not waive the drawer assertions or change the product
-  gesture without new repeat proof, and do not run a third unchanged retry. Then **repository
-  activation** (wire the real MET repository behind the owner's injected `WeatherLoadWork`, keeping
-  the widget render-only), then **targeted lifecycle instrumentation**, then the **backup/SAF broader
-  audit**. Release, hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play,
-  large-screen, backup/restore and performance audits stay open. Do not claim a forecast is connected
-  or that the Weather tile has runtime pixel evidence.
+- ci: **Parent-reported CI28645325785121 was FULL GREEN in 30m51 with 290 units and 176 Weather
+  tests.** It placed the actual Weather widget as id 10, preserved the existing 6/7/8/9 taps, kept the
+  exact settings restart, the same bounds and a 2x2 -> 2x1 vertical resize, and passed the drawer
+  boundary. There is no actual CI result yet for `f3d53e0`, and this is not all-green for this run.
+- next: parent dispatches actual CI on `f3d53e0`; only that runtime can compile the Android runtime
+  path and prove the debug network-off mode still installs/runs. Then a **controlled live forecast
+  test** in a release build is required before claiming any forecast is connected. Do not attribute
+  forecast pixels or live API success to this run. Then targeted lifecycle instrumentation and the
+  backup/SAF broader audit. Release, hosting and merge stay paused. PrivateSpace, settings
+  round-trip, non-Play, large-screen, backup/restore and performance audits stay open.
+
+## done (this run — MET work wiring behind the gated owner, PENDING ACTUAL CI)
+
+- **Pure composition root:** new `WeatherWorkFactory` constructs the existing `MetWeatherRepository`
+  once with the injected transport, cache store, persisted throttle store, owner-backed
+  `sessionProvider` and clock, and exposes it as the existing `WeatherLoadWork` seam. New pure
+  `WeatherNetworkMode.isEnabled(debugBuild)` is the explicit build-type boundary: debug/test builds
+  stay network-off, release builds keep the wired path. There is no exported/runtime test switch.
+- **Runtime wiring:** `WeatherHomeRuntime` now builds `OkHttpWeatherTransport` with the actual
+  `BuildConfig.VERSION_NAME`, `FileWeatherCacheStore` and `FileWeatherThrottleStore` both under
+  `context.noBackupFilesDir` through `WeatherPrivateStorage`, behind the owner. Debug builds select
+  `NoNetworkWeatherWork`. No activity is retained: the runtime keeps using the application context.
+- **Circular-owner race closed:** new `WeatherRuntimeSessionProvider` resolves the current process
+  owner lazily and fails closed with `WeatherSession.DISABLED` while the owner is null or closed. The
+  runtime now clears `instance` before replacing/canceling the old owner, so a work graph built during
+  replacement can never treat an uninitialized or replaced owner as its live session.
+- **Existing gates preserved:** the owner still requires the persisted opt-in plus screen-on,
+  unlocked, confirmed NORMAL HOME. Pause, drawer/overview, settings, screen-off, disable, edit and
+  shutdown still invalidate the read epoch, cancel the controller job and drop late session results;
+  the repository still checks the current session before committing a cache write. The widget remains
+  render-only. No alarm, timer, worker, receiver, service, wake lock, background GPS or device
+  location was added.
+- **MET terms/identity:** the parent re-checked the current terms/FAQ on 2026-11-24. The wired path
+  keeps the honest project User-Agent with the existing issues contact, the repository's four-decimal
+  coordinate limit, conditional `If-Modified-Since` / `Expires` handling, visible-HOME-only requests,
+  and the CC BY 4.0 attribution already in settings. No API call was made here.
+- **Truthful copy:** settings strings no longer claim "no network request" or "forecast connection
+  later"; they now state that a forecast is requested from MET Norway only while Home is visible and
+  unlocked, with no background tracking and with disable clearing the location cache. Existing Off /
+  Not connected widget legibility and the no-fabricated-forecast contract are unchanged.
+- **Executed integration tests:** new pure-JVM `WeatherWorkFactoryTest` (8 tests) uses fake transports
+  and a fake clock to prove: disabled/inactive sessions send zero HTTP; an enabled visible session
+  makes one request and persists the gate; a fresh cache is served with no early repeat; a recreated
+  work reads the persisted throttle and sends no request; 403/429 boundaries persist and block the
+  next attempt; leaving HOME drops a late response with no cache commit; an uninitialized or closed
+  owner resolves disabled; and disabling the persisted opt-in clears the location cache.
+- **Verification actually run (offline JVM/shell only; no Gradle, no Android build, no emulator, no
+  actual CI):** the whole non-OkHttp weather suite compiled and ran with kotlinc 2.4.21 + JUnit 4.13.2
+  against Android 37.2 and the exact coroutines/serialization/OkHttp/Okio jars in `/tmp/opencode`
+  only (no dependency change): **180 tests, OK (0 failures)**. The whole Android weather package,
+  provider stub and runtime compiled against `android-37.2/android.jar` (`rc=0`). `sh
+  scripts/emulator-smoke-test.sh` reports **1007 ok, 0 not ok, all passed** after updating the exact
+  enabled-message fixtures; `sh scripts/emulator-smoke-drawer-test.sh` all passed;
+  `sh scripts/nothingui-weather-guard.sh` passes and its mutation suite reports **27 ok, 0 not ok**;
+  standalone ktlint 1.8.0 reports zero violations on every changed Kotlin file; `sh -n` is clean on
+  the edited scripts and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI, no APK, no emulator run and no live MET request.
+  The factory test proves the composition/policy with fakes, not OkHttp, Compose, Android lifecycle or
+  the real endpoint. The debug network-off boundary is proven only by source/pure policy until an
+  actual emulator run. Release behavior and forecast pixels remain unproven.
 
 ## done (this run — CI283 attempt2 state-aware picker reveal, PENDING ACTUAL CI)
 
