@@ -45,6 +45,16 @@ git remote add upstream https://github.com/LawnchairLauncher/lawnchair.git
 git fetch upstream 16-dev
 ```
 
+## Third-party widget renderer
+
+The battery widget's dot-matrix numerals/bar use an adapted copy of `DotText.kt` from
+[`oceansde012/dotline-widgets`](https://github.com/oceansde012/dotline-widgets) at commit
+`b53a12aaf09f3572582dbd2c4278ea65f6a83306`, Copyright (c) 2026 oceansde012, licensed under the MIT
+License. The full license text, provenance and the list of changes are in
+[`licenses/third-party/dotline-widgets-MIT.txt`](licenses/third-party/dotline-widgets-MIT.txt).
+Only the self-drawn renderer was adapted; no upstream app, providers, media/ticker services, fonts
+or assets were copied.
+
 ## Trademarks
 
 NothingUI is an internal codename for this fork; the intended Play display label is **DotWel

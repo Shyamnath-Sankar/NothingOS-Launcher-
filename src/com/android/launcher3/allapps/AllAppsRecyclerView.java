@@ -62,6 +62,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import app.nothingui.drawer.AllAppsBottomClip;
+import app.nothingui.theme.NothingUiFeature;
+
 /**
  * A RecyclerView with custom fast scroll support for the all apps view.
  */
@@ -144,6 +147,20 @@ public class AllAppsRecyclerView extends FastScrollRecyclerView {
                     + System.currentTimeMillis());
         }
         super.onDraw(c);
+    }
+
+    @Override
+    protected void dispatchDraw(Canvas canvas) {
+        int clipBottom = AllAppsBottomClip.INSTANCE.clipBottom(
+                NothingUiFeature.INSTANCE.getHomeEnabled(), getHeight(), getPaddingBottom());
+        if (clipBottom < 0) {
+            super.dispatchDraw(canvas);
+            return;
+        }
+        int saveCount = canvas.save();
+        canvas.clipRect(0, 0, getWidth(), clipBottom);
+        super.dispatchDraw(canvas);
+        canvas.restoreToCount(saveCount);
     }
 
     @Override

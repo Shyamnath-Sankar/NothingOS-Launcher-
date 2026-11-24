@@ -279,6 +279,13 @@ public class DefaultLayoutParser extends AutoInstallsLayout {
                 if (!appWidgetManager.bindAppWidgetIdIfAllowed(appWidgetId, cn)) {
                     Log.e(TAG, "Unable to bind app widget id " + cn);
                     mAppWidgetHolder.deleteAppWidgetId(appWidgetId);
+                    if (DotWelWidgetProviderPolicy.isOwnDotWelProvider(
+                            mContext.getPackageName(), cn.getPackageName(), cn.getClassName())) {
+                        // The platform denied the automatic bind. Keep the fresh-layout slot as a
+                        // pending widget so the user can complete the standard per-widget bind
+                        // consent by tapping it; third-party widgets keep the delete-and-skip path.
+                        return super.verifyAndInsert(cn, extras);
+                    }
                     return -1;
                 }
 

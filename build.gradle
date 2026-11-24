@@ -156,6 +156,9 @@ android {
          */
         versionCode 16_00_02_01_00
         versionName "${versionDisplayName}"
+        // Test-APK-only platform runner. The class lives in tests/androidTest,
+        // never in the production source sets.
+        testInstrumentationRunner "app.nothingui.weather.harness.WeatherRuntimeInstrumentation"
         buildConfigField "String", "VERSION_DISPLAY_NAME", "\"${versionDisplayName}\""
         buildConfigField "String", "MAJOR_VERSION", "\"${majorVersion}\""
         buildConfigField "String", "COMMIT_HASH", "\"${buildCommit}\""
@@ -308,6 +311,11 @@ android {
         test {
             java.srcDirs = ['tests/unit/java']
             kotlin.directories.addAll('tests/unit/java')
+        }
+
+        androidTest {
+            java.srcDirs = ['tests/androidTest/java']
+            kotlin.directories.addAll('tests/androidTest/java')
         }
 
         lawn {

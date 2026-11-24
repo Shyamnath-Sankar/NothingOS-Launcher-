@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Play-only metadata for the original dot-field live wallpaper. The service is
+  declared with android.permission.BIND_WALLPAPER; this file adds no permission.
+-->
+<wallpaper xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/dotwel_live_wallpaper_description"
+    android:thumbnail="@drawable/dotwel_live_wallpaper_thumbnail" />

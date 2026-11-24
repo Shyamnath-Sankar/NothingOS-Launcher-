@@ -502,13 +502,61 @@ public class AutoInstallsLayout {
 
         @Nullable
         public ComponentName getComponentName(XmlPullParser parser) {
-            final String packageName = getAttributeValue(parser, ATTR_PACKAGE_NAME);
+            final String packageName = resolveComponentPackage(parser);
             final String className = getAttributeValue(parser, ATTR_CLASS_NAME);
             addProfileId(parser);
             if (TextUtils.isEmpty(packageName) || TextUtils.isEmpty(className)) {
                 return null;
             }
             return new ComponentName(packageName, className);
+        }
+
+        /**
+         * Resolves a default-layout {@code <appwidget>} package name. Compiled XML returns a numeric
+         * resource id for {@code @string/launcher_component}, so the id path is authoritative; the
+         * literal {@code @string/} path remains for text fixtures. The running context package is
+         * used for our own component because it includes the build-type suffix.
+         */
+        @Nullable
+        private String resolveComponentPackage(XmlPullParser parser) {
+            final String attributeValue = getAttributeValue(parser, ATTR_PACKAGE_NAME);
+            final int resourceId = getAttributeResourceValue(parser, ATTR_PACKAGE_NAME, 0);
+            final Resources resources = mContext.getResources();
+            final int launcherComponentId = resources.getIdentifier(
+                    "launcher_component", "string", mContext.getPackageName());
+            String resourceValue = null;
+            if (resourceId != 0 && resourceId != launcherComponentId) {
+                resourceValue = resolveStringResource(resourceId);
+            } else if (resourceId == 0 && attributeValue != null
+                    && attributeValue.startsWith("@string/")) {
+                final String resourceName = attributeValue.substring("@string/".length());
+                if (!"launcher_component".equals(resourceName)) {
+                    final int literalResourceId = resources.getIdentifier(
+                            resourceName, "string", mContext.getPackageName());
+                    if (literalResourceId != 0) {
+                        resourceValue = resources.getString(literalResourceId);
+                    }
+                }
+            }
+            return WidgetPackageResolver.resolve(
+                    attributeValue,
+                    resourceId,
+                    launcherComponentId,
+                    mContext.getPackageName(),
+                    resourceValue);
+        }
+
+        @Nullable
+        private String resolveStringResource(int resourceId) {
+            try {
+                return mSourceRes.getString(resourceId);
+            } catch (NotFoundException e) {
+                try {
+                    return mContext.getResources().getString(resourceId);
+                } catch (NotFoundException ignored) {
+                    return null;
+                }
+            }
         }
 
         @Override

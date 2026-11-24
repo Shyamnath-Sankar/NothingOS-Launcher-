@@ -25,6 +25,7 @@ import app.lawnchair.ui.preferences.components.colorpreference.ColorPreferenceMo
 import app.lawnchair.ui.preferences.components.colorpreference.ColorSelection
 import app.lawnchair.ui.preferences.components.search.SearchProviderId
 import app.lawnchair.ui.preferences.components.search.SearchProviderPreferenceScreen
+import app.lawnchair.ui.preferences.destinations.AmoledWallpaperPreferences
 import app.lawnchair.ui.preferences.destinations.AppDrawerFoldersPreference
 import app.lawnchair.ui.preferences.destinations.AppDrawerPreferences
 import app.lawnchair.ui.preferences.destinations.BackupAndRestorePreference
@@ -54,9 +55,11 @@ import app.lawnchair.ui.preferences.destinations.SelectAppsForDrawerFolder
 import app.lawnchair.ui.preferences.destinations.SelectIconPreference
 import app.lawnchair.ui.preferences.destinations.ShapePreference
 import app.lawnchair.ui.preferences.destinations.SmartspacePreferences
+import app.lawnchair.ui.preferences.destinations.WeatherPreferences
 import app.lawnchair.ui.preferences.destinations.icons.AdvancedIconPreferences
 import app.lawnchair.ui.preferences.destinations.icons.IconPackPreferences
 import app.lawnchair.ui.preferences.destinations.icons.ThemedIconsPreferences
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import com.android.launcher3.util.ComponentKey
 import soup.compose.material.motion.animation.materialSharedAxisXIn
 import soup.compose.material.motion.animation.materialSharedAxisXOut
@@ -149,6 +152,15 @@ fun PreferenceNavigation(
         composable<HomeScreenPopupEditor>(
             deepLinks = getDeepLink(HomeScreenPopupEditor),
         ) { LauncherPopupPreference() }
+
+        if (isPlayStoreFlavor()) {
+            composable<AmoledWallpapers>(
+                deepLinks = getDeepLink(AmoledWallpapers),
+            ) { AmoledWallpaperPreferences() }
+            composable<WeatherSettings>(
+                deepLinks = getDeepLink(WeatherSettings),
+            ) { WeatherPreferences() }
+        }
 
         composable<Dock>(
             deepLinks = getDeepLink(Dock),

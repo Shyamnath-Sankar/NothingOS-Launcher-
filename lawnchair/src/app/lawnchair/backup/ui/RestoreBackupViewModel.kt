@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import app.lawnchair.backup.LawnchairBackup
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
@@ -26,13 +27,14 @@ sealed interface RestoreBackupUiState {
     }
 
     data object Error : RestoreBackupUiState {
-        override val isLoading: Boolean = true
+        override val isLoading: Boolean = false
     }
 }
 
 private data class RestoreBackupViewModelState(
     val backup: LawnchairBackup? = null,
     val hasError: Boolean = false,
+    val isLoading: Boolean = false,
 ) {
     fun toUiState(): RestoreBackupUiState = when {
         hasError -> RestoreBackupUiState.Error
@@ -46,9 +48,10 @@ class RestoreBackupViewModel(
     private val savedStateHandle: SavedStateHandle,
 ) : AndroidViewModel(application) {
     private var initialized = false
+    private var loading = false
     private lateinit var backupUri: Uri
 
-    private val viewModelState = MutableStateFlow(RestoreBackupViewModelState())
+    private val viewModelState = MutableStateFlow(RestoreBackupViewModelState(isLoading = true))
     val uiState = viewModelState
         .map { it.toUiState() }
         .stateIn(
@@ -63,20 +66,38 @@ class RestoreBackupViewModel(
         if (initialized) return
         initialized = true
         this.backupUri = backupUri
+        load()
+    }
+
+    fun retry() {
+        if (!::backupUri.isInitialized || loading) return
+        load()
+    }
+
+    fun setBackupContents(contents: Int) {
+        savedStateHandle["contents"] = contents
+    }
+
+    private fun load() {
+        if (loading) return
+        loading = true
+        viewModelState.update { it.copy(backup = null, hasError = false, isLoading = true) }
         viewModelScope.launch {
             try {
                 val backup = LawnchairBackup(getApplication(), backupUri)
                 backup.readInfoAndPreview()
                 setBackupContents(backup.info.contents)
-                viewModelState.update { it.copy(backup = backup) }
+                viewModelState.update {
+                    it.copy(backup = backup, hasError = false, isLoading = false)
+                }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
             } catch (t: Throwable) {
                 Log.e("RestoreBackupViewModel", "failed to parse backup", t)
-                viewModelState.update { it.copy(hasError = true) }
+                viewModelState.update { it.copy(backup = null, hasError = true, isLoading = false) }
+            } finally {
+                loading = false
             }
         }
-    }
-
-    fun setBackupContents(contents: Int) {
-        savedStateHandle["contents"] = contents
     }
 }

@@ -39,7 +39,9 @@ sh "$SCRIPT_DIR/play-brand-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-theme-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-native-surfaces-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-widget-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-home-role-guard-test.sh"
+sh "$SCRIPT_DIR/nothingui-polish-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-icon-render-guard-test.sh"
 sh "$SCRIPT_DIR/nothingui-drawer-trace-guard-test.sh"
 sh "$SCRIPT_DIR/emulator-smoke-test.sh"
@@ -68,9 +70,25 @@ if [ -d "$ROOT/lawnchair/src/app/nothingui/home" ]; then
     sh "$SCRIPT_DIR/nothingui-home-guard.sh" "$ROOT"
 fi
 
+# Play-only clock/battery widgets and fresh-install home composition (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/widgets" ]; then
+    sh "$SCRIPT_DIR/nothingui-widget-guard.sh" "$ROOT"
+fi
+
 # Play-only user-initiated HOME role consent (skipped for minimal fixtures).
 if [ -d "$ROOT/lawnchair/src/app/nothingui/settings" ]; then
     sh "$SCRIPT_DIR/nothingui-home-role-guard.sh" "$ROOT"
+fi
+
+# Play settings entry, drawer-opacity default and default-home status (skipped
+# for minimal fixtures).
+if [ -f "$ROOT/lawnchair/src/app/nothingui/drawer/DrawerOpacityDefaults.kt" ]; then
+    sh "$SCRIPT_DIR/nothingui-polish-guard.sh" "$ROOT"
+fi
+
+# Play-only offline AMOLED wallpaper gallery (skipped for minimal fixtures).
+if [ -d "$ROOT/lawnchair/src/app/nothingui/wallpaper" ]; then
+    sh "$SCRIPT_DIR/nothingui-wallpaper-guard.sh" "$ROOT"
 fi
 
 # Play-only icon renderer policy wiring (skipped for minimal fixtures).
@@ -82,6 +100,13 @@ fi
 # for minimal fixtures).
 if [ -f "$ROOT/src/com/android/launcher3/touch/DotwelDrawerTrace.java" ]; then
     sh "$SCRIPT_DIR/nothingui-drawer-trace-guard.sh" "$ROOT"
+fi
+
+# Focused Android resource compile (skipped for minimal test fixtures). aapt2,
+# not the XML parser, rejects an unescaped apostrophe in a string value, so
+# fail the build verification with the real AAPT diagnostic.
+if [ -f "$ROOT/lawnchair/res/values/strings.xml" ]; then
+    sh "$SCRIPT_DIR/verify-android-resources.sh" "$ROOT"
 fi
 
 # 2. Locate the merged manifest for the Play debug variant.
@@ -115,6 +140,44 @@ fi
 
 merged=$candidates
 [ -f "$merged" ] || fail "merged manifest is not a file: $merged"
+
+# The Play HOME activity must recreate for uiMode (fresh resources) while still
+# handling the inherited geometry changes manually. HOME and the DotWel
+# Settings launcher entry must keep their existing routing.
+merged_launcher_block=$(awk '
+    BEGIN { RS = "</activity>" }
+    /<activity/ && /app\.lawnchair\.LawnchairLauncher/ { print $0 "</activity>"; exit }
+' "$merged")
+[ -n "$merged_launcher_block" ] ||
+    fail "merged manifest has no app.lawnchair.LawnchairLauncher activity"
+merged_config=$(printf '%s\n' "$merged_launcher_block" |
+    sed -n 's/.*android:configChanges="\([^"]*\)".*/\1/p')
+[ -n "$merged_config" ] || fail "merged LawnchairLauncher has no configChanges"
+case "|$merged_config|" in
+    *'|uiMode|'*) fail "merged LawnchairLauncher still handles uiMode manually" ;;
+esac
+for flag in keyboard keyboardHidden mcc mnc navigation orientation screenSize \
+    screenLayout smallestScreenSize; do
+    case "|$merged_config|" in
+        *"|$flag|"*) ;;
+        *) fail "merged LawnchairLauncher configChanges is missing $flag" ;;
+    esac
+done
+printf '%s\n' "$merged_launcher_block" | grep -Fq 'android.intent.category.HOME' ||
+    fail "merged LawnchairLauncher no longer resolves HOME"
+
+merged_settings_block=$(awk '
+    BEGIN { RS = "</activity>" }
+    /<activity/ && /app\.lawnchair\.ui\.preferences\.PreferenceActivity/ {
+        print $0 "</activity>"; exit
+    }
+' "$merged")
+[ -n "$merged_settings_block" ] || fail "merged manifest has no DotWel Settings activity"
+printf '%s\n' "$merged_settings_block" | grep -Fq 'android.intent.category.LAUNCHER' ||
+    fail "merged DotWel Settings activity is missing the LAUNCHER category"
+if printf '%s\n' "$merged_settings_block" | grep -Fq 'android.intent.category.HOME'; then
+    fail "merged DotWel Settings activity must not claim HOME"
+fi
 
 # 3. Play manifest guard.
 sh "$SCRIPT_DIR/manifest-guard.sh" "$merged"

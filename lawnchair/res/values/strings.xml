@@ -196,6 +196,12 @@
     <string name="home_screen_label">Home screen</string>
     <string name="home_screen_description">Feed, grid, icons</string>
 
+    <string name="customize_launcher_label">Customize launcher</string>
+    <string name="customize_launcher_description">Icon size, labels and widgets</string>
+    <string name="icon_size_and_home_screen_label">Icon size and home screen</string>
+    <string name="browse_widgets_label">Browse widgets</string>
+    <string name="browse_widgets_description">Choose from the available widgets</string>
+
     <string name="home_screen_actions">Home screen actions</string>
 
     <string name="dock_label">Dock</string>
@@ -305,6 +311,7 @@
     -->
 
     <string name="set_default_launcher_tip">To access shortcuts and additional features, set Lawnchair as your default launcher</string>
+    <string name="default_launcher_active_status">%1$s is your default home</string>
 
     <string name="notification_dots">Notification dots</string>
     <string name="show_notification_count">Show notification counter</string>
@@ -629,6 +636,7 @@
     <string name="backup_restore_success">Backup restored</string>
     <string name="backup_restore_error">Failed to restore backup</string>
     <string name="invalid_backup_file">Invalid backup file</string>
+    <string name="backup_retry">Retry</string>
     <string name="restore_nova_backup">Restore Nova backup</string>
     <string name="invalid_nova_backup_file">Invalid Nova backup file</string>
     <string name="nova_grid_label">Grid</string>
@@ -1098,4 +1106,110 @@
     <string name="lawnchair_action_failed">Failed to trigger action</string>
 
     <string name="please_wait">Please wait…</string>
+
+    <!-- Original NothingUI home widgets. -->
+    <string name="nothingui_clock_widget_description">Dot-matrix clock</string>
+    <string name="nothingui_battery_widget_description">Circular battery</string>
+    <string name="nothingui_battery_widget_content_description">Battery level</string>
+    <string name="nothingui_device_widget_description">Device storage and settings shortcuts</string>
+    <string name="nothingui_device_storage_label">DEVICE STORAGE</string>
+    <string name="nothingui_device_storage_free">%1$s free</string>
+    <string name="nothingui_device_storage_detail">%1$d%% used of %2$s</string>
+    <string name="nothingui_device_storage_unknown">Storage unavailable</string>
+    <string name="nothingui_device_storage_unknown_value" translatable="false">--</string>
+    <string name="nothingui_device_wifi">Wi-Fi settings</string>
+    <string name="nothingui_device_sound">Sound settings</string>
+    <string name="nothingui_device_display">Display settings</string>
+    <string name="nothingui_weather_widget_description">Weather, opens weather settings</string>
+    <string name="nothingui_weather_label">WEATHER</string>
+    <string name="nothingui_weather_value_unknown" translatable="false">--</string>
+    <string name="nothingui_weather_value_loading" translatable="false">…</string>
+    <string name="nothingui_weather_state_off">Weather off · tap to set up</string>
+    <string name="nothingui_weather_state_off_short">Off</string>
+    <string name="nothingui_weather_state_not_connected">No forecast yet</string>
+    <string name="nothingui_weather_state_not_connected_short">Not connected</string>
+    <string name="nothingui_weather_state_not_connected_detail">Provider not connected</string>
+    <string name="nothingui_weather_state_not_connected_content_description">No forecast yet. The weather provider is not connected. Tap to open weather settings.</string>
+    <string name="nothingui_weather_state_loading">Updating weather</string>
+    <string name="nothingui_weather_state_unavailable">Weather unavailable</string>
+    <string name="nothingui_weather_state_retry">Retry later</string>
+    <string name="nothingui_weather_updated">Updated %1$s</string>
+    <string name="nothingui_weather_stale_as_of">As of %1$s</string>
+    <string name="nothingui_weather_last_updated">Last updated %1$s</string>
+    <string name="nothingui_weather_last_updated_retry">Last updated %1$s · retry later</string>
+    <string name="nothingui_weather_forecast_content_description">%1$s, %2$s, updated %3$s</string>
+    <string name="nothingui_weather_last_forecast_content_description">Weather unavailable. Last forecast %1$s, %2$s, last updated %3$s.</string>
+
+    <!-- Offline AMOLED wallpaper gallery. -->
+    <string name="dotwel_amoled_wallpapers_label">AMOLED Wallpapers</string>
+    <string name="dotwel_amoled_wallpapers_description">Quiet black wallpapers bundled with the launcher</string>
+    <string name="dotwel_wallpaper_pitch_black">Pitch Black</string>
+    <string name="dotwel_wallpaper_wireframe_torus">Wireframe Torus</string>
+    <string name="dotwel_wallpaper_pitch_black_credit">Copyright (c) 2024 Tecdrop. CC BY 4.0.</string>
+    <string name="dotwel_wallpaper_pitch_black_change">File renamed only; pixels unchanged.</string>
+    <string name="dotwel_wallpaper_wireframe_torus_credit">Walldye. CC0 1.0.</string>
+    <string name="dotwel_wallpaper_source">Source</string>
+    <string name="dotwel_wallpaper_license">License</string>
+    <string name="dotwel_wallpaper_preview_hint">Preview only. Nothing changes until you tap Apply to Home screen.</string>
+    <string name="dotwel_wallpaper_apply">Apply to Home screen</string>
+    <string name="dotwel_wallpaper_cancel_preview">Cancel preview</string>
+    <string name="dotwel_wallpaper_applied">Home wallpaper updated</string>
+    <string name="dotwel_wallpaper_unsupported">This device does not support changing the wallpaper</string>
+    <string name="dotwel_wallpaper_not_allowed">Wallpaper changes are not allowed by device policy</string>
+    <string name="dotwel_wallpaper_security_denied">The system denied the wallpaper change</string>
+    <string name="dotwel_wallpaper_io_failed">Could not read or write the wallpaper</string>
+    <string name="dotwel_wallpaper_unconfirmed">The system did not confirm the new Home wallpaper</string>
+    <string name="dotwel_wallpaper_failed">Could not apply the wallpaper</string>
+    <string name="dotwel_live_wallpaper_section">Live wallpaper</string>
+    <string name="dotwel_live_wallpaper_label">Dot Field (Live)</string>
+    <string name="dotwel_live_wallpaper_description">A quiet monochrome dot field that drifts slowly. The system preview opens first; nothing changes until you confirm there.</string>
+    <string name="dotwel_live_wallpaper_preview">Preview live wallpaper</string>
+    <string name="dotwel_live_wallpaper_unavailable">The system live-wallpaper preview is unavailable on this device.</string>
+    <string name="dotwel_live_wallpaper_preview_failed">Could not open the system live-wallpaper preview.</string>
+
+    <!-- Manual-location weather settings. No background refresh and no geocoding. -->
+    <string name="dotwel_weather_settings_label">Weather</string>
+    <string name="dotwel_weather_settings_description_debug">Manual location; debug build is setup-only (network off)</string>
+    <string name="dotwel_weather_settings_description_release">Manual location; opt-in requests only while Home is visible</string>
+    <string name="dotwel_weather_entry_label">Weather settings</string>
+    <string name="dotwel_weather_location_label">Location label</string>
+    <string name="dotwel_weather_location_hint">For example, Home</string>
+    <string name="dotwel_weather_latitude_label">Latitude</string>
+    <string name="dotwel_weather_longitude_label">Longitude</string>
+    <string name="dotwel_weather_coordinates_hint">Use 4 decimal places or fewer. No GPS, network geocoding or device location is used.</string>
+    <string name="dotwel_weather_privacy_heading">Before you enable</string>
+    <string name="dotwel_weather_privacy_notice_debug">Weather is off until you explicitly save and enable a location. Your location label stays on this device, and the rounded coordinates are stored on this device. This debug build has network requests disabled: enabling weather is setup-only, so no coordinates or device IP address are sent and no forecast is fetched. A release build with weather enabled would share those selected coordinates and the IP address of this device with MET Norway (met.no) only while the Home screen is visible and unlocked. No GPS, network geocoding or background tracking is used; disabling clears the cached forecast for this location.</string>
+    <string name="dotwel_weather_privacy_notice_release">Weather is off until you explicitly save and enable a location. Your location label stays on this device, and the rounded coordinates are stored on this device. When an enabled forecast is requested, those selected coordinates and the IP address of this device are shared with MET Norway (met.no) only while the Home screen is visible and unlocked. No GPS, network geocoding or background tracking is used; disabling clears the cached forecast for this location.</string>
+    <string name="dotwel_weather_forecast_notice_debug">This debug build has network requests disabled, so no forecast is fetched and the widget stays Off or Not connected; it never shows a made-up value. Release builds request forecasts only while Home is visible. If a refresh fails, the last successful forecast may stay visible marked with its as-of age; it is never replaced by a made-up value.</string>
+    <string name="dotwel_weather_forecast_notice_release">Forecasts are requested only while Home is visible, with no background polling. If a refresh fails, the last successful forecast may stay visible marked with its as-of age; it is never replaced by a made-up value.</string>
+    <string name="dotwel_weather_consent_checkbox">I understand and want to enable weather setup</string>
+    <string name="dotwel_weather_enable">Save and enable</string>
+    <string name="dotwel_weather_disable">Disable and clear location</string>
+    <string name="dotwel_weather_disable_retry">Retry disable and clear location</string>
+    <string name="dotwel_weather_enabled_status_debug">Weather setup is enabled for %1$s (%2$s, %3$s). This debug build has network requests disabled, so no coordinates or device IP address are sent and no forecast is requested. Disabling clears this location cache. The shared provider throttle is kept.</string>
+    <string name="dotwel_weather_enabled_status_release">Weather setup is enabled for %1$s (%2$s, %3$s). While Home is visible, an opt-in request sends those selected coordinates and the IP address of this device to MET Norway. Disabling stops the session and clears this location cache. The shared provider throttle is kept.</string>
+    <string name="dotwel_weather_state_enabled">Enabled</string>
+    <string name="dotwel_weather_state_disabled">Disabled</string>
+    <string name="dotwel_weather_attribution">Weather source: MET Norway (met.no), CC BY 4.0.</string>
+    <string name="dotwel_weather_terms">Terms of Service</string>
+    <string name="dotwel_weather_source">Source</string>
+    <string name="dotwel_weather_license">License</string>
+    <string name="dotwel_weather_terms_url" translatable="false">https://docs.api.met.no/doc/TermsOfService</string>
+    <string name="dotwel_weather_source_url" translatable="false">https://www.met.no/en</string>
+    <string name="dotwel_weather_license_url" translatable="false">https://creativecommons.org/licenses/by/4.0/</string>
+    <string name="dotwel_weather_error_empty_label">Enter a place label</string>
+    <string name="dotwel_weather_error_label_too_long">Use %1$d characters or fewer</string>
+    <string name="dotwel_weather_error_label_invalid">The label contains an unsupported control character</string>
+    <string name="dotwel_weather_error_latitude">Latitude must be a number from -90 to 90</string>
+    <string name="dotwel_weather_error_longitude">Longitude must be a number from -180 to 180</string>
+    <string name="dotwel_weather_message_enabled_debug">Weather setup saved. This debug build has network requests disabled, so no forecast is requested.</string>
+    <string name="dotwel_weather_message_enabled_release">Weather setup saved. While Home is visible, requests send those selected coordinates and the IP address of this device to MET Norway.</string>
+    <string name="dotwel_weather_message_disabled">Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.</string>
+    <string name="dotwel_weather_message_revoked">Weather was turned off because the location changed. Review the notice and enable it again.</string>
+    <string name="dotwel_weather_message_invalid">Fix the location fields before enabling weather.</string>
+    <string name="dotwel_weather_message_consent">Tick the consent box to enable weather.</string>
+    <string name="dotwel_weather_message_storage">Could not save the weather setting. It was not enabled.</string>
+    <string name="dotwel_weather_message_conflict">The weather setting changed elsewhere. Review it and try again.</string>
+    <string name="dotwel_weather_message_revoke_unconfirmed">Weather is off now, but the saved opt-in could not be changed and may still be recorded as enabled on this device. Use Retry disable to try again.</string>
+    <string name="dotwel_weather_message_loading">Loading the saved weather setting…</string>
 </resources>

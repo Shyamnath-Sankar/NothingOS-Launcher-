@@ -156,6 +156,16 @@ data object HomeScreenPopupEditor : PreferenceRoute, PreferenceDeepLink {
     override val deepLink = "$URI/home-screen-popup-editor"
 }
 
+@Serializable
+data object WeatherSettings : PreferenceRoute, PreferenceDeepLink {
+    override val deepLink = "$URI/weather-settings"
+}
+
+@Serializable
+data object AmoledWallpapers : PreferenceRootRoute, PreferenceDeepLink {
+    override val deepLink = "$URI/amoled-wallpapers"
+}
+
 // Dock section routes
 @Serializable
 data object DockSearchProvider : PreferenceRoute, PreferenceDeepLink {
