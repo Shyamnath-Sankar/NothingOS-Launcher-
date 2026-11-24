@@ -12,12 +12,12 @@ when no task input is given, and continues from "next".
   No Android build, app source, Kotlin, workflow, manifest, permission, applicationId, build type,
   dependency, network policy, merge, release or signing change.
 - branch: `agent/home-widget-composition-v1-new`
-- head: **`e689cc6`**; this STATE update follows.
+- head: **`d095ce5`**; this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **No CI run for this shell-only commit.** Parent-recorded facts: CI310 passed with **301 unit
   tests and 187 Weather tests**; **0 native instrumentation cases executed** here. The last
   compile proof remains the state 117 test-APK build on `24d8f98`.
-- next: parent decides whether to dispatch actual Android CI on `e689cc6`. Release, hosting, merge,
+- next: parent decides whether to dispatch actual Android CI on `d095ce5`. Release, hosting, merge,
   signing and any new build type stay paused.
 - blockers: no emulator, no `am instrument`, no device runtime and no Android CI rerun here by
   instruction. The executed fixtures prove orchestrator fail-closed behavior; runtime, forecast and
@@ -37,7 +37,8 @@ when no task input is given, and continues from "next".
   `pm path` exit 1 only with a successful enumeration. The logged `presence_state` is the same
   failed final state, with a truthful transport diagnostic.
 - **Strict grammar:** `package:/nonempty-path=valid.dotted.package` is required for enumeration
-  rows; malformed rows (missing `=`, empty path, empty name, no dot, bad character) are
+  rows, with the final `=` separating the name so real Android base64 paths that contain `=` stay
+  valid. Malformed rows (missing `=`, empty path, empty name, no dot, bad character) are
   `query_failure`, never absence. `pm path` rows now require a non-empty `package:/...` path.
 - **Executed regressions:** six orchestration fixtures inject rc1 and rc124 with a complete valid
   payload and sentinel: absent before install, present before cleanup, and absent after uninstall.
@@ -47,13 +48,14 @@ when no task input is given, and continues from "next".
   absence payload plus nonzero transport, `present` for a complete presence payload, and `absent`
   for a malformed `package:` line; the fixed functions return `query_failure` for all three.
 - **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
-  `sh scripts/emulator-smoke-test.sh` reports **1338 ok, 0 not ok, all passed** (the 1294 baseline
-  plus 44 parser/fixture/static checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/emulator-smoke-test.sh` reports **1339 ok, 0 not ok, all passed** (the 1294 baseline
+  plus 45 parser/fixture/static checks, including a realistic `==` path); `sh scripts/manifest-guard-test.sh`
+  passes; `sh scripts/nothingui-weather-guard.sh` passes;
   `sh scripts/nothingui-weather-guard-test.sh` reports **34 ok, 0 not ok**;
   `sh scripts/emulator-smoke-drawer-test.sh` reports **38 ok, 0 not ok**;
   `sh scripts/verify-play-build-test.sh` reports **13 ok, 0 not ok**; `sh -n` is clean on both
   edited scripts and `git diff --check` is clean.
-- **Missing evidence / not claimed:** no Android CI for `e689cc6`, no APK, no emulator, no
+- **Missing evidence / not claimed:** no Android CI for `d095ce5`, no APK, no emulator, no
   `am instrument`, no forecast and no native Weather execution. The 301 units / 187 Weather tests
   are the parent's CI310 facts, not rerun here. This run is shell-only and does not claim native
   runtime behavior.
