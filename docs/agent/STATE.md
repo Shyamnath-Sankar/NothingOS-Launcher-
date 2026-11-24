@@ -3,32 +3,84 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — TINYRESOURCEFIXONLY committed as `c4933cb`,
-  PENDING ACTUAL CI.** The four new Weather strings that failed AAPT2 flattening now use
-  apostrophe-free wording that keeps the coordinate/device-IP disclosure, the manual opt-in
-  visible/unlocked HOME behavior, the debug network-off copy, the release copy and the retained
-  last-success stale notice. A focused aapt2 resource compile, an executed apostrophe guard and
-  runtime-value copy decoding were added. The MET factory and mode-aware Compose implementation are
-  unchanged.
+- current_phase: **home-widget-composition-v1-new — HARNESS-ONLY two-stage Weather screen identity,
+  PENDING ACTUAL CI.** The single-snapshot `weather_settings_screen_identity` is replaced by an
+  executed two-stage proof: exact resumed `PreferenceActivity` foreground plus unique privacy
+  heading/Terms/title and the mode-correct notice first, then a bounded measured scroll on the
+  same screen to the real Location label and Latitude fields, with the initial notice XML/PNG and
+  the post-scroll fields XML/PNG retained. No app source, resource, layout, manifest, workflow,
+  dependency, SDK, applicationId or build change was made.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `c4933cb` (AAPT2-safe Weather strings plus resource/escaping guards) on `71cc407`
-  (truthful copy STATE record) on `1a1d1c1` (build-mode-aware copy); this STATE update follows.
+- head: harness fix commit on `c371536` (AAPT2 Weather string STATE record); this STATE update
+  follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Actual CI29445333776461 is TERMINAL failed at 7m36.** Style passed and 2m43 of unit tests
-  ran before the build failure; runtime/tests never completed. The raw AAPT output was
-  `unescaped apostrophe in string` / `not a valid string` / `file failed to compile` for the four
-  new Weather strings at `strings.xml` lines 1180, 1181, 1189 and 1205. This is a resource-build
-  failure, not a unit-assertion failure. There is no actual CI result for `c4933cb`.
-- next: parent audits this source-only resource correction, then dispatches actual CI on `c4933cb`
-  to flatten the corrected resources and run the existing units/style/tests/runtime. The
-  research-only runtime-proof plan remains in `docs/agent/weather-runtime-proof-plan.md`; a
-  controlled live forecast still needs a release build and explicit approval. Release, hosting,
-  merge, signing and any new build type stay paused.
-- blockers: no actual CI for `c4933cb`. No Gradle/Android build or emulator was run locally by
-  instruction, so the fix is proven by a directly executed SDK `aapt2` compile plus shell guards,
-  not by an APK. No live MET request, forecast pixel or release behavior is claimed.
+- ci: **Parent facts, not rerun here:** CI29745336528197 was a terminal runtime failure at 14m01;
+  the build succeeded and 301 units / 187 Weather tests passed with 0 errors. The actual fresh
+  screen XML/PNG artifact `14894926038` proves the real WeatherPreferences opened with the
+  `Weather` heading, `Before you enable`, `Terms/Source/License`, and the long debug network-off /
+  device-IP privacy disclosure. The Location label and Latitude fields were below the fold; the
+  old identity required them simultaneously with the top notice, so its 10 identical captures
+  failed closed. No actual CI exists for the new harness commit.
+- next: parent dispatches actual CI on the harness commit. The runtime should now pass stage 1 on
+  the notice-only screen and stage 2 on the measured field scroll. The research-only runtime-proof
+  plan remains in `docs/agent/weather-runtime-proof-plan.md`; a controlled live forecast still
+  needs a release build and explicit approval. Release, hosting, merge, signing and any new build
+  type stay paused.
+- blockers: no actual CI, APK or emulator run here by instruction. The network stays debug OFF and
+  the release wire is still unproven. The new gates are proven by executed pure fixtures and shell
+  guards, not by a device.
 
-## done (this run — AAPT2 apostrophe resource fix, source-only, PENDING ACTUAL CI)
+## done (this run — two-stage Weather screen identity, harness-only, PENDING ACTUAL CI)
+
+- **Exact CI297 false failure, not a real app defect:** the fresh WeatherPreferences opened and
+  showed the mode-correct long debug privacy notice, but the Location label and Latitude fields
+  legitimately sat below the fold and were absent from every identical capture. The old
+  `weather_settings_screen_identity` required the notice and both fields in one hierarchy, so it
+  could never pass after the privacy copy grew; 10 captures over 14m01 failed closed. No app
+  copy, layout, behaviour or network path was changed to accommodate the test.
+- **Stage 1:** new pure `weather_settings_notice_identity <xml> <mode>` requires the exact unique
+  `Before you enable` heading, unique `Terms of Service` link, the `Weather` title, and the
+  build-mode-correct notice text (`This debug build has network requests disabled` plus `the IP
+  address of this device` for debug; the release `are shared with MET Norway` copy for release,
+  with the other mode's notice rejected). New `ui_label_contains`/`ui_label_lacks` prove the full
+  long notice by substring without accepting a short invented fragment.
+- **Stage 2:** new pure `weather_settings_field_identity`, `weather_settings_fields_identity` and
+  `weather_settings_screen_provenance` use the existing label-association helpers. The Location
+  label and Latitude are proven in their own measured field captures because they may not share a
+  viewport after scrolling; the provenance helper rejects a missing field, the wrong screen, the
+  other mode, or one artifact reused as its own proof.
+- **Real orchestration:** new `_weather_confirm_settings_screen` proves the exact resumed
+  `$PKG/$PREFERENCES_ACTIVITY` foreground and stage-1 notice, retains
+  `weather-<tag>-screen-notice.xml/.png` plus the matching activities dump, then uses only the
+  existing measured `_weather_measure_field` scroll/field helpers to reach the real Location label
+  and Latitude fields on the same screen. It re-proves the exact resumed activity after scrolling,
+  requires the combined provenance, and retains `weather-<tag>-screen-fields.xml/.png`. No guessed
+  coordinates, reset, direct-activity bypass, database/preference write or scroll bypass was
+  added.
+- **All callers audited:** `_weather_wait_screen` (fresh entry and every reload via
+  `_weather_open_weather`) and the later Weather-widget tap now use the same two-stage proof.
+  The fresh privacy-copy gates read the retained initial notice XML instead of the post-scroll
+  hierarchy, so a scrolled screen with the title offscreen no longer false-fails; field,
+  checkbox, disable, restart and final-state gates still use their measured helpers and were not
+  weakened.
+- **Executed fixtures:** the actual 297 long-notice initial shape (built from the shipped runtime
+  debug notice) is stage-1 true and stage-2 false; post-scroll Location and Latitude shapes are
+  stage-2 true; the real notice plus both measured fields is provenance-true. Negative fixtures
+  cover a fake/wrong-mode release notice, a title-only screen, a different settings screen, missing
+  privacy, a missing Location field, a missing Latitude field and artifact reuse, all failing
+  closed. Static gates forbid the old single-snapshot identity in both the settings and widget-tap
+  bodies and require the notice/fields artifacts and the post-scroll foreground recheck.
+- **Verification actually run (shell/aapt2 only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **1103 ok, 0 not ok, all passed** (the 1073 baseline
+  plus 30 identity/fixture/static checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/nothingui-weather-guard-test.sh` passes; `sh scripts/emulator-smoke-drawer-test.sh`
+  all passed; `sh scripts/verify-play-build-test.sh` all passed;
+  `sh scripts/verify-android-resources.sh` compiles `lawnchair/res/values/strings.xml` with the SDK
+  `aapt2` (OK); `sh -n` is clean on all three edited scripts and `git diff --check` is clean.
+- **Recorded parent CI facts, not rerun here:** 301 units and 187 Weather tests passed with 0 errors
+  in CI29745336528197. No live MET request, forecast pixel, release wire or APK behavior is claimed.
+
+## done (previous run — AAPT2 apostrophe resource fix, source-only, PENDING ACTUAL CI)
 
 - **Actual failure recorded before the tests, not a unit assertion:** CI29445333776461 failed at
   resource flattening in 7m36. The raw AAPT diagnostics named
