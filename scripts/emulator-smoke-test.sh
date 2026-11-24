@@ -10,6 +10,9 @@ LIB="$SCRIPT_DIR/emulator-smoke-lib.sh"
 SMOKE="$SCRIPT_DIR/emulator-smoke.sh"
 PROD_STRINGS="$ROOT_DIR/lawnchair/res/values/strings.xml"
 PROD_WEATHER_PROVIDER="$ROOT_DIR/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
+PROD_WEATHER_COPY="$ROOT_DIR/lawnchair/src/app/nothingui/weather/WeatherSettingsCopy.kt"
+PROD_WEATHER_PREFS="$ROOT_DIR/lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt"
+PROD_HOME_PREFS="$ROOT_DIR/lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -70,6 +73,173 @@ prod_string() {
     sed -n "s/.*<string name=\"$1\"[^>]*>\(.*\)<\/string>.*/\1/p" "$PROD_STRINGS" |
         head -n 1
 }
+
+prod_string_contains() {
+    _psc_name=$1
+    _psc_needle=$2
+    _psc_label=$3
+    _psc_value=$(prod_string "$_psc_name")
+    if printf '%s\n' "$_psc_value" | grep -Fq -- "$_psc_needle"; then
+        pass "$_psc_label"
+    else
+        fail "$_psc_label (missing '$_psc_needle' in $_psc_name)"
+    fi
+}
+
+prod_string_lacks() {
+    _psl_name=$1
+    _psl_needle=$2
+    _psl_label=$3
+    _psl_value=$(prod_string "$_psl_name")
+    if printf '%s\n' "$_psl_value" | grep -Fq -- "$_psl_needle"; then
+        fail "$_psl_label (unexpected '$_psl_needle' in $_psl_name)"
+    else
+        pass "$_psl_label"
+    fi
+}
+
+# --- Weather settings copy contract (debug and release) --------------------
+# Both build modes must disclose the real transmission that the enabled release
+# path performs, or explicitly state that this build does not perform it. The
+# debug APK is setup-only: it must never promise a forecast request.
+
+for mode in debug release; do
+    prod_string_contains "dotwel_weather_privacy_notice_$mode" \
+        'coordinates and this device'"'"'s IP address' \
+        "the $mode privacy notice discloses coordinate and device-IP transmission"
+    prod_string_contains "dotwel_weather_privacy_notice_$mode" \
+        'MET Norway' \
+        "the $mode privacy notice names MET Norway"
+    prod_string_contains "dotwel_weather_privacy_notice_$mode" \
+        'label stays on this device' \
+        "the $mode privacy notice keeps the location label on device"
+    prod_string_contains "dotwel_weather_privacy_notice_$mode" \
+        'No GPS' \
+        "the $mode privacy notice rules out GPS"
+    prod_string_contains "dotwel_weather_privacy_notice_$mode" \
+        'background tracking' \
+        "the $mode privacy notice rules out background tracking"
+    prod_string_contains "dotwel_weather_forecast_notice_$mode" \
+        'last successful forecast' \
+        "the $mode forecast notice describes the retained last success"
+    prod_string_contains "dotwel_weather_forecast_notice_$mode" \
+        'as-of age' \
+        "the $mode forecast notice says the retained value is marked as-of"
+    prod_string_contains "dotwel_weather_forecast_notice_$mode" \
+        'never replaced by a made-up value' \
+        "the $mode forecast notice forbids fabrication"
+    prod_string_lacks "dotwel_weather_forecast_notice_$mode" \
+        'instead of showing a stale' \
+        "the $mode forecast notice no longer denies the marked stale display"
+done
+
+prod_string_contains dotwel_weather_privacy_notice_debug \
+    'network requests disabled' \
+    'the debug privacy notice states that network requests are disabled'
+prod_string_contains dotwel_weather_privacy_notice_debug \
+    'setup-only' \
+    'the debug privacy notice states that enabling is setup-only'
+prod_string_lacks dotwel_weather_privacy_notice_debug \
+    'are shared with MET Norway' \
+    'the debug privacy notice does not claim it will send data'
+prod_string_lacks dotwel_weather_privacy_notice_release \
+    'network requests disabled' \
+    'the release privacy notice does not claim network requests are disabled'
+prod_string_contains dotwel_weather_privacy_notice_release \
+    'are shared with MET Norway' \
+    'the release privacy notice states that enabled requests share data'
+prod_string_contains dotwel_weather_forecast_notice_debug \
+    'network requests disabled' \
+    'the debug forecast notice states that network requests are disabled'
+prod_string_contains dotwel_weather_forecast_notice_debug \
+    'Off or Not connected' \
+    'the debug forecast notice keeps the truthful compact states'
+prod_string_lacks dotwel_weather_forecast_notice_release \
+    'network requests disabled' \
+    'the release forecast notice does not claim network requests are disabled'
+
+prod_string_contains dotwel_weather_settings_description_debug \
+    'network off' \
+    'the debug settings subtitle says the network is off'
+prod_string_contains dotwel_weather_settings_description_debug \
+    'setup-only' \
+    'the debug settings subtitle says the debug build is setup-only'
+prod_string_lacks dotwel_weather_settings_description_debug \
+    'forecasts only while Home is visible' \
+    'the debug settings subtitle does not promise a forecast request'
+prod_string_contains dotwel_weather_settings_description_release \
+    'Home is visible' \
+    'the release settings subtitle describes the visible-HOME request'
+prod_string_lacks dotwel_weather_settings_description_release \
+    'network off' \
+    'the release settings subtitle does not claim network off'
+
+prod_string_contains dotwel_weather_enabled_status_debug \
+    'network requests disabled' \
+    'the debug enabled status says the network is off'
+prod_string_contains dotwel_weather_enabled_status_debug \
+    'no coordinates or device IP address are sent' \
+    'the debug enabled status says nothing is sent'
+prod_string_contains dotwel_weather_enabled_status_release \
+    'MET Norway' \
+    'the release enabled status names MET Norway'
+prod_string_contains dotwel_weather_enabled_status_release \
+    'device'"'"'s IP address' \
+    'the release enabled status discloses device-IP transmission'
+prod_string_contains dotwel_weather_message_enabled_debug \
+    'network requests disabled' \
+    'the debug enabled confirmation says the network is off'
+prod_string_contains dotwel_weather_message_enabled_debug \
+    'no forecast is requested' \
+    'the debug enabled confirmation says no forecast is requested'
+prod_string_contains dotwel_weather_message_enabled_release \
+    'MET Norway' \
+    'the release enabled confirmation names MET Norway'
+prod_string_contains dotwel_weather_message_enabled_release \
+    'device'"'"'s IP address' \
+    'the release enabled confirmation discloses device-IP transmission'
+
+debug_privacy=$(prod_string dotwel_weather_privacy_notice_debug)
+release_privacy=$(prod_string dotwel_weather_privacy_notice_release)
+[ "$debug_privacy" != "$release_privacy" ] &&
+    pass 'the debug and release privacy notices are distinct build-mode copy' ||
+    fail 'the debug and release privacy notices are not distinct'
+debug_message=$(prod_string dotwel_weather_message_enabled_debug)
+release_message=$(prod_string dotwel_weather_message_enabled_release)
+[ "$debug_message" != "$release_message" ] &&
+    pass 'the debug and release enabled confirmations are distinct build-mode copy' ||
+    fail 'the debug and release enabled confirmations are not distinct'
+
+# The Compose screen and the Home-screen entry must select through the single
+# build-aware copy object, not a hard-coded string. The copy object itself must
+# derive from the same WeatherNetworkMode build boundary as the runtime.
+[ -f "$PROD_WEATHER_COPY" ] &&
+    pass 'the build-aware weather copy object exists' ||
+    fail 'the build-aware weather copy object is missing'
+assert_true 'the copy object derives from the runtime network mode' \
+    grep -Fq 'fun networkEnabled(debugBuild: Boolean): Boolean = WeatherNetworkMode.isEnabled(debugBuild)' \
+    "$PROD_WEATHER_COPY"
+assert_true 'the settings screen computes the mode from BuildConfig.DEBUG' \
+    grep -Fq 'WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)' \
+    "$PROD_WEATHER_PREFS"
+assert_true 'the settings screen renders the mode-aware privacy notice' \
+    grep -Fq 'WeatherSettingsCopy.privacyNotice(networkEnabled)' \
+    "$PROD_WEATHER_PREFS"
+assert_true 'the settings screen renders the mode-aware forecast notice' \
+    grep -Fq 'WeatherSettingsCopy.forecastNotice(networkEnabled)' \
+    "$PROD_WEATHER_PREFS"
+assert_true 'the settings screen renders the mode-aware enabled status' \
+    grep -Fq 'WeatherSettingsCopy.enabledStatus(networkEnabled)' \
+    "$PROD_WEATHER_PREFS"
+assert_true 'the settings screen maps the enabled message through the copy object' \
+    grep -Fq 'WeatherSettingsCopy.messageResource(message, networkEnabled)' \
+    "$PROD_WEATHER_PREFS"
+assert_true 'the Home-screen entry computes the mode from BuildConfig.DEBUG' \
+    grep -Fq 'WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)' \
+    "$PROD_HOME_PREFS"
+assert_true 'the Home-screen entry renders the mode-aware subtitle' \
+    grep -Fq 'WeatherSettingsCopy.settingsDescription(networkEnabled)' \
+    "$PROD_HOME_PREFS"
 
 # --- dumpsys foreground fixtures -------------------------------------------
 
@@ -5245,7 +5415,7 @@ cat > "$weather_enabled_top_xml" <<'EOF'
 <hierarchy rotation="0">
   <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
     <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
-      <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). Forecasts are requested only while Home is visible. Disabling stops the session and clears this location cache. The shared provider throttle is kept." bounds="[84,1600][996,1780]" />
+      <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). This debug build has network requests disabled, so no coordinates or device IP address are sent and no forecast is requested. Disabling clears this location cache. The shared provider throttle is kept." bounds="[84,1600][996,1780]" />
       <node index="1" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,1901][996,1920]" />
     </node>
   </node>
@@ -5258,10 +5428,10 @@ assert_false 'the CI250 clipped Disable action is not tappable without scrolling
     ui_bounds_within '84 1901 996 1920' '0 72 1080 1794'
 assert_eq 'the CI250 enabled status is already visible in the top hierarchy' \
     '84 1600 996 1780' \
-    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup is enabled for Emulator test (60.0000, 10.0000). Forecasts are requested only while Home is visible. Disabling stops the session and clears this location cache. The shared provider throttle is kept.')"
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup is enabled for Emulator test (60.0000, 10.0000). This debug build has network requests disabled, so no coordinates or device IP address are sent and no forecast is requested. Disabling clears this location cache. The shared provider throttle is kept.')"
 assert_eq 'the CI250 success message is absent from the unscrolled hierarchy' \
     '' \
-    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. A forecast is requested only while Home is visible.')"
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. This debug build has network requests disabled, so no forecast is requested.')"
 
 # Execute the actual post-action poll with stubbed device calls. A durable
 # enabled record alone must not pass while the success line is unreachable; it
@@ -5566,8 +5736,14 @@ assert_true 'the enabled poll polls the real enabled state and message' \
     grep -Fq '_weather_poll_action_state enable enabled' "$weather_body"
 assert_true 'the disabled poll polls the real disabled state and message' \
     grep -Fq '_weather_poll_action_state disable disabled' "$weather_body"
-assert_true 'the enabled success message is a shared exact constant' \
-    grep -Fq "WEATHER_ENABLED_MESSAGE='Weather setup saved. A forecast is requested only while Home is visible.'" "$weather_body"
+assert_true 'the enabled success message is the shipped debug setup-only confirmation' \
+    grep -Fq "WEATHER_ENABLED_MESSAGE='$(prod_string dotwel_weather_message_enabled_debug)'" "$weather_body"
+assert_true 'the runtime gate asserts the real debug network-off privacy copy' \
+    grep -Fq "This debug build has network requests disabled" "$weather_body"
+assert_true 'the runtime gate asserts the real device-IP disclosure' \
+    grep -Fq "this device's IP address" "$weather_body"
+assert_true 'the runtime gate asserts the debug enabled status says nothing is sent' \
+    grep -Fq 'no coordinates or device IP address are sent' "$weather_body"
 assert_true 'the disabled success message is a shared exact constant' \
     grep -Fq "WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'" "$weather_body"
 assert_true 'the enabled poll reveals the message through measured scrolling' \

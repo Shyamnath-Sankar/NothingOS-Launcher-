@@ -41,7 +41,9 @@ reset_fixture() {
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherRuntimeSessionProvider.kt'
+    copy_file 'lawnchair/src/app/nothingui/weather/WeatherSettingsCopy.kt'
     copy_file 'lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt'
+    copy_file 'lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt'
     copy_file 'lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt'
     copy_file 'lawnchair/res/layout/nothingui_widget_weather.xml'
@@ -203,6 +205,41 @@ reset_fixture
 printf '\n<appwidget launcher:className="app.dotwel.widgets.DotWelWeatherWidgetProvider" />\n' \
     >>"$FIXTURE/play/res/xml/default_workspace_4x5.xml"
 expect_fail 'auto-seeding the weather widget into the default layout is rejected'
+
+reset_fixture
+sed -i 's/R.string.dotwel_weather_privacy_notice_debug/R.string.dotwel_weather_privacy_notice_release/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherSettingsCopy.kt"
+expect_fail 'a debug privacy notice that reuses release copy is rejected'
+
+reset_fixture
+sed -i 's/R.string.dotwel_weather_message_enabled_debug/R.string.dotwel_weather_message_enabled_release/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherSettingsCopy.kt"
+expect_fail 'a debug enabled confirmation that reuses release copy is rejected'
+
+reset_fixture
+sed -i 's/WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)/true/' \
+    "$FIXTURE/lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt"
+expect_fail 'a settings screen that ignores the build mode is rejected'
+
+reset_fixture
+sed -i 's/WeatherSettingsCopy.settingsDescription(networkEnabled)/R.string.dotwel_weather_settings_description_release/' \
+    "$FIXTURE/lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt"
+expect_fail 'a Home-screen subtitle that ignores the build mode is rejected'
+
+reset_fixture
+sed -i "s/coordinates and this device's IP address/selected coordinates/" \
+    "$FIXTURE/lawnchair/res/values/strings.xml"
+expect_fail 'a privacy notice that hides the device-IP transmission is rejected'
+
+reset_fixture
+sed -i 's/network requests disabled/network available/' \
+    "$FIXTURE/lawnchair/res/values/strings.xml"
+expect_fail 'a debug notice that hides the network-off mode is rejected'
+
+reset_fixture
+sed -i 's/never replaced by a made-up value/instead of showing a stale or made-up value/' \
+    "$FIXTURE/lawnchair/res/values/strings.xml"
+expect_fail 'a forecast notice that denies the marked stale display is rejected'
 
 if [ "$failures" -ne 0 ]; then
     printf 'nothingui-weather-guard-test: %s failure(s)\n' "$failures" >&2

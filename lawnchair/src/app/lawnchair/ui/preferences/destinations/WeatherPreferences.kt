@@ -62,9 +62,10 @@ import app.nothingui.weather.WeatherLocationInput
 import app.nothingui.weather.WeatherLocationInputError
 import app.nothingui.weather.WeatherPrivateStorage
 import app.nothingui.weather.WeatherSettingsController
+import app.nothingui.weather.WeatherSettingsCopy
 import app.nothingui.weather.WeatherSettingsDraft
-import app.nothingui.weather.WeatherSettingsMessage
 import app.nothingui.weather.WeatherSettingsUiState
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.R
 import kotlinx.coroutines.launch
 
@@ -78,6 +79,7 @@ fun WeatherPreferences(
     val controller = remember(context) { createController(context) }
     LaunchedEffect(controller) { controller.load() }
     val state by controller.state.collectAsState()
+    val networkEnabled = WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)
 
     PreferenceLayout(
         label = stringResource(R.string.dotwel_weather_settings_label),
@@ -85,6 +87,7 @@ fun WeatherPreferences(
     ) {
         WeatherSettingsContent(
             state = state,
+            networkEnabled = networkEnabled,
             onDraftChange = { draft -> scope.launch { controller.onDraftChanged(draft) } },
             onEnable = { scope.launch { controller.enable() } },
             onDisable = { scope.launch { controller.disable() } },
@@ -109,6 +112,7 @@ private fun createController(context: Context): WeatherSettingsController {
 @Composable
 fun WeatherSettingsContent(
     state: WeatherSettingsUiState,
+    networkEnabled: Boolean,
     onDraftChange: (WeatherSettingsDraft) -> Unit,
     onEnable: () -> Unit,
     onDisable: () -> Unit,
@@ -121,7 +125,7 @@ fun WeatherSettingsContent(
     ) {
         PreferenceGroup(heading = stringResource(R.string.dotwel_weather_privacy_heading)) {
             Text(
-                text = stringResource(R.string.dotwel_weather_privacy_notice),
+                text = stringResource(WeatherSettingsCopy.privacyNotice(networkEnabled)),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
@@ -130,7 +134,7 @@ fun WeatherSettingsContent(
                 ),
             )
             Text(
-                text = stringResource(R.string.dotwel_weather_forecast_notice),
+                text = stringResource(WeatherSettingsCopy.forecastNotice(networkEnabled)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(
@@ -193,7 +197,7 @@ fun WeatherSettingsContent(
                     },
                 )
                 if (state.isEnabled || state.revocationPending) {
-                    if (state.isEnabled) EnabledStatus(state = state)
+                    if (state.isEnabled) EnabledStatus(state = state, networkEnabled = networkEnabled)
                     Button(
                         onClick = onDisable,
                         enabled = state.canDisable,
@@ -226,7 +230,7 @@ fun WeatherSettingsContent(
                 }
                 state.message?.let { message ->
                     Text(
-                        text = stringResource(message.resource()),
+                        text = stringResource(WeatherSettingsCopy.messageResource(message, networkEnabled)),
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(
                             horizontal = NothingUiSpacing.Lg,
@@ -345,12 +349,12 @@ private fun ConsentToggle(
 }
 
 @Composable
-private fun EnabledStatus(state: WeatherSettingsUiState) {
+private fun EnabledStatus(state: WeatherSettingsUiState, networkEnabled: Boolean) {
     val location = state.saved.location
     if (location != null) {
         Text(
             text = stringResource(
-                R.string.dotwel_weather_enabled_status,
+                WeatherSettingsCopy.enabledStatus(networkEnabled),
                 location.label,
                 location.coordinates.latitudeText,
                 location.coordinates.longitudeText,
@@ -389,18 +393,6 @@ private fun labelErrorRes(input: WeatherLocationInput): Int? {
 
 private fun errors(input: WeatherLocationInput): Set<WeatherLocationInputError> = (input as? WeatherLocationInput.Invalid)?.errors.orEmpty()
 
-@StringRes
-private fun WeatherSettingsMessage.resource(): Int = when (this) {
-    WeatherSettingsMessage.ENABLED -> R.string.dotwel_weather_message_enabled
-    WeatherSettingsMessage.DISABLED -> R.string.dotwel_weather_message_disabled
-    WeatherSettingsMessage.REVOKED_BY_EDIT -> R.string.dotwel_weather_message_revoked
-    WeatherSettingsMessage.INVALID_LOCATION -> R.string.dotwel_weather_message_invalid
-    WeatherSettingsMessage.CONSENT_REQUIRED -> R.string.dotwel_weather_message_consent
-    WeatherSettingsMessage.STORAGE_FAILURE -> R.string.dotwel_weather_message_storage
-    WeatherSettingsMessage.REVOKE_UNCONFIRMED -> R.string.dotwel_weather_message_revoke_unconfirmed
-    WeatherSettingsMessage.CONFLICT -> R.string.dotwel_weather_message_conflict
-}
-
 @PreviewLawnchair
 @Composable
 private fun WeatherSettingsDisabledPreview() {
@@ -422,6 +414,7 @@ private fun WeatherSettingsDisabledPreview() {
                     ),
                     loading = false,
                 ),
+                networkEnabled = false,
                 onDraftChange = {},
                 onEnable = {},
                 onDisable = {},
@@ -456,6 +449,7 @@ private fun WeatherSettingsEnabledPreview() {
                     validation = validation,
                     loading = false,
                 ),
+                networkEnabled = true,
                 onDraftChange = {},
                 onEnable = {},
                 onDisable = {},

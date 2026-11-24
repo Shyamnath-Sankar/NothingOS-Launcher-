@@ -45,6 +45,8 @@ RUNTIME="$ROOT/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
 FACTORY="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt"
 SESSION_PROVIDER="$ROOT/lawnchair/src/app/nothingui/weather/WeatherRuntimeSessionProvider.kt"
 PREFS="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt"
+HOME_PREFS="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/HomeScreenPreferences.kt"
+COPY="$ROOT/lawnchair/src/app/nothingui/weather/WeatherSettingsCopy.kt"
 WIDGET_PROVIDER="$ROOT/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
 WIDGET_MODEL="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"
 WIDGET_LAYOUT="$ROOT/lawnchair/res/layout/nothingui_widget_weather.xml"
@@ -53,8 +55,8 @@ WIDGET_STRINGS="$ROOT/lawnchair/res/values/strings.xml"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 DEFAULT_LAYOUT="$ROOT/play/res/xml/default_workspace_4x5.xml"
 
-for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$FACTORY" "$SESSION_PROVIDER" "$PREFS" "$WIDGET_PROVIDER" \
-    "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$WIDGET_STRINGS" \
+for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$FACTORY" "$SESSION_PROVIDER" "$PREFS" "$HOME_PREFS" "$COPY" \
+    "$WIDGET_PROVIDER" "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$WIDGET_STRINGS" \
     "$PLAY_MANIFEST" "$DEFAULT_LAYOUT"; do
     [ -f "$file" ] || fail "missing required file: ${file#"$ROOT"/}"
 done
@@ -215,6 +217,79 @@ require_text "$SESSION_PROVIDER" 'if (current.isClosed) return WeatherSession.DI
 
 require_text "$PREFS" 'WeatherHomeRuntime.observeConsent(appContext, state)' \
     'settings must share the same process-wide owner'
+
+# --- Build-mode-aware truthful copy --------------------------------------
+# The debug APK has network off, so its settings copy must not promise a
+# forecast request. Both modes must disclose the release transmission of the
+# selected coordinates and the device IP to MET Norway, keep the label on
+# device, and rule out GPS/background tracking.
+
+require_text "$COPY" 'object WeatherSettingsCopy' \
+    'the build-aware weather copy object is missing'
+require_text "$COPY" 'fun networkEnabled(debugBuild: Boolean): Boolean = WeatherNetworkMode.isEnabled(debugBuild)' \
+    'the copy object must derive from the same network-mode boundary as the runtime'
+for mode in release debug; do
+    require_text "$COPY" "R.string.dotwel_weather_privacy_notice_$mode" \
+        "the copy object does not select the $mode privacy notice"
+    require_text "$COPY" "R.string.dotwel_weather_forecast_notice_$mode" \
+        "the copy object does not select the $mode forecast notice"
+    require_text "$COPY" "R.string.dotwel_weather_settings_description_$mode" \
+        "the copy object does not select the $mode settings subtitle"
+    require_text "$COPY" "R.string.dotwel_weather_enabled_status_$mode" \
+        "the copy object does not select the $mode enabled status"
+    require_text "$COPY" "R.string.dotwel_weather_message_enabled_$mode" \
+        "the copy object does not select the $mode enabled confirmation"
+done
+require_text "$COPY" 'WeatherSettingsMessage.ENABLED -> enabledMessage(networkEnabled)' \
+    'the enabled message must be selected by the build mode'
+
+require_text "$PREFS" 'WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)' \
+    'the settings screen must compute the copy mode from BuildConfig.DEBUG'
+require_text "$PREFS" 'WeatherSettingsCopy.privacyNotice(networkEnabled)' \
+    'the settings screen must render the mode-aware privacy notice'
+require_text "$PREFS" 'WeatherSettingsCopy.forecastNotice(networkEnabled)' \
+    'the settings screen must render the mode-aware forecast notice'
+require_text "$PREFS" 'WeatherSettingsCopy.enabledStatus(networkEnabled)' \
+    'the settings screen must render the mode-aware enabled status'
+require_text "$PREFS" 'WeatherSettingsCopy.messageResource(message, networkEnabled)' \
+    'the settings screen must map the enabled confirmation through the copy object'
+require_text "$HOME_PREFS" 'WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)' \
+    'the Home-screen entry must compute the copy mode from BuildConfig.DEBUG'
+require_text "$HOME_PREFS" 'WeatherSettingsCopy.settingsDescription(networkEnabled)' \
+    'the Home-screen entry must render the mode-aware subtitle'
+
+for mode in release debug; do
+    for phrase in \
+        "coordinates and this device's IP address" \
+        'MET Norway' \
+        'label stays on this device' \
+        'No GPS' \
+        'background tracking'; do
+        require_text "$WIDGET_STRINGS" "<string name=\"dotwel_weather_privacy_notice_$mode\">" \
+            "the $mode privacy notice is missing"
+        if ! sed -n "s/.*<string name=\"dotwel_weather_privacy_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+            "$WIDGET_STRINGS" | grep -Fq -- "$phrase"; then
+            fail "the $mode privacy notice lacks: $phrase"
+        fi
+    done
+    for phrase in 'last successful forecast' 'as-of age' 'never replaced by a made-up value'; do
+        if ! sed -n "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+            "$WIDGET_STRINGS" | grep -Fq -- "$phrase"; then
+            fail "the $mode forecast notice lacks: $phrase"
+        fi
+    done
+    if sed -n "s/.*<string name=\"dotwel_weather_forecast_notice_$mode\">\(.*\)<\/string>.*/\1/p" \
+        "$WIDGET_STRINGS" | grep -Fq -- 'instead of showing a stale'; then
+        fail "the $mode forecast notice contradicts the marked stale display"
+    fi
+done
+
+require_text "$WIDGET_STRINGS" 'network requests disabled' \
+    'the debug copy does not state that network requests are disabled'
+require_text "$WIDGET_STRINGS" '<string name="dotwel_weather_settings_description_debug">Manual location; debug build is setup-only (network off)</string>' \
+    'the debug settings subtitle does not state the setup-only network-off mode'
+require_text "$WIDGET_STRINGS" '<string name="dotwel_weather_message_enabled_debug">Weather setup saved. This debug build has network requests disabled, so no forecast is requested.</string>' \
+    'the debug enabled confirmation does not state the setup-only network-off mode'
 
 # --- Shared render publication -------------------------------------------
 

@@ -1882,7 +1882,7 @@ read_wm_size() (
 # request a location permission, write a preference directly or seed workspace
 # state. A synthetic manual location is typed like a user would type it.
 
-WEATHER_ENABLED_MESSAGE='Weather setup saved. A forecast is requested only while Home is visible.'
+WEATHER_ENABLED_MESSAGE='Weather setup saved. This debug build has network requests disabled, so no forecast is requested.'
 WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
 
 _weather_snapshot() {
@@ -2537,6 +2537,10 @@ capture_weather_settings() {
     _weather_snapshot fresh
     grep -Fq 'Before you enable' "$ARTIFACTS/weather-fresh.xml" ||
         fail "the real Weather screen did not show its privacy notice"
+    grep -Fq 'This debug build has network requests disabled' "$ARTIFACTS/weather-fresh.xml" ||
+        fail "the real debug Weather screen did not show its setup-only network-off copy"
+    grep -Fq "this device's IP address" "$ARTIFACTS/weather-fresh.xml" ||
+        fail "the real Weather screen did not disclose the device-IP transmission"
     _cws_consent=$(_weather_capture_consent before)
     case "$_cws_consent" in
         missing | disabled\|*) ;;
@@ -2749,6 +2753,10 @@ capture_weather_settings() {
         fail "the enabled Weather screen exposes no Disable control"
     grep -Fq 'Emulator test' "$ARTIFACTS/weather-enabled.xml" ||
         fail "the enabled Weather screen does not show the saved label"
+    grep -Fq 'This debug build has network requests disabled' "$ARTIFACTS/weather-enabled.xml" ||
+        fail "the enabled debug Weather screen did not show its network-off status"
+    grep -Fq 'no coordinates or device IP address are sent' "$ARTIFACTS/weather-enabled.xml" ||
+        fail "the enabled debug Weather screen did not disclose that nothing is sent"
     adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
         > "$ARTIFACTS/weather-backed-up-prefs.xml" 2>/dev/null || true
     adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \

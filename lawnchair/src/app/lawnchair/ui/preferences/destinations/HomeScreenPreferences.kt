@@ -53,6 +53,8 @@ import app.lawnchair.ui.preferences.navigation.WeatherSettings
 import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.collectAsStateBlocking
 import app.nothingui.launcher.WidgetPickerRequest
+import app.nothingui.weather.WeatherSettingsCopy
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
 import com.android.launcher3.R
@@ -76,6 +78,7 @@ fun HomeScreenPreferences(
     val prefs2 = preferenceManager2()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val networkEnabled = WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)
     val hasMotionSensor = remember {
         context.getSystemService(SensorManager::class.java)
             ?.let { manager ->
@@ -110,7 +113,9 @@ fun HomeScreenPreferences(
             PreferenceGroup(heading = stringResource(id = R.string.dotwel_weather_settings_label)) {
                 NavigationActionPreference(
                     label = stringResource(id = R.string.dotwel_weather_entry_label),
-                    subtitle = stringResource(id = R.string.dotwel_weather_settings_description),
+                    subtitle = stringResource(
+                        id = WeatherSettingsCopy.settingsDescription(networkEnabled),
+                    ),
                     destination = WeatherSettings,
                 )
             }
