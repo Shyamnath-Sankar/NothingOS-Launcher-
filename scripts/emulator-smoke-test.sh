@@ -66,6 +66,25 @@ assert_false() {
     fi
 }
 
+# Every expected line must be present exactly once in the retained evidence.
+assert_file_has_lines() {
+    _afhl_name=$1
+    _afhl_file=$2
+    shift 2
+    _afhl_missing=
+    for _afhl_line in "$@"; do
+        if [ "$(grep -Fxc -- "$_afhl_line" "$_afhl_file" 2>/dev/null || true)" != "1" ]; then
+            _afhl_missing=$_afhl_line
+            break
+        fi
+    done
+    if [ -z "$_afhl_missing" ]; then
+        pass "$_afhl_name"
+    else
+        fail "$_afhl_name (missing exactly-one '$_afhl_missing')"
+    fi
+}
+
 # Return the raw source body of one exact <string name="...">value</string>.
 prod_string_raw() {
     _psr_name=$1
@@ -6710,12 +6729,30 @@ assert_true 'the aapt compat helper selects aapt2 --file syntax' \
     "$SMOKE"
 assert_true 'the aapt compat helper keeps legacy positional syntax' \
     grep -Fq '*) "$_adx_tool" dump xmltree "$_adx_apk" "$_adx_file"' "$SMOKE"
-assert_true 'the cleanup retains its uninstall log' \
-    grep -Fq 'weather-harness-cleanup.txt' "$weather_runtime_harness_body"
-assert_true 'the cleanup verifies the test package is absent' \
-    grep -Fq 'shell pm path "$WEATHER_HARNESS_TEST_PKG"' "$SMOKE"
+assert_true 'the cleanup keeps distinct phase logs instead of overwriting evidence' \
+    grep -Fq 'weather-harness-cleanup-$_whc_phase.txt' "$SMOKE"
+assert_true 'the harness calls the preinstall and final cleanup phases separately' \
+    grep -Fq 'weather_harness_cleanup preinstall' "$weather_runtime_harness_body" &&
+    grep -Fq 'weather_harness_cleanup final' "$weather_runtime_harness_body"
+assert_true 'the cleanup uses a complete package enumeration with a completion sentinel' \
+    grep -Fq 'PM_ENUM_RC=' "$SMOKE"
+assert_true 'the cleanup anchors the exact test package in the enumeration' \
+    grep -Fq 'parts[count] == pkg' "$SMOKE"
+assert_true 'the cleanup corroborates presence with a non-empty pm path' \
+    grep -Fq 'pm path "$WEATHER_HARNESS_TEST_PKG"' "$SMOKE"
+assert_true 'the cleanup accepts an absent pm path exit 1 only when corroborated' \
+    grep -Fq '"$_whpv_path_status" -eq 1' "$SMOKE"
+assert_true 'the cleanup refuses a failed enumeration as absence' \
+    grep -Fq 'not a complete successful package enumeration' "$SMOKE"
+assert_true 'the cleanup logs stdout, stderr and status for every query' \
+    grep -Fq 'pm_list_transport_status=' "$SMOKE" &&
+    grep -Fq 'pm_path_status=' "$SMOKE" &&
+    grep -Fq 'presence_state=' "$SMOKE"
 assert_true 'the trap records a cleanup failure without replacing its status' \
     grep -Fq 'preserving original exit status' "$SMOKE"
+assert_true 'the trap uses its own retained cleanup log' \
+    grep -Fq 'weather_harness_cleanup trap' "$SMOKE" &&
+    grep -Fq 'weather-harness-cleanup-trap.txt' "$SMOKE"
 
 assert_true 'the Kotlin harness imports the async extension' \
     grep -Fq 'import kotlinx.coroutines.async' "$WEATHER_HARNESS_KT"
@@ -6764,6 +6801,9 @@ weather_runtime_fixture_run() {
     _wrf_apk="$_wrf_dir/root/build/outputs/apk/androidTest/debug/fixture-androidTest.apk"
     : > "$_wrf_order"
     printf 'fixture test apk\n' > "$_wrf_apk"
+    case "$_wrf_scenario" in
+        preinstall-present) : > "$_wrf_installed" ;;
+    esac
 
     cat > "$_wrf_dir/root/gradlew" <<'GRADLE_STUB'
 #!/bin/sh
@@ -6826,16 +6866,54 @@ if [ "$1" = "uninstall" ]; then
     if [ "${FIXTURE_UNINSTALL_FAIL:-0}" = "1" ]; then
         exit 1
     fi
+    if [ "${FIXTURE_UNINSTALL_LEAVES:-0}" = "1" ]; then
+        printf 'Success\n'
+        exit 0
+    fi
     rm -f "$FIXTURE_INSTALLED"
     printf 'Success\n'
     exit 0
 fi
 if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then
+    if [ "${FIXTURE_PM_PATH_TIMEOUT:-0}" = "1" ]; then
+        exit 124
+    fi
+    if [ "${FIXTURE_PM_PATH_ERROR:-0}" = "1" ]; then
+        printf 'error: closed\n'
+        exit 0
+    fi
     if [ -f "$FIXTURE_INSTALLED" ]; then
         printf 'package:/fixture/test.apk\n'
+        exit 0
     fi
-    exit 0
+    exit 1
 fi
+case "$2" in
+    *"pm list packages -f"*)
+        if [ "${FIXTURE_PM_TIMEOUT:-0}" = "1" ]; then
+            exit 124
+        fi
+        if [ "${FIXTURE_PM_QUERY_FAIL:-0}" = "1" ]; then
+            printf 'Error: package manager unavailable\n'
+            printf 'PM_ENUM_RC=1\n'
+            exit 0
+        fi
+        if [ "${FIXTURE_PM_ERROR_STDOUT:-0}" = "1" ]; then
+            printf 'error: closed\n'
+            printf 'PM_ENUM_RC=0\n'
+            exit 0
+        fi
+        if [ "${FIXTURE_PM_TRUNCATED:-0}" = "1" ]; then
+            printf 'package:/fixture/truncated.apk=%s\n' "$FIXTURE_TEST_PKG"
+            exit 0
+        fi
+        if [ -f "$FIXTURE_INSTALLED" ]; then
+            printf 'package:/fixture/test.apk=%s\n' "$FIXTURE_TEST_PKG"
+        fi
+        printf 'PM_ENUM_RC=0\n'
+        exit 0
+        ;;
+esac
 if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "instrument" ]; then
     if [ "${FIXTURE_TIMEOUT:-0}" = "1" ]; then
         exit 124
@@ -6878,9 +6956,16 @@ ADB_STUB
         FIXTURE_TIMEOUT=0
         FIXTURE_CRASH=0
         FIXTURE_UNINSTALL_FAIL=0
+        FIXTURE_UNINSTALL_LEAVES=0
         FIXTURE_AAPT_FAIL=0
         FIXTURE_MISSING_CASE=
         FIXTURE_AAPT_TOOL=aapt2
+        FIXTURE_PM_QUERY_FAIL=0
+        FIXTURE_PM_TIMEOUT=0
+        FIXTURE_PM_ERROR_STDOUT=0
+        FIXTURE_PM_TRUNCATED=0
+        FIXTURE_PM_PATH_ERROR=0
+        FIXTURE_PM_PATH_TIMEOUT=0
         case "$_wrf_scenario" in
             build-fail) FIXTURE_BUILD_FAIL=1 ;;
             install-fail) FIXTURE_INSTALL_FAIL=1 ;;
@@ -6888,12 +6973,22 @@ ADB_STUB
             crash) FIXTURE_CRASH=1 ;;
             missing-case) FIXTURE_MISSING_CASE=cancel-late-response-dropped ;;
             uninstall-fail) FIXTURE_UNINSTALL_FAIL=1 ;;
+            still-present) FIXTURE_UNINSTALL_LEAVES=1 ;;
+            pm-query-fail) FIXTURE_PM_QUERY_FAIL=1 ;;
+            pm-timeout) FIXTURE_PM_TIMEOUT=1 ;;
+            pm-error-stdout) FIXTURE_PM_ERROR_STDOUT=1 ;;
+            pm-truncated) FIXTURE_PM_TRUNCATED=1 ;;
+            pm-path-error) FIXTURE_PM_PATH_ERROR=1 ;;
+            pm-path-timeout) FIXTURE_PM_PATH_TIMEOUT=1 ;;
             aapt-fail) FIXTURE_AAPT_FAIL=1 ;;
             aapt-v1) FIXTURE_AAPT_TOOL=aapt ;;
         esac
         export FIXTURE_BUILD_FAIL FIXTURE_INSTALL_FAIL FIXTURE_TIMEOUT FIXTURE_CRASH
-        export FIXTURE_UNINSTALL_FAIL FIXTURE_AAPT_FAIL FIXTURE_MISSING_CASE
+        export FIXTURE_UNINSTALL_FAIL FIXTURE_UNINSTALL_LEAVES
+        export FIXTURE_AAPT_FAIL FIXTURE_MISSING_CASE
         export FIXTURE_AAPT_TOOL
+        export FIXTURE_PM_QUERY_FAIL FIXTURE_PM_TIMEOUT FIXTURE_PM_ERROR_STDOUT
+        export FIXTURE_PM_TRUNCATED FIXTURE_PM_PATH_ERROR FIXTURE_PM_PATH_TIMEOUT
         export PATH="$_wrf_dir/bin:$PATH"
         export FIXTURE_ORDER="$_wrf_order"
         export FIXTURE_INSTALLED="$_wrf_installed"
@@ -6937,24 +7032,70 @@ assert_false 'the executed orchestration never uses a slash-separated class' \
 assert_true 'the fixture uninstalled the exact test package' \
     grep -Fxq 'adb|uninstall com.launchernos.dotwellabs.debug.test' \
     "$_wrf_success_order"
+_wrf_success_artifacts="$TMP_DIR/weather-runtime-success/artifacts"
+_wrf_success_preinstall="$_wrf_success_artifacts/weather-harness-cleanup-preinstall.txt"
+_wrf_success_final="$_wrf_success_artifacts/weather-harness-cleanup-final.txt"
 _wrf_gradle_line=$(grep -n '^gradle|' "$_wrf_success_order" | sed -n '1s/:.*//p')
 _wrf_install_line=$(grep -n '^adb|install ' "$_wrf_success_order" | sed -n '1s/:.*//p')
 _wrf_instrument_line=$(grep -n '^adb|shell am instrument ' "$_wrf_success_order" | sed -n '1s/:.*//p')
 _wrf_uninstall_line=$(grep -n '^adb|uninstall ' "$_wrf_success_order" | sed -n '1s/:.*//p')
-_wrf_first_pm_line=$(grep -n '^adb|shell pm path ' "$_wrf_success_order" | sed -n '1s/:.*//p')
-_wrf_last_pm_line=$(grep -n '^adb|shell pm path ' "$_wrf_success_order" | tail -n 1 | sed -n '1s/:.*//p')
+_wrf_first_enum_line=$(grep -n '^adb|shell pm list packages -f' "$_wrf_success_order" |
+    sed -n '1s/:.*//p')
+_wrf_second_enum_line=$(grep -n '^adb|shell pm list packages -f' "$_wrf_success_order" |
+    sed -n '2s/:.*//p')
+_wrf_last_enum_line=$(grep -n '^adb|shell pm list packages -f' "$_wrf_success_order" |
+    tail -n 1 | sed -n '1s/:.*//p')
+_wrf_last_path_line=$(grep -n '^adb|shell pm path ' "$_wrf_success_order" |
+    tail -n 1 | sed -n '1s/:.*//p')
 if [ -n "$_wrf_gradle_line" ] && [ -n "$_wrf_install_line" ] &&
     [ -n "$_wrf_instrument_line" ] && [ -n "$_wrf_uninstall_line" ] &&
-    [ -n "$_wrf_first_pm_line" ] && [ -n "$_wrf_last_pm_line" ] &&
-    [ "$_wrf_gradle_line" -lt "$_wrf_first_pm_line" ] &&
-    [ "$_wrf_first_pm_line" -lt "$_wrf_install_line" ] &&
+    [ -n "$_wrf_first_enum_line" ] && [ -n "$_wrf_second_enum_line" ] &&
+    [ -n "$_wrf_last_enum_line" ] && [ -n "$_wrf_last_path_line" ] &&
+    [ "$_wrf_gradle_line" -lt "$_wrf_first_enum_line" ] &&
+    [ "$_wrf_first_enum_line" -lt "$_wrf_install_line" ] &&
     [ "$_wrf_install_line" -lt "$_wrf_instrument_line" ] &&
-    [ "$_wrf_instrument_line" -lt "$_wrf_uninstall_line" ] &&
-    [ "$_wrf_uninstall_line" -lt "$_wrf_last_pm_line" ]; then
+    [ "$_wrf_instrument_line" -lt "$_wrf_second_enum_line" ] &&
+    [ "$_wrf_second_enum_line" -lt "$_wrf_uninstall_line" ] &&
+    [ "$_wrf_uninstall_line" -lt "$_wrf_last_enum_line" ] &&
+    [ "$_wrf_uninstall_line" -lt "$_wrf_last_path_line" ]; then
     pass 'the executed orchestration orders build, pre-clean, install, run, uninstall, post-check'
 else
     fail 'the executed orchestration orders build, pre-clean, install, run, uninstall, post-check'
 fi
+assert_eq 'the success fixture performs three complete enumerations' '3' \
+    "$(grep -c '^adb|shell pm list packages -f' "$_wrf_success_order" || true)"
+assert_eq 'the success fixture performs one corroborating pm path per enumeration' '3' \
+    "$(grep -c '^adb|shell pm path ' "$_wrf_success_order" || true)"
+assert_true 'the preinstall cleanup log is retained' \
+    test -s "$_wrf_success_preinstall"
+assert_true 'the final cleanup log is retained separately' \
+    test -s "$_wrf_success_final"
+assert_file_has_lines 'the preinstall cleanup proves real absent pm path exit 1 before install' \
+    "$_wrf_success_preinstall" \
+    'phase=preinstall' \
+    'query_label=preinstall-before' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=absent' \
+    'result=already_absent phase=preinstall'
+assert_file_has_lines 'the final cleanup recognizes the installed package before uninstall' \
+    "$_wrf_success_final" \
+    'phase=final' \
+    'query_label=final-before' \
+    'pm_list_state=present' \
+    'pm_path_status=0' \
+    'pm_path_state=installed' \
+    'presence_state=present' \
+    'uninstall_exit=0'
+assert_file_has_lines 'the final cleanup proves real absent pm path exit 1 after uninstall' \
+    "$_wrf_success_final" \
+    'query_label=final-after' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=absent' \
+    'result=absent_after_uninstall phase=final'
 assert_true 'the retained evidence records the exact test package' \
     grep -Fxq 'test_package=com.launchernos.dotwellabs.debug.test' "$_wrf_success_evidence"
 assert_true 'the retained evidence records the dotted runner component' \
@@ -6974,11 +7115,103 @@ if "$TMP_DIR/weather-runtime-success/bin/aapt2" dump xmltree "$_wrf_success_apk"
 else
     pass 'the executed aapt2 stub rejects the old positional xmltree syntax'
 fi
-assert_true 'the normal run verifies the package is absent after cleanup' \
-    grep -Fxq 'package_after=' \
-    "$TMP_DIR/weather-runtime-success/artifacts/weather-harness-cleanup.txt"
 assert_false 'the normal run leaves no test package installed' \
     test -f "$TMP_DIR/weather-runtime-success/installed"
+
+weather_runtime_fixture_run preinstall-present
+assert_eq 'the executed harness removes a present test package before reinstalling' '0' \
+    "$_weather_runtime_fixture_exit"
+_wrf_preinstall_order="$TMP_DIR/weather-runtime-preinstall-present/order.txt"
+_wrf_preinstall_log="$TMP_DIR/weather-runtime-preinstall-present/artifacts/weather-harness-cleanup-preinstall.txt"
+_wrf_preinstall_install_line=$(grep -n '^adb|install ' "$_wrf_preinstall_order" |
+    sed -n '1s/:.*//p')
+_wrf_preinstall_uninstall_line=$(grep -n '^adb|uninstall ' "$_wrf_preinstall_order" |
+    sed -n '1s/:.*//p')
+assert_true 'the preinstall cleanup found the existing package' \
+    test -n "$_wrf_preinstall_uninstall_line"
+assert_true 'the preinstall fixture installed the test APK' \
+    test -n "$_wrf_preinstall_install_line"
+if [ -n "$_wrf_preinstall_uninstall_line" ] && [ -n "$_wrf_preinstall_install_line" ] &&
+    [ "$_wrf_preinstall_uninstall_line" -lt "$_wrf_preinstall_install_line" ]; then
+    pass 'the preinstalled test package is removed before the fixture install'
+else
+    fail 'the preinstalled test package is removed before the fixture install'
+fi
+assert_file_has_lines 'the preinstall cleanup recognizes and verifies a present package' \
+    "$_wrf_preinstall_log" \
+    'phase=preinstall' \
+    'query_label=preinstall-before' \
+    'pm_list_state=present' \
+    'pm_path_status=0' \
+    'pm_path_state=installed' \
+    'presence_state=present' \
+    'uninstall_exit=0' \
+    'presence_state=absent' \
+    'result=absent_after_uninstall phase=preinstall'
+
+weather_runtime_fixture_run pm-query-fail
+assert_false 'a failed package enumeration stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a failed enumeration is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-query-fail/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_state=query_failure' \
+    'presence_state=query_failure'
+assert_false 'a failed enumeration never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-query-fail/order.txt"
+
+weather_runtime_fixture_run pm-timeout
+assert_false 'an enumeration transport timeout stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a transport timeout is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-timeout/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_transport_status=124' \
+    'pm_list_state=query_failure' \
+    'presence_state=query_failure'
+assert_false 'a timed-out enumeration never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-timeout/order.txt"
+
+weather_runtime_fixture_run pm-error-stdout
+assert_false 'remote error output without a clean package list stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'remote error output is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-error-stdout/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_state=query_failure' \
+    'presence_state=query_failure'
+assert_false 'error stdout on the enumeration never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-error-stdout/order.txt"
+
+weather_runtime_fixture_run pm-truncated
+assert_false 'a truncated package enumeration stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a missing completion sentinel is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-truncated/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_state=query_failure' \
+    'presence_state=query_failure'
+assert_false 'a truncated enumeration never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-truncated/order.txt"
+
+weather_runtime_fixture_run pm-path-error
+assert_false 'a corroborating pm path error stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'pm path error output is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-path-error/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_state=absent' \
+    'pm_path_state=query_failure' \
+    'presence_state=query_failure'
+assert_false 'a pm path error never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-path-error/order.txt"
+
+weather_runtime_fixture_run pm-path-timeout
+assert_false 'a corroborating pm path timeout stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'pm path timeout is not accepted as absence' \
+    "$TMP_DIR/weather-runtime-pm-path-timeout/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_state=absent' \
+    'pm_path_status=124' \
+    'pm_path_state=empty' \
+    'presence_state=query_failure'
+assert_false 'a pm path timeout never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-path-timeout/order.txt"
 
 weather_runtime_fixture_run aapt-v1
 assert_eq 'the executed harness orchestration succeeds with legacy aapt' '0' \
@@ -7022,9 +7255,23 @@ assert_false 'an uninstall that leaves the test package installed stays red' \
     test "$_weather_runtime_fixture_exit" -eq 0
 assert_true 'the uninstall failure fixture still leaves the package installed' \
     test -f "$TMP_DIR/weather-runtime-uninstall-fail/installed"
-assert_true 'the uninstall failure is recorded as evidence' \
-    grep -Fq 'uninstall_exit=1' \
-    "$TMP_DIR/weather-runtime-uninstall-fail/artifacts/weather-harness-cleanup.txt"
+assert_file_has_lines 'the failed uninstall is recorded without masking the still-present package' \
+    "$TMP_DIR/weather-runtime-uninstall-fail/artifacts/weather-harness-cleanup-final.txt" \
+    'phase=final' \
+    'query_label=final-after' \
+    'uninstall_exit=1' \
+    'result=uninstall_failed phase=final'
+
+weather_runtime_fixture_run still-present
+assert_false 'an uninstall that reports success but leaves the package stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_true 'the still-present fixture still leaves the package installed' \
+    test -f "$TMP_DIR/weather-runtime-still-present/installed"
+assert_file_has_lines 'a successful uninstall is re-checked and a still-present package fails' \
+    "$TMP_DIR/weather-runtime-still-present/artifacts/weather-harness-cleanup-final.txt" \
+    'uninstall_exit=0' \
+    'query_label=final-after' \
+    'result=still_present phase=final'
 
 weather_runtime_fixture_run aapt-fail
 assert_false 'an unreadable test-APK manifest stays red' \

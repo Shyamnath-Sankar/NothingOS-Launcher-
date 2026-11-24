@@ -5535,11 +5535,170 @@ weather_harness_accept() {
     return 0
 }
 
+# Presence/absence proof for the isolated test package.
+#
+# `pm list packages -f` is the authoritative complete enumeration. It exits 0
+# even when the package is absent, so absence is a successful command with no
+# exact anchored match. The trailing sentinel proves the remote command ran to
+# completion, so a transport timeout, a remote error, or a truncated stream can
+# never be mistaken for absence. `pm path` corroborates the enumeration: real
+# Android exits 1 with empty stdout for an absent package, which is accepted
+# only together with a successful enumeration that also shows absence. A
+# present package must have a successful, non-empty `pm path`.
+weather_harness_pm_list_state() {
+    _whls_file=$1
+    _whls_pkg=$2
+    [ -f "$_whls_file" ] || {
+        printf 'query_failure\n'
+        return 0
+    }
+    awk -v pkg="$_whls_pkg" '
+        /^[[:space:]]*$/ { next }
+        {
+            if (seen_sentinel) { after_sentinel = 1 }
+            last = $0
+        }
+        /^PM_ENUM_RC=/ {
+            sentinels++
+            if (sentinels == 1 && $0 == "PM_ENUM_RC=0") sentinel_ok = 1
+            seen_sentinel = 1
+            next
+        }
+        /^package:/ {
+            count = split($0, parts, "=")
+            if (parts[count] == pkg) matches++
+            next
+        }
+        { invalid++ }
+        END {
+            if (sentinels != 1 || !sentinel_ok || after_sentinel ||
+                last != "PM_ENUM_RC=0" || invalid > 0) {
+                print "query_failure"
+            } else if (matches == 1) {
+                print "present"
+            } else if (matches == 0) {
+                print "absent"
+            } else {
+                print "query_failure"
+            }
+        }
+    ' "$_whls_file"
+}
+
+weather_harness_pm_path_state() {
+    _whps_file=$1
+    [ -f "$_whps_file" ] || {
+        printf 'query_failure\n'
+        return 0
+    }
+    awk '
+        /^[[:space:]]*$/ { next }
+        /^package:.+$/ { installed++; next }
+        { invalid++ }
+        END {
+            if (invalid > 0) {
+                print "query_failure"
+            } else if (installed > 0) {
+                print "installed"
+            } else {
+                print "empty"
+            }
+        }
+    ' "$_whps_file"
+}
+
+weather_harness_presence_state() {
+    _whpv_enum=$1
+    _whpv_path_status=$2
+    _whpv_path_state=$3
+    case "$_whpv_enum" in
+        present)
+            if [ "$_whpv_path_status" -eq 0 ] && [ "$_whpv_path_state" = "installed" ]; then
+                printf 'present\n'
+            else
+                printf 'query_failure\n'
+            fi
+            ;;
+        absent)
+            # Real Android returns exit 1 with empty stdout for an absent
+            # package. Some builds return 0; both are trusted only because the
+            # independent complete enumeration succeeded and showed absence.
+            if [ "$_whpv_path_state" = "empty" ]; then
+                if [ "$_whpv_path_status" -eq 0 ] || [ "$_whpv_path_status" -eq 1 ]; then
+                    printf 'absent\n'
+                    return 0
+                fi
+            fi
+            printf 'query_failure\n'
+            ;;
+        *)
+            printf 'query_failure\n'
+            ;;
+    esac
+}
+
+weather_harness_package_state() {
+    _whq_label=$1
+    _whq_log=$2
+    _whq_enum="$ARTIFACTS/weather-harness-cleanup-$_whq_label-pm-list.txt"
+    _whq_path="$ARTIFACTS/weather-harness-cleanup-$_whq_label-pm-path.txt"
+    _whq_enum_status=0
+    _whq_path_status=0
+
+    ADB_TIMEOUT=30 adb_cmd shell \
+        'pm list packages -f; _whq_rc=$?; printf "PM_ENUM_RC=%s\n" "$_whq_rc"' \
+        > "$_whq_enum" 2>&1 || _whq_enum_status=$?
+    tr -d '\r' < "$_whq_enum" > "$_whq_enum.clean" 2>/dev/null || _whq_enum_status=1
+    mv "$_whq_enum.clean" "$_whq_enum" 2>/dev/null || _whq_enum_status=1
+    _whq_enum_state=$(weather_harness_pm_list_state "$_whq_enum" "$WEATHER_HARNESS_TEST_PKG")
+
+    ADB_TIMEOUT=30 adb_cmd shell pm path "$WEATHER_HARNESS_TEST_PKG" \
+        > "$_whq_path" 2>&1 || _whq_path_status=$?
+    tr -d '\r' < "$_whq_path" > "$_whq_path.clean" 2>/dev/null || _whq_path_status=1
+    mv "$_whq_path.clean" "$_whq_path" 2>/dev/null || _whq_path_status=1
+    _whq_path_state=$(weather_harness_pm_path_state "$_whq_path")
+
+    _whq_state=$(weather_harness_presence_state "$_whq_enum_state" \
+        "$_whq_path_status" "$_whq_path_state")
+
+    {
+        printf 'query_label=%s\n' "$_whq_label"
+        printf 'pm_list_transport_status=%s\n' "$_whq_enum_status"
+        printf 'pm_list_state=%s\n' "$_whq_enum_state"
+        printf 'pm_list_output=%s\n' "$_whq_enum"
+        printf 'pm_path_status=%s\n' "$_whq_path_status"
+        printf 'pm_path_state=%s\n' "$_whq_path_state"
+        printf 'pm_path_output=%s\n' "$_whq_path"
+        printf 'presence_state=%s\n' "$_whq_state"
+    } >> "$_whq_log"
+
+    if [ "$_whq_enum_status" -ne 0 ]; then
+        printf 'query: %s enumeration failed at the adb transport (status %s)\n' \
+            "$_whq_label" "$_whq_enum_status" >> "$_whq_log"
+    fi
+    if [ "$_whq_enum_state" = "query_failure" ]; then
+        printf 'query: %s was not a complete successful package enumeration\n' \
+            "$_whq_label" >> "$_whq_log"
+    fi
+    if [ "$_whq_state" = "query_failure" ]; then
+        printf 'query: %s pm path did not corroborate the enumeration\n' \
+            "$_whq_label" >> "$_whq_log"
+    fi
+    printf '%s\n' "$_whq_state"
+}
+
 weather_harness_cleanup() {
-    _whc_log="$ARTIFACTS/weather-harness-cleanup.txt"
-    _whc_pm_before="$ARTIFACTS/weather-harness-cleanup-pm-path-before.txt"
-    _whc_pm_after="$ARTIFACTS/weather-harness-cleanup-pm-path.txt"
+    _whc_phase=${1:-final}
+    case "$_whc_phase" in
+        preinstall | final | trap) ;;
+        *)
+            printf 'cleanup: unknown phase %s\n' "$_whc_phase" >&2
+            return 1
+            ;;
+    esac
+    _whc_log="$ARTIFACTS/weather-harness-cleanup-$_whc_phase.txt"
     : > "$_whc_log" || return 1
+    printf 'phase=%s\n' "$_whc_phase" >> "$_whc_log"
     if ! command -v adb >/dev/null 2>&1; then
         printf 'cleanup: adb is not on PATH\n' >> "$_whc_log"
         return 1
@@ -5549,49 +5708,42 @@ weather_harness_cleanup() {
         return 1
     fi
 
-    _whc_before_status=0
-    ADB_TIMEOUT=30 adb_cmd shell pm path "$WEATHER_HARNESS_TEST_PKG" \
-        > "$_whc_pm_before" 2>>"$_whc_log" || _whc_before_status=$?
-    _whc_before=$(tr -d '\r' < "$_whc_pm_before")
-    printf 'package_before_status=%s\n' "$_whc_before_status" >> "$_whc_log"
-    printf 'package_before=%s\n' "$_whc_before" >> "$_whc_log"
-    if [ "$_whc_before_status" -ne 0 ]; then
-        printf 'cleanup: could not query %s before cleanup\n' \
+    _whc_before=$(weather_harness_package_state "$_whc_phase-before" "$_whc_log")
+    if [ "$_whc_before" = "query_failure" ]; then
+        printf 'cleanup: could not prove whether %s exists before cleanup\n' \
             "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
         return 1
     fi
-    if [ -z "$_whc_before" ]; then
-        printf 'cleanup: %s is already absent\n' "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
-        : > "$_whc_pm_after"
+    if [ "$_whc_before" = "absent" ]; then
+        printf 'result=already_absent phase=%s\n' "$_whc_phase" >> "$_whc_log"
         return 0
     fi
 
     _whc_uninstall=0
     ADB_TIMEOUT=60 adb_cmd uninstall "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log" 2>&1 ||
         _whc_uninstall=$?
-    _whc_after_status=0
-    ADB_TIMEOUT=30 adb_cmd shell pm path "$WEATHER_HARNESS_TEST_PKG" \
-        > "$_whc_pm_after" 2>>"$_whc_log" || _whc_after_status=$?
-    _whc_after=$(tr -d '\r' < "$_whc_pm_after")
     printf 'uninstall_exit=%s\n' "$_whc_uninstall" >> "$_whc_log"
-    printf 'package_after_status=%s\n' "$_whc_after_status" >> "$_whc_log"
-    printf 'package_after=%s\n' "$_whc_after" >> "$_whc_log"
 
+    _whc_after=$(weather_harness_package_state "$_whc_phase-after" "$_whc_log")
     if [ "$_whc_uninstall" -ne 0 ]; then
+        printf 'result=uninstall_failed phase=%s\n' "$_whc_phase" >> "$_whc_log"
         printf 'cleanup: uninstall exited %s\n' "$_whc_uninstall" >> "$_whc_log"
         return 1
     fi
-    if [ "$_whc_after_status" -ne 0 ]; then
-        printf 'cleanup: could not verify %s after cleanup\n' \
-            "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
-        return 1
+    if [ "$_whc_after" = "absent" ]; then
+        printf 'result=absent_after_uninstall phase=%s\n' "$_whc_phase" >> "$_whc_log"
+        return 0
     fi
-    if [ -n "$_whc_after" ]; then
+    if [ "$_whc_after" = "present" ]; then
+        printf 'result=still_present phase=%s\n' "$_whc_phase" >> "$_whc_log"
         printf 'cleanup: %s is still installed after uninstall\n' \
             "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
         return 1
     fi
-    return 0
+    printf 'result=after_query_failure phase=%s\n' "$_whc_phase" >> "$_whc_log"
+    printf 'cleanup: could not verify %s is absent after uninstall\n' \
+        "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
+    return 1
 }
 
 run_weather_runtime_harness() {
@@ -5646,8 +5798,8 @@ run_weather_runtime_harness() {
         fail "could not read the weather runtime test APK manifest; see $_wrh_evidence"
     fi
 
-    weather_harness_cleanup ||
-        fail "could not remove an existing weather runtime test APK before install; see $ARTIFACTS/weather-harness-cleanup.txt"
+    weather_harness_cleanup preinstall ||
+        fail "could not prove/remove an existing weather runtime test APK before install; see $ARTIFACTS/weather-harness-cleanup-preinstall.txt"
     if ! ADB_TIMEOUT=180 adb_cmd install -t -r "$_wrh_apk" \
         > "$ARTIFACTS/weather-harness-install.txt" 2>&1; then
         fail "could not install the weather runtime test APK"
@@ -5661,18 +5813,18 @@ run_weather_runtime_harness() {
     _wrh_accept=0
     weather_harness_accept "$_wrh_exit" "$_wrh_output" "$_wrh_cases" || _wrh_accept=$?
     _wrh_cleanup=0
-    weather_harness_cleanup || _wrh_cleanup=$?
+    weather_harness_cleanup final || _wrh_cleanup=$?
 
     if [ "$_wrh_accept" -eq 0 ]; then
         if [ "$_wrh_cleanup" -ne 0 ]; then
-            fail "could not remove the weather runtime test APK after the run; see $ARTIFACTS/weather-harness-cleanup.txt"
+            fail "could not verify/remove the weather runtime test APK after the run; see $ARTIFACTS/weather-harness-cleanup-final.txt"
         fi
         printf 'weather-harness: PASS; summary: %s\n' "$_wrh_summary"
         return 0
     fi
     if [ "$_wrh_cleanup" -ne 0 ]; then
         printf 'weather-harness: cleanup also failed after the run; see %s\n' \
-            "$ARTIFACTS/weather-harness-cleanup.txt" >&2
+            "$ARTIFACTS/weather-harness-cleanup-final.txt" >&2
     fi
     fail "the weather runtime harness failed; see $_wrh_output"
 }
@@ -5723,10 +5875,10 @@ _SMOKE_EVIDENCE_CAPTURED=0
 smoke_exit_trap() {
     _trap_status=$?
     _trap_cleanup_status=0
-    weather_harness_cleanup || _trap_cleanup_status=$?
+    weather_harness_cleanup trap || _trap_cleanup_status=$?
     if [ "$_trap_cleanup_status" -ne 0 ]; then
-        printf 'emulator-smoke: cleanup could not remove %s; see %s\n' \
-            "$WEATHER_HARNESS_TEST_PKG" "$ARTIFACTS/weather-harness-cleanup.txt" >&2
+        printf 'emulator-smoke: cleanup could not prove/remove %s; see %s\n' \
+            "$WEATHER_HARNESS_TEST_PKG" "$ARTIFACTS/weather-harness-cleanup-trap.txt" >&2
         printf 'emulator-smoke: preserving original exit status %s after the cleanup failure\n' \
             "$_trap_status" >&2
     fi
