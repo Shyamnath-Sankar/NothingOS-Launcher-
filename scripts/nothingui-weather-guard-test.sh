@@ -39,6 +39,8 @@ reset_fixture() {
     copy_file 'lawnchair/src/app/lawnchair/LawnchairLauncher.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherHomeOwner.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt'
+    copy_file 'lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt'
+    copy_file 'lawnchair/src/app/nothingui/weather/WeatherRuntimeSessionProvider.kt'
     copy_file 'lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt'
     copy_file 'lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt'
     copy_file 'lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt'
@@ -107,8 +109,39 @@ sed -i 's/WeatherHomeRuntimePolicy.shouldReuseOwner/instance != null/' \
 expect_fail 'reusing a closed runtime owner is rejected'
 
 reset_fixture
-printf '\n// OkHttpClient must not appear here\n' >>"$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
-expect_fail 'a runtime that constructs a transport is rejected'
+sed -i 's/WeatherNetworkMode.isEnabled(BuildConfig.DEBUG)/true/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+expect_fail 'a runtime that enables the live path in debug builds is rejected'
+
+reset_fixture
+sed -i 's/WeatherRuntimeSessionProvider { synchronized(lock) { instance } }/WeatherRuntimeSessionProvider { null }/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+expect_fail 'a runtime that does not resolve the current owner session is rejected'
+
+reset_fixture
+sed -i 's/instance = null/instance = current/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+expect_fail 'a runtime that keeps a replaced owner live is rejected'
+
+reset_fixture
+sed -i 's/WeatherPrivateStorage.cacheDirectory(context.noBackupFilesDir)/context.cacheDir/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+expect_fail 'a weather cache outside the no-backup directory is rejected'
+
+reset_fixture
+sed -i 's/WeatherPrivateStorage.throttleDirectory(context.noBackupFilesDir)/context.cacheDir/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+expect_fail 'a throttle store outside the no-backup directory is rejected'
+
+reset_fixture
+sed -i 's/fun isEnabled(debugBuild: Boolean): Boolean = !debugBuild/fun isEnabled(debugBuild: Boolean): Boolean = true/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt"
+expect_fail 'a work factory that enables the live path in debug builds is rejected'
+
+reset_fixture
+sed -i 's/val current = owner() ?: return WeatherSession.DISABLED/val current = owner()!!/' \
+    "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherRuntimeSessionProvider.kt"
+expect_fail 'a session provider that does not fail closed before the owner exists is rejected'
 
 reset_fixture
 printf '\n// requestLoad()\n' >>"$FIXTURE/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"

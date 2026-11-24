@@ -48,7 +48,7 @@ object WeatherSessionPolicy {
     )
 }
 
-/** The injected load seam; production supplies the MET repository next phase. */
+/** The injected load seam; the runtime supplies the wired MET work graph. */
 fun interface WeatherLoadWork {
     suspend fun load(session: WeatherSession): WeatherLoadResult
 }
@@ -58,9 +58,9 @@ fun interface WeatherResultSink {
 }
 
 /**
- * Pure lifecycle/session controller with an injected fake work seam. It does
- * not construct a repository, perform a network request or schedule a timer in
- * this phase; next phase wires the real visible HOME lifecycle and repository.
+ * Pure lifecycle/session controller with an injected work seam. It does not
+ * construct a repository, perform a network request or schedule a timer; the
+ * runtime supplies the already-gated work implementation.
  *
  * Every consent, visibility or stop transition advances an in-memory
  * generation, immediately cancels the in-flight job and only delivers a result

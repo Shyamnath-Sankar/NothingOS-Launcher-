@@ -76,9 +76,9 @@ data class WeatherSettingsUiState(
  * enabled location first tells [consentObserver] to stop the visible session
  * and then revokes the durable opt-in before the old cache is removed.
  *
- * The observer is the single boundary next phase will connect to
- * [WeatherSessionController]. No network, worker, alarm or timer is constructed
- * here.
+ * The observer is the shared boundary connected to [WeatherSessionController]
+ * through the runtime owner. No network, worker, alarm or timer is constructed
+ * here; a committed revoke clears the location cache through [cacheStore].
  */
 class WeatherSettingsController(
     private val store: WeatherConsentStore,

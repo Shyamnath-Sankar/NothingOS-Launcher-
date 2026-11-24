@@ -9,8 +9,12 @@
 #   completed NORMAL transition;
 # - pause and destroy unregister without shutting the process-wide owner down;
 # - a closed runtime owner is never reused;
-# - production still uses the explicit NoNetworkWeatherWork placeholder and
-#   constructs no provider, transport or device-location source.
+# - release constructs the real MET work graph while debug/test builds use an
+#   explicit network-off mode, so the smoke gate's synthetic opt-in cannot reach
+#   the live endpoint;
+# - the real graph uses the app-private no-backup cache, the persisted throttle
+#   store and the owner-backed session provider, and constructs no device
+#   location, worker, alarm, timer or service.
 #
 # Usage: scripts/nothingui-weather-guard.sh [repo-root]
 set -eu
@@ -38,6 +42,8 @@ fail() {
 LAUNCHER="$ROOT/lawnchair/src/app/lawnchair/LawnchairLauncher.kt"
 OWNER="$ROOT/lawnchair/src/app/nothingui/weather/WeatherHomeOwner.kt"
 RUNTIME="$ROOT/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
+FACTORY="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt"
+SESSION_PROVIDER="$ROOT/lawnchair/src/app/nothingui/weather/WeatherRuntimeSessionProvider.kt"
 PREFS="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/destinations/WeatherPreferences.kt"
 WIDGET_PROVIDER="$ROOT/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
 WIDGET_MODEL="$ROOT/lawnchair/src/app/nothingui/weather/WeatherWidgetRender.kt"
@@ -47,7 +53,7 @@ WIDGET_STRINGS="$ROOT/lawnchair/res/values/strings.xml"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 DEFAULT_LAYOUT="$ROOT/play/res/xml/default_workspace_4x5.xml"
 
-for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$PREFS" "$WIDGET_PROVIDER" \
+for file in "$LAUNCHER" "$OWNER" "$RUNTIME" "$FACTORY" "$SESSION_PROVIDER" "$PREFS" "$WIDGET_PROVIDER" \
     "$WIDGET_MODEL" "$WIDGET_LAYOUT" "$WIDGET_INFO" "$WIDGET_STRINGS" \
     "$PLAY_MANIFEST" "$DEFAULT_LAYOUT"; do
     [ -f "$file" ] || fail "missing required file: ${file#"$ROOT"/}"
@@ -152,18 +158,60 @@ require_text "$OWNER" 'fun onScreenOff()' \
 require_text "$OWNER" 'WeatherHomeConsentPolicy.choose(loaded, lastObservedConsent)' \
     'stale consent must use the conservative policy'
 
-# --- Runtime placeholder and singleton safety ----------------------------
+# --- Runtime work graph and singleton safety -----------------------------
 
+require_text "$RUNTIME" 'WeatherNetworkMode.isEnabled(BuildConfig.DEBUG)' \
+    'the runtime must select the explicit debug/test network-off mode'
 require_text "$RUNTIME" 'NoNetworkWeatherWork' \
-    'production must keep the explicit no-network work placeholder'
+    'the debug/test mode must keep the explicit no-network work placeholder'
+require_text "$RUNTIME" 'WeatherWorkFactory.create(' \
+    'the runtime must build the load work through the pure factory'
+require_text "$RUNTIME" 'OkHttpWeatherTransport(appVersion = BuildConfig.VERSION_NAME)' \
+    'the release path must use the real MET transport with the app version'
+require_text "$RUNTIME" 'FileWeatherCacheStore(' \
+    'the runtime must use the app-private file cache'
+require_text "$RUNTIME" 'WeatherPrivateStorage.cacheDirectory(context.noBackupFilesDir)' \
+    'the weather cache must live in the no-backup directory'
+require_text "$RUNTIME" 'FileWeatherThrottleStore(' \
+    'the runtime must use the persisted throttle store'
+require_text "$RUNTIME" 'WeatherPrivateStorage.throttleDirectory(context.noBackupFilesDir)' \
+    'the persisted throttle must live in the no-backup directory'
+require_text "$RUNTIME" 'WeatherRuntimeSessionProvider { synchronized(lock) { instance } }' \
+    'the repository session check must resolve through the current runtime owner'
+require_text "$RUNTIME" 'instance = null' \
+    'a replaced runtime owner must fail closed until the new owner is assigned'
 require_text "$RUNTIME" 'WeatherHomeRuntimePolicy.shouldReuseOwner' \
     'a closed runtime owner must not be reused'
-forbid_text "$RUNTIME" 'OkHttp' 'the runtime must construct no HTTP transport'
-forbid_text "$RUNTIME" 'MetWeatherRepository' 'the runtime must construct no repository'
-forbid_text "$RUNTIME" 'WeatherHttpTransport' 'the runtime must construct no transport'
+forbid_text "$RUNTIME" 'MetWeatherRepository' 'the runtime must build the repository only through the factory'
 forbid_text "$RUNTIME" 'LocationManager' 'the runtime must not read device location'
 forbid_text "$RUNTIME" 'WorkManager' 'the runtime must not schedule work'
 forbid_text "$RUNTIME" 'AlarmManager' 'the runtime must not schedule an alarm'
+forbid_text "$RUNTIME" 'registerReceiver' 'the runtime must not register a background receiver'
+forbid_text "$RUNTIME" 'Service' 'the runtime must not start a service'
+forbid_text "$RUNTIME" 'SharedPreferences' 'the runtime must not use backed-up preferences'
+forbid_text "$RUNTIME" 'DataStore' 'the runtime must not use backed-up DataStore'
+forbid_text "$RUNTIME" 'Thread(' 'the runtime must not create a raw background thread'
+forbid_text "$RUNTIME" 'Executor' 'the runtime must not create a background executor'
+
+require_text "$FACTORY" 'object WeatherWorkFactory' \
+    'the pure weather work factory is missing'
+require_text "$FACTORY" 'MetWeatherRepository(' \
+    'the factory does not construct the MET repository'
+require_text "$FACTORY" 'sessionProvider = sessionProvider' \
+    'the factory does not pass the owner-backed session provider'
+require_text "$FACTORY" 'throttleStore = throttleStore' \
+    'the factory does not pass the persisted throttle store'
+require_text "$FACTORY" 'clock = clock' \
+    'the factory does not pass the injected clock'
+require_text "$FACTORY" 'fun isEnabled(debugBuild: Boolean): Boolean = !debugBuild' \
+    'the debug network-off mode must be a pure build-type boundary'
+
+require_text "$SESSION_PROVIDER" 'class WeatherRuntimeSessionProvider' \
+    'the owner-backed session provider is missing'
+require_text "$SESSION_PROVIDER" 'val current = owner() ?: return WeatherSession.DISABLED' \
+    'an uninitialized owner must fail closed'
+require_text "$SESSION_PROVIDER" 'if (current.isClosed) return WeatherSession.DISABLED' \
+    'a closed owner must fail closed'
 
 require_text "$PREFS" 'WeatherHomeRuntime.observeConsent(appContext, state)' \
     'settings must share the same process-wide owner'

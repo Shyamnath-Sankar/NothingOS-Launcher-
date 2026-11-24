@@ -20,6 +20,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import app.dotwel.widgets.DotWelWeatherWidgetProvider
+import com.android.launcher3.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,9 +35,12 @@ import kotlinx.coroutines.cancel
  * process state without retaining the old activity. The owner is replaced only
  * if it has been explicitly shut down, never by reusing a closed instance.
  *
- * The owner is created with the app-private no-backup consent store and the
- * explicit [NoNetworkWeatherWork] placeholder. This phase constructs no
- * repository, transport, worker, alarm or timer, and reads no device location.
+ * The owner is created with the app-private no-backup consent and cache stores,
+ * the persisted throttle store and the wired MET repository behind the
+ * injected [WeatherLoadWork] seam. Debug builds are an explicit network-off
+ * test mode so the emulator smoke gate's synthetic opt-in cannot reach the live
+ * MET endpoint; release builds keep the real transport. No worker, alarm,
+ * timer, service or device-location source is constructed.
  */
 object WeatherHomeRuntime {
     private val lock = Any()
@@ -47,6 +51,9 @@ object WeatherHomeRuntime {
     fun get(context: Context): WeatherHomeOwner = synchronized(lock) {
         val current = instance
         if (WeatherHomeRuntimePolicy.shouldReuseOwner(current)) return current!!
+        // Fail closed while replacing the owner: a work graph built below must
+        // never observe the old closed/replaced instance as its live session.
+        instance = null
         ownerScope?.cancel()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         val created = create(context.applicationContext, scope)
@@ -61,21 +68,38 @@ object WeatherHomeRuntime {
         get(context).onConsentChanged(state)
     }
 
-    private fun create(context: Context, scope: CoroutineScope): WeatherHomeOwner = WeatherHomeOwner(
-        consentStore = FileWeatherConsentStore(
-            WeatherPrivateStorage.consentDirectory(context.noBackupFilesDir),
-        ),
-        work = NoNetworkWeatherWork,
-        scope = scope,
-        resultSink = WeatherResultSink { result ->
-            WeatherWidgetStateStore.onResult(result)
-            refreshWeatherWidgets(context)
-        },
-        onSessionChanged = { session ->
-            WeatherWidgetStateStore.onSession(session)
-            refreshWeatherWidgets(context)
-        },
-    )
+    private fun create(context: Context, scope: CoroutineScope): WeatherHomeOwner {
+        val sessionProvider = WeatherRuntimeSessionProvider { synchronized(lock) { instance } }
+        val work = if (WeatherNetworkMode.isEnabled(BuildConfig.DEBUG)) {
+            WeatherWorkFactory.create(
+                transport = OkHttpWeatherTransport(appVersion = BuildConfig.VERSION_NAME),
+                cacheStore = FileWeatherCacheStore(
+                    WeatherPrivateStorage.cacheDirectory(context.noBackupFilesDir),
+                ),
+                throttleStore = FileWeatherThrottleStore(
+                    WeatherPrivateStorage.throttleDirectory(context.noBackupFilesDir),
+                ),
+                sessionProvider = sessionProvider,
+            )
+        } else {
+            NoNetworkWeatherWork
+        }
+        return WeatherHomeOwner(
+            consentStore = FileWeatherConsentStore(
+                WeatherPrivateStorage.consentDirectory(context.noBackupFilesDir),
+            ),
+            work = work,
+            scope = scope,
+            resultSink = WeatherResultSink { result ->
+                WeatherWidgetStateStore.onResult(result)
+                refreshWeatherWidgets(context)
+            },
+            onSessionChanged = { session ->
+                WeatherWidgetStateStore.onSession(session)
+                refreshWeatherWidgets(context)
+            },
+        )
+    }
 
     /**
      * Re-render the placed weather tiles after the shared state changes. This is

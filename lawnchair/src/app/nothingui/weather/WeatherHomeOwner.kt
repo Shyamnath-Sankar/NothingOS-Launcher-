@@ -32,8 +32,8 @@ import kotlinx.coroutines.withContext
  * enabled consent, the resumed HOME surface, the screen on and a user present.
  *
  * It creates no repository, transport, timer, alarm or worker. The injected
- * [WeatherLoadWork] is the only load seam; this phase supplies
- * [NoNetworkWeatherWork] in production.
+ * [WeatherLoadWork] is the only load seam: the runtime supplies the wired MET
+ * work graph in release builds and [NoNetworkWeatherWork] in debug/test builds.
  *
  * Every pause, screen-off, user-absent, settings edit/disable and shutdown
  * invalidates the pending read and lets the controller cancel the in-flight
@@ -256,10 +256,9 @@ object WeatherHomeWiring {
 }
 
 /**
- * The explicit load seam for the phase that connects the HOME lifecycle before
- * any provider exists. It performs no network request and invents no forecast;
- * it reports that no forecast is available yet. The visible weather rendering
- * and the real provider replace this in a later phase.
+ * The explicit network-off load seam used by debug/test builds. It performs no
+ * network request and invents no forecast; it reports that no forecast is
+ * available, so the emulator smoke gate's synthetic opt-in cannot reach MET.
  */
 object NoNetworkWeatherWork : WeatherLoadWork {
     override suspend fun load(session: WeatherSession): WeatherLoadResult = WeatherLoadResult.Unavailable(reason = WeatherFailureReason.CACHE_MISS)

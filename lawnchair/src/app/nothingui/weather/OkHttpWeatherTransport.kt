@@ -43,8 +43,9 @@ import okhttp3.Response
  * callback's `use` block. Already-sent bytes cannot be retracted; that is
  * the caller's opt-in and lifecycle responsibility.
  *
- * Not constructed anywhere yet. The production path remains disabled until the
- * real opt-in UI, privacy notice and visible HOME lifecycle gate are wired.
+ * Constructed only in release builds through the owner-backed work graph. The
+ * explicit opt-in, privacy notice and visible HOME lifecycle gate every call;
+ * debug/test builds use the explicit network-off work placeholder instead.
  */
 class OkHttpWeatherTransport(
     appVersion: String,

@@ -46,10 +46,10 @@ object RetryAfterParser {
 }
 
 /**
- * The only weather transport call site. It is deliberately not wired to any
- * widget, worker or settings screen yet: the production network path stays
- * disabled until an explicit opt-in UI, privacy notice and a visible HOME
- * lifecycle gate exist.
+ * The only weather transport call site. It is built by [WeatherWorkFactory]
+ * behind the owner's injected load seam: the explicit opt-in UI, privacy
+ * notice and visible HOME lifecycle already gate every call. Debug/test builds
+ * select the network-off [NoNetworkWeatherWork] instead of this repository.
  *
  * The repository is safe to call repeatedly: one in-flight request per
  * instance, a persisted global attempt floor that no location, manual refresh,
@@ -57,10 +57,10 @@ object RetryAfterParser {
  * `Retry-After` handling and a final session-generation check before any result
  * is committed.
  *
- * The future owner must still cancel this coroutine when HOME pauses or the
- * screen turns off and must revoke the session generation. Cancelling the
- * coroutine cancels the in-flight call, but the source code cannot make bytes
- * that have already left the device disappear.
+ * The owner must still cancel this coroutine when HOME pauses or the screen
+ * turns off and must revoke the session generation. Cancelling the coroutine
+ * cancels the in-flight call, but the source code cannot make bytes that have
+ * already left the device disappear.
  *
  * Production wiring must inject a persisted [WeatherThrottleStore] (for example
  * [FileWeatherThrottleStore]); the default in-memory store protects only one

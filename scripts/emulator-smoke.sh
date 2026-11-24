@@ -1882,7 +1882,7 @@ read_wm_size() (
 # request a location permission, write a preference directly or seed workspace
 # state. A synthetic manual location is typed like a user would type it.
 
-WEATHER_ENABLED_MESSAGE='Weather setup saved. No forecast is loaded in this version.'
+WEATHER_ENABLED_MESSAGE='Weather setup saved. A forecast is requested only while Home is visible.'
 WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
 
 _weather_snapshot() {

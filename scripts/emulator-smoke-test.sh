@@ -5245,7 +5245,7 @@ cat > "$weather_enabled_top_xml" <<'EOF'
 <hierarchy rotation="0">
   <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
     <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
-      <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). No forecast is requested in this version. Disabling stops the session and clears this location cache. The shared provider throttle is kept." bounds="[84,1600][996,1780]" />
+      <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). Forecasts are requested only while Home is visible. Disabling stops the session and clears this location cache. The shared provider throttle is kept." bounds="[84,1600][996,1780]" />
       <node index="1" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,1901][996,1920]" />
     </node>
   </node>
@@ -5258,10 +5258,10 @@ assert_false 'the CI250 clipped Disable action is not tappable without scrolling
     ui_bounds_within '84 1901 996 1920' '0 72 1080 1794'
 assert_eq 'the CI250 enabled status is already visible in the top hierarchy' \
     '84 1600 996 1780' \
-    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup is enabled for Emulator test (60.0000, 10.0000). No forecast is requested in this version. Disabling stops the session and clears this location cache. The shared provider throttle is kept.')"
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup is enabled for Emulator test (60.0000, 10.0000). Forecasts are requested only while Home is visible. Disabling stops the session and clears this location cache. The shared provider throttle is kept.')"
 assert_eq 'the CI250 success message is absent from the unscrolled hierarchy' \
     '' \
-    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. No forecast is loaded in this version.')"
+    "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. A forecast is requested only while Home is visible.')"
 
 # Execute the actual post-action poll with stubbed device calls. A durable
 # enabled record alone must not pass while the success line is unreachable; it
@@ -5567,7 +5567,7 @@ assert_true 'the enabled poll polls the real enabled state and message' \
 assert_true 'the disabled poll polls the real disabled state and message' \
     grep -Fq '_weather_poll_action_state disable disabled' "$weather_body"
 assert_true 'the enabled success message is a shared exact constant' \
-    grep -Fq "WEATHER_ENABLED_MESSAGE='Weather setup saved. No forecast is loaded in this version.'" "$weather_body"
+    grep -Fq "WEATHER_ENABLED_MESSAGE='Weather setup saved. A forecast is requested only while Home is visible.'" "$weather_body"
 assert_true 'the disabled success message is a shared exact constant' \
     grep -Fq "WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'" "$weather_body"
 assert_true 'the enabled poll reveals the message through measured scrolling' \
