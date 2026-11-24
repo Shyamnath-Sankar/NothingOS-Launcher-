@@ -6458,6 +6458,255 @@ else
     fail 'the customization gate runs after the own-home baseline and before third-party placement'
 fi
 
+# --- Weather runtime instrumentation harness (test APK only) ---------------
+
+WEATHER_HARNESS_KT="$ROOT_DIR/tests/androidTest/java/app/nothingui/weather/harness/WeatherRuntimeHarness.kt"
+WEATHER_RUNNER_KT="$ROOT_DIR/tests/androidTest/java/app/nothingui/weather/harness/WeatherRuntimeInstrumentation.kt"
+PROD_BUILD_GRADLE="$ROOT_DIR/build.gradle"
+
+weather_harness_functions="$TMP_DIR/weather-harness-functions.sh"
+{
+    sed -n '/^weather_harness_cases() {/,/^}/p' "$SMOKE"
+    sed -n '/^weather_harness_output_passes() {/,/^}/p' "$SMOKE"
+    sed -n '/^weather_harness_summary() {/,/^}/p' "$SMOKE"
+    sed -n '/^weather_harness_accept() {/,/^}/p' "$SMOKE"
+} > "$weather_harness_functions"
+assert_true 'the pure weather harness parser functions are extractable' \
+    test -s "$weather_harness_functions"
+
+if [ -s "$weather_harness_functions" ]; then
+    # shellcheck source=/dev/null
+    . "$weather_harness_functions"
+fi
+
+if command -v weather_harness_output_passes >/dev/null 2>&1; then
+    weather_harness_expected="$TMP_DIR/weather-harness-cases.txt"
+    weather_harness_cases > "$weather_harness_expected"
+else
+    weather_harness_expected="$TMP_DIR/weather-harness-cases.txt"
+    : > "$weather_harness_expected"
+fi
+
+assert_eq 'the harness expects six named cases' '6' \
+    "$(sed '/^$/d' "$weather_harness_expected" | wc -l | tr -d ' ')"
+for harness_case in \
+    okhttp-request-shape \
+    okhttp-parse-cache-expires \
+    okhttp-conditional-304 \
+    throttle-persistence-across-restart \
+    cancel-late-response-dropped \
+    owner-lifecycle-seam; do
+    assert_true "the harness expects the named case $harness_case" \
+        grep -Fxq "$harness_case" "$weather_harness_expected"
+done
+
+# Build an `am instrument -r -w` shaped fixture. A passing runner prints one
+# PASS line per named case and the platform result code -1.
+write_weather_harness_output() {
+    _who_file=$1
+    _who_status=$2
+    _who_code=$3
+    _who_total=$4
+    _who_passed=$5
+    _who_failed=$6
+    _who_skipped=$7
+    _who_override_case=${8:-}
+    _who_override_result=${9:-}
+    {
+        printf 'INSTRUMENTATION_RESULT: harness_version=1\n'
+        printf 'INSTRUMENTATION_RESULT: status=%s\n' "$_who_status"
+        printf 'INSTRUMENTATION_RESULT: cases_total=%s\n' "$_who_total"
+        printf 'INSTRUMENTATION_RESULT: cases_passed=%s\n' "$_who_passed"
+        printf 'INSTRUMENTATION_RESULT: cases_failed=%s\n' "$_who_failed"
+        printf 'INSTRUMENTATION_RESULT: cases_skipped=%s\n' "$_who_skipped"
+        while IFS= read -r _who_case; do
+            [ -n "$_who_case" ] || continue
+            _who_result=PASS
+            if [ -n "$_who_override_case" ] && [ "$_who_case" = "$_who_override_case" ]; then
+                _who_result=$_who_override_result
+            fi
+            printf 'INSTRUMENTATION_RESULT: caseResult.%s=%s\n' "$_who_case" "$_who_result"
+        done < "$weather_harness_expected"
+        printf 'INSTRUMENTATION_CODE: %s\n' "$_who_code"
+    } > "$_who_file"
+}
+
+if command -v weather_harness_accept >/dev/null 2>&1; then
+    weather_harness_good="$TMP_DIR/weather-harness-good.txt"
+    write_weather_harness_output "$weather_harness_good" PASS -1 6 6 0 0
+    assert_true 'the harness accepts a complete all-PASS result with result code -1' \
+        weather_harness_accept 0 "$weather_harness_good" "$weather_harness_expected"
+    assert_false 'the harness rejects a nonzero runner exit even with a green bundle' \
+        weather_harness_accept 1 "$weather_harness_good" "$weather_harness_expected"
+    assert_false 'the harness rejects a timed-out runner exit (124)' \
+        weather_harness_accept 124 "$weather_harness_good" "$weather_harness_expected"
+
+    weather_harness_fail_status="$TMP_DIR/weather-harness-fail-status.txt"
+    write_weather_harness_output "$weather_harness_fail_status" FAIL 0 6 6 0 0
+    assert_false 'the harness rejects a FAIL status even if every case line says PASS' \
+        weather_harness_accept 0 "$weather_harness_fail_status" "$weather_harness_expected"
+
+    weather_harness_bad_count="$TMP_DIR/weather-harness-bad-count.txt"
+    write_weather_harness_output "$weather_harness_bad_count" PASS -1 5 5 0 0
+    assert_false 'the harness rejects a case count that does not match the named list' \
+        weather_harness_accept 0 "$weather_harness_bad_count" "$weather_harness_expected"
+
+    weather_harness_skip="$TMP_DIR/weather-harness-skip.txt"
+    write_weather_harness_output "$weather_harness_skip" PASS -1 6 5 0 1 \
+        okhttp-conditional-304 SKIP
+    assert_false 'the harness rejects any skipped named case' \
+        weather_harness_accept 0 "$weather_harness_skip" "$weather_harness_expected"
+
+    weather_harness_failed_case="$TMP_DIR/weather-harness-failed-case.txt"
+    write_weather_harness_output "$weather_harness_failed_case" FAIL 0 6 5 1 0 \
+        owner-lifecycle-seam FAIL
+    assert_false 'the harness rejects a failed named case' \
+        weather_harness_accept 0 "$weather_harness_failed_case" "$weather_harness_expected"
+
+    weather_harness_missing="$TMP_DIR/weather-harness-missing.txt"
+    {
+        printf 'INSTRUMENTATION_RESULT: status=PASS\n'
+        printf 'INSTRUMENTATION_RESULT: cases_total=6\n'
+        printf 'INSTRUMENTATION_RESULT: cases_passed=6\n'
+        printf 'INSTRUMENTATION_RESULT: cases_failed=0\n'
+        printf 'INSTRUMENTATION_RESULT: cases_skipped=0\n'
+        grep -Fvx 'cancel-late-response-dropped' "$weather_harness_expected" |
+            while IFS= read -r _whm_case; do
+                [ -n "$_whm_case" ] || continue
+                printf 'INSTRUMENTATION_RESULT: caseResult.%s=PASS\n' "$_whm_case"
+            done
+        printf 'INSTRUMENTATION_RESULT: caseResult.cancel-late-response-dropped=PASS\n'
+        printf 'INSTRUMENTATION_RESULT: caseResult.cancel-late-response-dropped=PASS\n'
+        printf 'INSTRUMENTATION_CODE: -1\n'
+    } > "$weather_harness_missing"
+    assert_false 'the harness rejects a duplicated case line that hides a missing case' \
+        weather_harness_accept 0 "$weather_harness_missing" "$weather_harness_expected"
+
+    weather_harness_dup="$TMP_DIR/weather-harness-duplicate.txt"
+    {
+        printf 'INSTRUMENTATION_RESULT: status=PASS\n'
+        printf 'INSTRUMENTATION_RESULT: cases_total=6\n'
+        printf 'INSTRUMENTATION_RESULT: cases_passed=6\n'
+        printf 'INSTRUMENTATION_RESULT: cases_failed=0\n'
+        printf 'INSTRUMENTATION_RESULT: cases_skipped=0\n'
+        grep -Fvx 'cancel-late-response-dropped' "$weather_harness_expected" |
+            while IFS= read -r _whd_case; do
+                [ -n "$_whd_case" ] || continue
+                printf 'INSTRUMENTATION_RESULT: caseResult.%s=PASS\n' "$_whd_case"
+            done
+        printf 'INSTRUMENTATION_RESULT: caseResult.owner-lifecycle-seam=PASS\n'
+        printf 'INSTRUMENTATION_CODE: -1\n'
+    } > "$weather_harness_dup"
+    assert_false 'the harness rejects a repeated case instead of the missing named case' \
+        weather_harness_accept 0 "$weather_harness_dup" "$weather_harness_expected"
+
+    weather_harness_crash="$TMP_DIR/weather-harness-crash.txt"
+    write_weather_harness_output "$weather_harness_crash" PASS -1 6 6 0 0
+    printf 'INSTRUMENTATION_FAILED: app.nothingui.weather.harness.WeatherRuntimeInstrumentation\n' \
+        >> "$weather_harness_crash"
+    assert_false 'the harness rejects an instrumentation failure marker' \
+        weather_harness_accept 0 "$weather_harness_crash" "$weather_harness_expected"
+
+    weather_harness_summary_out="$TMP_DIR/weather-harness-summary.txt"
+    weather_harness_summary "$weather_harness_good" > "$weather_harness_summary_out"
+    assert_true 'the harness summary records the platform result code' \
+        grep -Fxq 'result_code=-1' "$weather_harness_summary_out"
+    assert_true 'the harness summary records the accepted case counts' \
+        grep -Fxq 'cases_total=6' "$weather_harness_summary_out"
+else
+    fail 'the pure weather harness parser functions are missing'
+fi
+
+# The pure parser must agree with the Kotlin runner. Every named case is a
+# runCase("...") call in the harness, so shell drift fails the suite.
+weather_harness_kotlin_cases="$TMP_DIR/weather-harness-kotlin-cases.txt"
+: > "$weather_harness_kotlin_cases"
+if [ -f "$WEATHER_HARNESS_KT" ]; then
+    sed -n 's/.*runCase([^"]*"\([^"]*\)").*/\1/p' "$WEATHER_HARNESS_KT" |
+        sed '/^$/d' | sort > "$weather_harness_kotlin_cases"
+fi
+sed '/^$/d' "$weather_harness_expected" | sort > "$TMP_DIR/weather-harness-shell-cases.txt"
+assert_true 'the shell expected case list matches the Kotlin runCase names' \
+    cmp -s "$TMP_DIR/weather-harness-shell-cases.txt" "$weather_harness_kotlin_cases"
+
+assert_true 'the Kotlin weather runtime harness source exists' test -f "$WEATHER_HARNESS_KT"
+assert_true 'the Kotlin weather runtime runner source exists' test -f "$WEATHER_RUNNER_KT"
+assert_true 'the instrumentation runner is a platform Instrumentation subclass' \
+    grep -Fq 'class WeatherRuntimeInstrumentation : Instrumentation()' "$WEATHER_RUNNER_KT"
+assert_true 'the runner reports an explicit platform result code' \
+    grep -Fq 'finish(' "$WEATHER_RUNNER_KT"
+assert_true 'the harness uses the real WeatherWorkFactory composition root' \
+    grep -Fq 'WeatherWorkFactory.create(' "$WEATHER_HARNESS_KT"
+assert_true 'the harness uses the real OkHttpWeatherTransport' \
+    grep -Fq 'OkHttpWeatherTransport(' "$WEATHER_HARNESS_KT"
+assert_true 'the harness injects a test-only OkHttp client interceptor' \
+    grep -Fq 'addInterceptor' "$WEATHER_HARNESS_KT"
+assert_true 'the harness builds the client without a MockWebServer dependency' \
+    grep -Fq 'OkHttpClient.Builder' "$WEATHER_HARNESS_KT"
+assert_false 'the harness never opens a local ServerSocket' \
+    grep -Fq 'ServerSocket' "$WEATHER_HARNESS_KT"
+assert_false 'the harness never uses MockWebServer' \
+    grep -Fq 'MockWebServer' "$WEATHER_HARNESS_KT"
+assert_false 'the harness interceptor never proceeds to a real socket' \
+    grep -Fq 'chain.proceed' "$WEATHER_HARNESS_KT"
+assert_false 'the harness adds no INTERNET or other manifest permission' \
+    grep -Eq 'uses-permission|android.permission.INTERNET' "$WEATHER_HARNESS_KT" "$WEATHER_RUNNER_KT"
+assert_true 'the harness uses the private no-backup test directory' \
+    grep -Fq 'noBackupFilesDir' "$WEATHER_HARNESS_KT"
+assert_false 'the harness never touches the production weather storage roots' \
+    grep -Fq 'WeatherPrivateStorage' "$WEATHER_HARNESS_KT"
+assert_true 'the harness labels the owner seam as synthetic, not a Launcher transition' \
+    grep -Fq 'synthetic owner seam' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies the User-Agent' \
+    grep -Fq 'User-Agent' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies the four-decimal coordinates' \
+    grep -Fq 'coordinatePattern' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies Expires and If-Modified-Since' \
+    grep -Fq 'If-Modified-Since' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies the conditional 304 revalidation' \
+    grep -Fq 'HTTP_NOT_MODIFIED' "$WEATHER_HARNESS_KT"
+assert_true 'the harness verifies the persisted Retry-After throttle' \
+    grep -Fq 'Retry-After' "$WEATHER_HARNESS_KT"
+
+assert_true 'the root build.gradle selects the custom instrumentation runner' \
+    grep -Fq 'testInstrumentationRunner "app.nothingui.weather.harness.WeatherRuntimeInstrumentation"' \
+    "$PROD_BUILD_GRADLE"
+assert_true 'the root build.gradle adds the dedicated androidTest source tree' \
+    grep -Fq "tests/androidTest/java" "$PROD_BUILD_GRADLE"
+
+# The smoke flow must build, install, run, parse and always uninstall the test
+# APK at the very end, without changing the single app-APK contract.
+weather_runtime_harness_body="$TMP_DIR/weather-runtime-harness.sh"
+sed -n '/^run_weather_runtime_harness() {/,/^}/p' "$SMOKE" > "$weather_runtime_harness_body"
+assert_true 'the weather runtime harness orchestration is extractable' \
+    test -s "$weather_runtime_harness_body"
+assert_true 'the harness builds the androidTest APK inside the smoke run' \
+    grep -Fq './gradlew assembleLawnWithQuickstepPlayDebugAndroidTest' \
+    "$weather_runtime_harness_body"
+assert_true 'the harness installs only the test APK with the test-only flag' \
+    grep -Fq 'install -t -r' "$weather_runtime_harness_body"
+assert_true 'the harness runs the exact platform instrumentation runner' \
+    grep -Fq 'am instrument -w -r' "$weather_runtime_harness_body"
+assert_true 'the harness parses the bounded runner result' \
+    grep -Fq 'weather_harness_accept' "$weather_runtime_harness_body"
+assert_true 'the harness uninstalls the test APK after the run' \
+    grep -Fq 'weather_harness_cleanup' "$weather_runtime_harness_body"
+
+assert_true 'the app APK discovery excludes the androidTest output tree' \
+    grep -Fq "grep -v '/androidTest/'" "$SMOKE"
+assert_true 'the failure trap cleans up the test APK too' \
+    grep -Fq 'weather_harness_cleanup' "$SMOKE"
+
+wallpaper_line=$(grep -n '^capture_wallpaper_gallery$' "$SMOKE" | sed -n '1s/:.*//p')
+harness_call_line=$(grep -n '^run_weather_runtime_harness$' "$SMOKE" | sed -n '1s/:.*//p')
+ok_line=$(grep -n "printf 'emulator-smoke: OK" "$SMOKE" | sed -n '1s/:.*//p')
+if [ -n "$wallpaper_line" ] && [ -n "$harness_call_line" ] && [ -n "$ok_line" ] &&
+    [ "$wallpaper_line" -lt "$harness_call_line" ] && [ "$harness_call_line" -lt "$ok_line" ]; then
+    pass 'the weather runtime harness runs at the very end, after the visual gates'
+else
+    fail 'the weather runtime harness runs at the very end, after the visual gates'
+fi
+
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2
     exit 1

@@ -5454,6 +5454,153 @@ fail() {
     exit 1
 }
 
+# --- Weather runtime instrumentation harness (test APK only) ---------------
+#
+# The harness is built and run only at the very end of the smoke flow. It lives
+# in the androidTest APK, so the single app-APK contract above is unchanged. The
+# pure parser functions below are side-effect free so the regression suite can
+# source them without a device or Gradle.
+
+WEATHER_HARNESS_TEST_PKG="$PKG.test"
+WEATHER_HARNESS_RUNNER="app/nothingui/weather/harness/WeatherRuntimeInstrumentation"
+WEATHER_HARNESS_COMPONENT="$WEATHER_HARNESS_TEST_PKG/$WEATHER_HARNESS_RUNNER"
+
+weather_harness_cases() {
+    printf '%s\n' \
+        okhttp-request-shape \
+        okhttp-parse-cache-expires \
+        okhttp-conditional-304 \
+        throttle-persistence-across-restart \
+        cancel-late-response-dropped \
+        owner-lifecycle-seam
+}
+
+weather_harness_output_passes() {
+    _whp_file=$1
+    [ -f "$_whp_file" ] || return 1
+    [ -s "$_whp_file" ] || return 1
+    if grep -Fq 'INSTRUMENTATION_FAILED' "$_whp_file"; then
+        return 1
+    fi
+    grep -Eq '^INSTRUMENTATION_RESULT: status=PASS$' "$_whp_file" || return 1
+    grep -Eq '^INSTRUMENTATION_CODE: -1$' "$_whp_file" || return 1
+    return 0
+}
+
+weather_harness_summary() {
+    _whs_file=$1
+    [ -s "$_whs_file" ] || return 1
+    sed -n 's/^INSTRUMENTATION_RESULT: //p' "$_whs_file"
+    sed -n 's/^INSTRUMENTATION_CODE: \([0-9-]*\)$/result_code=\1/p' "$_whs_file"
+}
+
+weather_harness_accept() {
+    _wha_exit=$1
+    _wha_output=$2
+    _wha_expected=$3
+    [ "$_wha_exit" -eq 0 ] || return 1
+    [ -f "$_wha_output" ] || return 1
+    [ -s "$_wha_output" ] || return 1
+    [ -f "$_wha_expected" ] || return 1
+    [ -s "$_wha_expected" ] || return 1
+    weather_harness_output_passes "$_wha_output" || return 1
+
+    _wha_expected_total=$(sed '/^$/d' "$_wha_expected" | wc -l | tr -d ' ')
+    _wha_total=$(sed -n 's/^INSTRUMENTATION_RESULT: cases_total=//p' "$_wha_output" |
+        sed -n '1p')
+    _wha_passed=$(sed -n 's/^INSTRUMENTATION_RESULT: cases_passed=//p' "$_wha_output" |
+        sed -n '1p')
+    _wha_failed=$(sed -n 's/^INSTRUMENTATION_RESULT: cases_failed=//p' "$_wha_output" |
+        sed -n '1p')
+    _wha_skipped=$(sed -n 's/^INSTRUMENTATION_RESULT: cases_skipped=//p' "$_wha_output" |
+        sed -n '1p')
+    [ "$_wha_total" = "$_wha_expected_total" ] || return 1
+    [ "$_wha_passed" = "$_wha_expected_total" ] || return 1
+    [ "$_wha_failed" = "0" ] || return 1
+    [ "$_wha_skipped" = "0" ] || return 1
+
+    while IFS= read -r _wha_case; do
+        [ -n "$_wha_case" ] || continue
+        _wha_hits=$(
+            grep -Fxc "INSTRUMENTATION_RESULT: caseResult.$_wha_case=PASS" \
+                "$_wha_output" 2>/dev/null || true
+        )
+        [ "$_wha_hits" = "1" ] || return 1
+    done < "$_wha_expected"
+
+    _wha_case_lines=$(
+        grep -Ec '^INSTRUMENTATION_RESULT: caseResult\.' "$_wha_output" 2>/dev/null || true
+    )
+    [ "$_wha_case_lines" = "$_wha_expected_total" ] || return 1
+    return 0
+}
+
+weather_harness_cleanup() {
+    if command -v adb >/dev/null 2>&1 && [ -n "${SERIAL:-}" ]; then
+        ADB_TIMEOUT=60 adb_cmd uninstall "$WEATHER_HARNESS_TEST_PKG" >/dev/null 2>&1 || true
+    fi
+    return 0
+}
+
+run_weather_runtime_harness() {
+    _wrh_gradle="$ARTIFACTS/weather-harness-gradle.txt"
+    _wrh_output="$ARTIFACTS/weather-harness-instrument.txt"
+    _wrh_summary="$ARTIFACTS/weather-harness-summary.txt"
+    _wrh_cases="$ARTIFACTS/weather-harness-cases.txt"
+    _wrh_evidence="$ARTIFACTS/weather-harness-test-apk.txt"
+
+    weather_harness_cases > "$_wrh_cases"
+
+    printf 'weather-harness: building the test APK\n'
+    if ! ( cd "$ROOT" && ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace ) \
+        > "$_wrh_gradle" 2>&1; then
+        fail "could not build the weather runtime test APK; see $_wrh_gradle"
+    fi
+
+    _wrh_apks=$(
+        find "$ROOT/build/outputs/apk" -type f -name '*androidTest*.apk' 2>/dev/null |
+            sort -u || true
+    )
+    _wrh_apk_count=$(printf '%s\n' "$_wrh_apks" | sed '/^$/d' | wc -l | tr -d ' ')
+    if [ "$_wrh_apk_count" -ne 1 ]; then
+        fail "expected exactly one weather runtime test APK, found $_wrh_apk_count"
+    fi
+    _wrh_apk=$(printf '%s\n' "$_wrh_apks" | sed -n '1p')
+
+    if command -v sha256sum >/dev/null 2>&1; then
+        _wrh_sha=$(sha256sum "$_wrh_apk" | awk '{print $1}')
+    else
+        _wrh_sha=$(shasum -a 256 "$_wrh_apk" | awk '{print $1}')
+    fi
+    {
+        printf 'test_apk=%s\n' "$_wrh_apk"
+        printf 'test_package=%s\n' "$WEATHER_HARNESS_TEST_PKG"
+        printf 'runner=%s\n' "$WEATHER_HARNESS_COMPONENT"
+        printf 'sha256=%s\n' "$_wrh_sha"
+        "$AAPT" dump badging "$_wrh_apk" 2>&1 || true
+        "$AAPT" dump xmltree "$_wrh_apk" AndroidManifest.xml 2>&1 || true
+    } > "$_wrh_evidence" 2>&1
+
+    weather_harness_cleanup
+    if ! ADB_TIMEOUT=180 adb_cmd install -t -r "$_wrh_apk" \
+        > "$ARTIFACTS/weather-harness-install.txt" 2>&1; then
+        fail "could not install the weather runtime test APK"
+    fi
+
+    _wrh_exit=0
+    ADB_TIMEOUT=300 adb_cmd shell am instrument -w -r "$WEATHER_HARNESS_COMPONENT" \
+        > "$_wrh_output" 2>&1 || _wrh_exit=$?
+
+    weather_harness_summary "$_wrh_output" > "$_wrh_summary" 2>/dev/null || true
+    weather_harness_cleanup
+
+    if weather_harness_accept "$_wrh_exit" "$_wrh_output" "$_wrh_cases"; then
+        printf 'weather-harness: PASS; summary: %s\n' "$_wrh_summary"
+        return 0
+    fi
+    fail "the weather runtime harness failed; see $_wrh_output"
+}
+
 find_aapt() (
     for tool in aapt2 aapt; do
         if command -v "$tool" >/dev/null 2>&1; then
@@ -5486,6 +5633,7 @@ _SMOKE_EVIDENCE_CAPTURED=0
 
 smoke_exit_trap() {
     _trap_status=$?
+    weather_harness_cleanup || true
     if [ "$_trap_status" -ne 0 ] && [ "$_SMOKE_EVIDENCE_CAPTURED" -eq 0 ]; then
         if command -v adb >/dev/null 2>&1; then
             capture_logcat
@@ -5533,6 +5681,7 @@ if [ -z "$APK" ]; then
     matches=$(
         find "$ROOT/build/outputs/apk" -type f -name '*.apk' 2>/dev/null |
             grep -F '/lawnWithQuickstepPlayDebug/' |
+            grep -v '/androidTest/' |
             sort -u || true
     )
     match_count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
@@ -5705,6 +5854,8 @@ fi
 pid=$(adb_cmd shell pidof "$PKG" | tr -d '\r')
 [ -n "$pid" ] || fail "process for $PKG is not running after the HOME launch"
 printf 'pid=%s\n' "$pid" > "$ARTIFACTS/pid.txt"
+
+run_weather_runtime_harness
 
 printf 'emulator-smoke: OK\n'
 printf '  package: %s\n' "$actual_pkg"
