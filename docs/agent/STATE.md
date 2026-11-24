@@ -3,31 +3,76 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — MET repository and OkHttp transport wired behind the
-  owner load seam. Committed as `368b40d`, PENDING ACTUAL CI.** The release path now builds the real
-  MET work graph with the app-private no-backup cache, the persisted throttle store and the
-  owner-backed session provider. Debug/test builds use the explicit network-off mode so the emulator
-  smoke gate's synthetic enable cannot reach the live MET endpoint. No actual MET request was made in
-  this coding run.
+- current_phase: **home-widget-composition-v1-new — TINY110AUDITCORRECTION committed as `1a1d1c1`,
+  PENDING ACTUAL CI.** Weather settings copy is now build-mode aware: debug is explicitly setup-only
+  with network off, release describes the real opt-in HOME request, and both privacy variants
+  disclose that enabled requests share the selected coordinates and device IP with MET Norway while
+  the label stays on device and no GPS/background tracking is used. The forecast notice now matches
+  the retained last-success marked as-of behavior instead of denying stale display. Real repository
+  wiring, no-backup cache, persisted throttle, no export/backdoor and the existing consent gates are
+  unchanged.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `368b40d` (MET wiring plus test-import cleanup) on `7af3cdb` (state record) on `f3d53e0`
-  (MET work wiring) on `f3a2224` (CI283 attempt2 record); this STATE update follows.
+- head: `1a1d1c1` (build-mode-aware truthful copy plus executed contract checks) on `198dce5`
+  (STATE record) on `368b40d` (MET wiring); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **Parent-reported CI28645325785121 was FULL GREEN in 30m51 with 290 units and 176 Weather
-  tests.** It placed the actual Weather widget as id 10, preserved the existing 6/7/8/9 taps, kept the
-  exact settings restart, the same bounds and a 2x2 -> 2x1 vertical resize, and passed the drawer
-  boundary. There is no actual CI result yet for `368b40d`, and this is not all-green for this run.
-- next: parent dispatches actual CI on `f3d53e0`; only that runtime can compile the Android runtime
-  path and prove the debug network-off mode still installs/runs. Then a **controlled live forecast
-  test** in a release build is required before claiming any forecast is connected. Do not attribute
-  forecast pixels or live API success to this run. Then targeted lifecycle instrumentation and the
-  backup/SAF broader audit. Release, hosting and merge stay paused. PrivateSpace, settings
-  round-trip, non-Play, large-screen, backup/restore and performance audits stay open.
-- blockers: no actual CI for `368b40d`, so the Android runtime compile/install and the debug
-  network-off boundary are still unproven at runtime. A controlled live forecast test needs a
-  release build and the parent's audit; no forecast, endpoint success or runtime pixel is claimed.
+  tests.** That result predates the copy correction. There is no actual CI result for `1a1d1c1`, and
+  this is not all-green for this run.
+- next: parent audits this source-only correction, then dispatches actual CI on `1a1d1c1` to compile
+  the new copy object/Compose wiring and run the updated smoke exact messages. The research-only
+  runtime-proof plan is in `docs/agent/weather-runtime-proof-plan.md`; the parent decides whether to
+  schedule the instrumentation harness. A controlled live forecast test still needs a release build
+  and explicit approval. Release, hosting, merge, signing and any new build type stay paused.
+- blockers: no actual CI for `1a1d1c1`; ktlint is not installed in this environment, so only the
+  stub `kotlinc` compile plus shell/XML checks were run. No APK, emulator, live MET request,
+  forecast pixel or release behavior is claimed.
 
-## done (this run — MET work wiring behind the gated owner, PENDING ACTUAL CI)
+## done (this run — build-mode-aware truthful Weather copy, source-only, PENDING ACTUAL CI)
+
+- **Critical copy bug fixed:** `WeatherNetworkMode` keeps debug/test builds network-off, but the
+  shared settings strings still promised a forecast request. New pure
+  `app/nothingui/weather/WeatherSettingsCopy.kt` selects debug setup-only or release transmission
+  copy from the same `WeatherNetworkMode.isEnabled(debugBuild)` boundary as the runtime, and maps the
+  enabled confirmation through that mode. `WeatherPreferences` and the Home-screen Weather entry now
+  compute the mode from `BuildConfig.DEBUG`; no exported/runtime switch, build type or activation
+  policy was added.
+- **Both-mode privacy disclosure:** debug says network requests are disabled and enabling is
+  setup-only, while a release build would share the selected coordinates and device IP with MET
+  Norway only while Home is visible and unlocked. Release says enabled requests share those selected
+  coordinates and the device IP with MET Norway (met.no). Both say the location label stays on this
+  device, keep the coordinates stored on device, and rule out GPS, network geocoding and background
+  tracking. Neither claims coordinates are only stored without disclosing transmission.
+- **Truthful forecast notice:** the old "instead of showing a stale or made-up value" claim
+  contradicted `WeatherWidgetRender`, which retains the last success as stale. Both notices now say a
+  failed refresh may leave the last successful forecast visible marked with its as-of age and that it
+  is never replaced by a made-up value. The compact widget's exact `Off` / `Not connected` states and
+  the consent gates were not weakened.
+- **Executed contract checks:** the shell smoke suite resolves the shipped debug and release strings
+  and asserts the transmission/IP/label/GPS/tracking disclosure, the debug network-off/setup-only
+  truth, the distinct build-mode copy, the retained-last-success wording and the absence of the old
+  contradictory phrase. It also asserts the copy object derives from `WeatherNetworkMode`, the
+  Compose screen maps all mode-aware resources, the enabled message maps through the copy object, and
+  the Home-screen subtitle uses the helper. New pure `WeatherSettingsCopyTest` covers both modes and
+  the non-enabled message mapping. The weather guard now requires the copy object, both resource
+  variants and the real Compose/home wiring; its mutation suite proves each new assertion can fail.
+- **Runtime gates extended:** the debug emulator smoke gate now also asserts the real fresh screen
+  shows the debug network-off privacy and device-IP disclosure, and the enabled screen shows the
+  debug network-off status; the exact `WEATHER_ENABLED_MESSAGE` was updated to the shipped debug
+  setup-only confirmation. No runtime was executed here.
+- **Verification actually run (shell/kotlinc only; no Gradle, Android build, emulator, ktlint or
+  actual CI):** `sh scripts/emulator-smoke-test.sh` reports **1060 ok, 0 not ok, all passed** (the
+  1007 baseline plus 53 copy/wiring/fixture checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/nothingui-weather-guard-test.sh` reports **34 ok, 0 not ok**; the drawer smoke suite
+  all passed; widget/home/polish/wallpaper/role guards and the widget mutation suite passed;
+  `sh scripts/verify-play-build-test.sh` all passed. The new copy object and its test compiled with
+  `kotlinc` against minimal stubs (`rc=0`), `strings.xml` parsed, `sh -n` is clean on the edited
+  scripts and `git diff --check` is clean. Standalone ktlint was not available and is not claimed.
+- **Research-only plan:** `docs/agent/weather-runtime-proof-plan.md` records a small CI
+  instrumentation option (inject the existing fake/loopback transport at `WeatherWorkFactory`, one
+  opt-in endpoint-shape proof, real lifecycle assertions) without production keys, release signing,
+  a new build type, a debug network toggle or a runtime backdoor. Not implemented.
+
+## done (previous run — MET work wiring behind the gated owner, PENDING ACTUAL CI)
 
 - **Pure composition root:** new `WeatherWorkFactory` constructs the existing `MetWeatherRepository`
   once with the injected transport, cache store, persisted throttle store, owner-backed
