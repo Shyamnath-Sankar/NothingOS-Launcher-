@@ -3,31 +3,70 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — narrow Weather runtime-harness correction on
-  `461822c`, PENDING ACTUAL CI (state 116, not native proof).** This run fixed the test-APK-only
-  harness/orchestrator, not the app: the runner component is now dotted; the Kotlin `async` call is a
-  real `CoroutineScope` extension with its import; the instrumentation uses its own test-APK context
-  and fails closed unless it is `target.packageName + ".test"`; cleanup captures its uninstall/pm
-  evidence, verifies the test package is absent, and still preserves an original trap status; the
-  assemble step is bounded at 900s. No app source, resource, layout, manifest, workflow, dependency,
-  SDK, applicationId, network/debug switch or build type was changed.
+- current_phase: **home-widget-composition-v1-new — compile-only native test-APK preflight on
+  `24d8f98`, PASSED in the existing Actions coding runner (state 117).** The real
+  `assembleLawnWithQuickstepPlayDebugAndroidTest` Gradle build succeeded with AGP 9.5.2, Kotlin
+  2.4.21, compileSdk 37.2 and build-tools 37.0.0. A real AAPT2 syntax defect was found and fixed in
+  the smoke orchestrator only: `aapt2 dump xmltree` requires `--file AndroidManifest.xml`, while
+  legacy `aapt` is positional. No app source, resource, manifest, permission, workflow, dependency,
+  SDK, Gradle, applicationId, network/debug switch or build type was changed.
 - branch: `agent/home-widget-composition-v1-new`
-- head: **this run's fix commit** (parent `461822c`); this STATE update follows.
+- head: **this run's fix/docs commit** (parent `24d8f98`); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Parent fact, not rerun here:** the last actual green was CI305 with **301 units and 187
-  Weather tests**, 0 errors. There is **no actual CI, APK or emulator run for state 116**, so no
-  native proof is claimed. The previously recorded CI302 attempt2 failure was a harness artifact-path
-  bug, not a Weather app regression.
-- next: parent dispatches actual CI on this correction commit. The executed fixture runs the real
-  `run_weather_runtime_harness` with stub Gradle/AAPT/adb and asserts the exact build args, dotted
-  `pkg/dottedclass` component, install/count/hash/report/cleanup order, and red build/install/
-  timeout/crash/missing-case/uninstall-fail/aapt-fail paths. Release, hosting, merge, signing and any
-  new build type stay paused.
-- blockers: no actual CI, APK or emulator run here by instruction. The coroutine/compile check is a
-  non-Android `kotlinc` build against minimal stubs, not a Gradle/Android build; the release wire and
-  native device behavior remain unproven.
+- ci: **Actual local Actions-runner Gradle build, not an Android CI rerun:** test-APK build
+  **BUILD SUCCESSFUL** in 6m11s (660 tasks); production debug APK **BUILD SUCCESSFUL** in 1m14s.
+  Test APK SHA-256 `f540599c…2b77348`; production APK SHA-256 `aa508f38…b3538595`. The last
+  parent-reported green remains CI305 with 301 units and 187 Weather tests.
+- next: parent decides whether to dispatch actual Android CI/emulator on this AAPT fix. The executed
+  smoke fixture now rejects the old positional aapt2 syntax and covers both aapt2 and aapt. Release,
+  hosting, merge, signing and any new build type stay paused.
+- blockers: no emulator, no `am instrument`, no device runtime and no Android CI rerun here by
+  instruction. Compile/manifest/AAPT proof is real; runtime and forecast pixels are not claimed.
 
-## done (this run — runtime-harness correction on `461822c`, harness-only, PENDING ACTUAL CI)
+## done (this run — compile-only native test-APK preflight on `24d8f98`, PASSED)
+
+- **Actual AGP/Kotlin build, not a stub:** set `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64`
+  (OpenJDK 21.0.13) and `ANDROID_HOME=/usr/local/lib/android/sdk` (platform `android-37.2`,
+  build-tools `37.0.0` already present; no SDK/repository change). Ran
+  `timeout 900 ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace`:
+  **BUILD SUCCESSFUL in 6m11s, 660 tasks (497 executed, 163 cached)**. The test APK was generated at
+  `build/outputs/apk/androidTest/lawnWithQuickstepPlay/debug/lawnchair-lawn-withQuickstep-play-debug-androidTest.apk`,
+  SHA-256 `f540599ce1ffacfeedf877d39bb280bbb619a4c5d364186eaf6e63d2b2b77348`.
+- **Real AAPT2 defect found and fixed (harness scope only):** `find_aapt` prefers `aapt2`, but
+  `aapt2 dump xmltree <apk> AndroidManifest.xml` fails with exit 1 and
+  `missing required flag --file`. Real build-tools 37.0.0 requires
+  `--file AndroidManifest.xml`; legacy `aapt` accepts the positional name. New
+  `aapt_dump_xmltree` dispatches on the tool basename, and `run_weather_runtime_harness` now calls
+  it. Both branches were executed against the real test APK with the real SDK tools (exit 0), and
+  the old aapt2 form was re-run to capture the real failure.
+- **Executed regression, not string-only:** the fixture `aapt2` stub now rejects the old positional
+  form, the success fixture asserts the exact `--file` call, a new `aapt-v1` fixture asserts
+  positional legacy syntax, and a direct negative check proves the stub rejects the old call.
+  `sh scripts/emulator-smoke-test.sh` reports **1255 ok, 0 not ok** (previous 1247 plus 8).
+- **Generated instrumentation contract matches the shell:** test package
+  `com.launchernos.dotwellabs.debug.test`, runner
+  `app.nothingui.weather.harness.WeatherRuntimeInstrumentation` (dotted), targetPackage
+  `com.launchernos.dotwellabs.debug`, exactly matching `PKG.test` and the dotted component. The
+  harness remains only in `tests/androidTest/java` via the dedicated `androidTest` source set, and
+  the runner uses its own test-APK context and fails closed unless it is `<target>.test`.
+- **Production APK harness absence, no runtime claim:** assembled
+  `assembleLawnWithQuickstepPlayDebug` (**BUILD SUCCESSFUL in 1m14s**) only to hash and inspect it.
+  Production APK SHA-256 `aa508f3839a598ae02db8e676a3bcbfdbbd08e732f42ac07efb37545b3538595`;
+  production manifest has 0 `instrumentation` entries and 0 `WeatherRuntime` markers; production
+  dex has 0 `Lapp/nothingui/weather/harness/` strings while the test dex has 46. No exported app
+  switch, debug network policy, permission, applicationId, SDK or product source changed.
+- **Evidence committed:** `docs/agent/evidence/2026-11-24-compile-preflight/` holds the full Gradle
+  test/prod logs, the actual aapt2 badging and manifest dumps, the old-syntax failure, both real
+  helper outputs, the production absence checks, hashes and the smoke log.
+- **Verification actually run:** smoke **1255 ok / 0 not ok**; `nothingui-weather-guard.sh` pass;
+  `nothingui-weather-guard-test.sh` pass; `verify-play-build-test.sh` pass;
+  `emulator-smoke-drawer-test.sh` pass; `verify-android-resources.sh` aapt2 OK; `sh -n` clean on both
+  edited scripts; `git diff --check` clean.
+- **Missing evidence / not claimed:** no emulator, no `emulator-smoke.sh` device run, no
+  `am instrument`, no MET request, no forecast, no release/signing/hosting. The compile and manifest
+  proof is real; runtime and pixels are not.
+
+## done (previous run — runtime-harness correction on `461822c`, harness-only, PENDING ACTUAL CI)
 
 - **Runner component corrected:** `WEATHER_HARNESS_RUNNER` changed from the invalid
   `app/nothingui/weather/harness/WeatherRuntimeInstrumentation` to the dotted

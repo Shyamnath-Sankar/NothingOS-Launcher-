@@ -1,0 +1,8 @@
+prod_apk=build/outputs/apk/lawnWithQuickstepPlay/debug/Lawnchair.16.Dev.(#118).play.debug.apk
+test_apk=build/outputs/apk/androidTest/lawnWithQuickstepPlay/debug/lawnchair-lawn-withQuickstep-play-debug-androidTest.apk
+instrumentation_entries_in_prod_manifest=0
+harness_markers_in_prod_manifest=0
+harness_class_strings_in_prod_dex=0
+harness_class_strings_in_test_dex=46
+test_apk_dex_files=4
+prod_apk_dex_files=24
