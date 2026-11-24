@@ -3,39 +3,71 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI277 widget parser contract + compact Weather status legibility — fixes committed
-  as `dccec32` and `1106312`, PENDING ACTUAL CI.** Parent-reported CI277 run45306446146 failed in
-  24m39 **after** placing the real Weather widget and tapping the exact real WeatherPreferences. The
-  clock passed the post-grid strict check on all three hosts with no null-item error, and the earlier
-  null-tag recycling checkpoint `1c672fb` compiled its 3 unit tests. The failure was a new parser
-  contract bug: `appwidget_launcher_instances` deliberately emits `<numeric id><TAB><provider>` and
-  its unused third `id` argument is ignored, but four Weather presence probes compared that row to a
-  bare `grep -qx <id>`, so they could never match even when id 10 was present. This run adds a
-  column-aware exact-id/exact-component lookup and keeps the existing helper contract unchanged. It
-  also makes the original compact 2x1/2x2 Weather status visibly read `Off` / `Not connected`, with
-  the full setup copy retained for accessibility. Only the shell harness/fixtures and the original
-  Weather XML/strings/provider presentation changed; production Weather network stays OFF and the
-  final consent stays disabled.
+- current_phase: **CI280 Weather truthfulness test-contract fix — committed as `a14c630`, PENDING ACTUAL
+  CI.** Parent-reported CI280 run45311806545 failed in 25m36 **after** the real Weather widget was
+  placed and **before** the tile tap/restart/resize. The clock passed the post-grid strict check
+  again and 290 units / 176 Weather tests were zero-error, but the runtime is NOT green. The cause
+  was a pure smoke-test contract drift: `1106312` intentionally changed the visible Weather status
+  to short `Off` / `Not connected` copy, while `weather_widget_text_is_truthful` still required the
+  old long `Weather off · tap to set up` / `No forecast yet` detail with `Provider not connected`.
+  The real CI280 XML had value `--`, detail `Off`, empty as-of and the full off setup copy in the
+  root content description; the actual PNG showed `Off` clearly legible. This run corrects only the
+  pure helper/fixtures, not app code. Restart and resize were **NOT REACHED** and remain unproven.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `1106312` (compact Weather status legibility) on `dccec32` (exact-id parser fix), from the
-  `1c672fb` null-tag recycling checkpoint and the earlier `f6f0475` caption identity fix. The STATE
-  commit follows this list.
+- head: `a14c630` (truthful Weather test contract) on `45e92fe` (CI277 record) on `1106312` (compact
+  Weather status legibility) on `dccec32` (exact-id parser fix), from the `1c672fb` null-tag
+  recycling checkpoint and the earlier `f6f0475` caption identity fix. The STATE commit follows
+  this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI277 run45306446146 failed in 24m39 after the real Weather placement and WeatherPreferences
-  tap.** The clock passed the post-grid strict check on all three hosts with no null-item error; 290
-  unit tests and 176 Weather tests were zero-error. The real Weather id 10 preserved prior ids
-  6/7/8/9, bounds `556,107,1042,517`, the native Add/Create controls were used with Always allow
-  unchecked and the tap opened exact WeatherPreferences. The failing Weather-presence checks grepped
-  bare ids against `id<TAB>provider` rows. Restart and resize were not reached, so they remain
-  pending. There is no CI result yet for `dccec32` or `1106312`, and this is not all-green.
-- next: parent dispatches actual API 37 CI on `1106312`; only that runtime can prove the parser fix
-  unblocks the remaining Weather restart/resize path and that the compact status renders legibly in
-  real 2x1/2x2 pixels. Restart, resize and pixel evidence remain pending. Then **repository
-  activation** (wire the real MET repository behind the owner's injected `WeatherLoadWork`, keeping
-  the widget render-only), then **targeted lifecycle instrumentation**, then the **backup/SAF broader
-  audit**. Release, hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play,
-  large-screen, backup/restore and performance audits stay open. Do not claim a forecast is connected
-  or that the Weather tile has runtime pixel evidence.
+- ci: **CI280 run45311806545 failed in 25m36 after the real Weather placement, before tap/restart/
+  resize.** Clock-after-grid passed again; 290 unit tests and 176 Weather tests were zero-error. The
+  failure was `weather_widget_text_is_truthful` still accepting the pre-`1106312` long detail copy.
+  The actual off tile rendered legibly (`Off`) with `--`, empty as-of and the full off content
+  description on the root. Restart and resize were not reached. There is no CI result yet for
+  `a14c630`, and this is not all-green.
+- next: parent dispatches actual API 37 CI on `a14c630`; only that runtime can prove the corrected
+  helper accepts the real `Off`/`Not connected` tile and unblocks the tap/restart/resize path. Then
+  **repository activation** (wire the real MET repository behind the owner's injected
+  `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle instrumentation**,
+  then the **backup/SAF broader audit**. Release, hosting and merge stay paused. PrivateSpace,
+  settings round-trip, non-Play, large-screen, backup/restore and performance audits stay open. Do
+  not claim a forecast is connected or that the Weather tile has runtime pixel evidence.
+
+## done (this run — CI280 truthful Weather test contract, PENDING ACTUAL CI)
+
+- **Exact CI280 finding, not a placement failure:** run45311806545 ended in 25m36 after the real
+  Weather widget was placed and before the tap/restart/resize. The clock passed the post-grid strict
+  check again. `1106312` had intentionally changed the visible detail to `Off` / `Not connected`
+  with the full copy moved to the root content description, but the smoke helper still required the
+  old long detail strings. The real XML was value `--`, detail `Off`, empty as-of and the full
+  `Weather off · tap to set up` root description; the actual PNG showed `Off` clearly legible.
+- **Exact production contract now encoded:** `weather_widget_text_is_truthful` requires value `--`;
+  `Off` with an empty as-of and the full off root content description; `Not connected` with the
+  exact `No forecast yet` as-of line and the full not-connected root content description. It
+  rejects a contradictory state/as-of, any forecast number, Loading, Unavailable/unknown, a missing
+  root description and a wrong root description. The accepted copy lives in named constants.
+- **Executed fixtures, actual row shape:** both accepted states use the real root
+  `nothingui_weather_root` content description plus the short child detail, and new negative
+  fixtures cover a forecast number, a fake update timestamp, a contradictory as-of, missing root
+  descriptions, a wrong root description, Loading, Unavailable and unknown. The smoke test reads
+  `lawnchair/res/values/strings.xml` and `DotWelWeatherWidgetProvider.kt` and asserts every constant
+  matches the shipped string and the provider's field-to-resource mapping, so future copy drift
+  fails the suite instead of silently passing stale fixtures.
+- **Restart/resize audit:** every post-restart and post-resize truthfulness assertion calls the same
+  corrected helper. Bounds, exact AppWidgetId/provider, preserved bindings and final-disabled-consent
+  assertions were re-read and have no contract mismatch; nothing was weakened.
+- **Preserved:** the exact-id/provider/host helper from CI277 (`dccec32`), the null-tag recycling fix
+  (`1c672fb`), the caption identity fix (`f6f0475`), and every strict layout/binding/preservation
+  gate. No app source, layout or resource change; Weather network stays OFF and the final consent
+  stays disabled.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **980 ok, 0 not ok, all passed** (the 959 baseline plus
+  21 contract/drift checks); `sh scripts/nothingui-weather-guard-test.sh` all passed;
+  `sh scripts/emulator-smoke-drawer-test.sh` all passed; `sh -n` is clean on both edited scripts;
+  `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for `a14c630`, no emulator tap/restart/resize,
+  and no new pixel evidence. The fixtures prove the helper/static contract, not that the real CI280
+  page now completes. 290 units / 176 Weather tests are the parent's CI280 facts, not rerun here.
 
 ## done (this run — CI277 parser contract and compact Weather status, PENDING ACTUAL CI)
 
