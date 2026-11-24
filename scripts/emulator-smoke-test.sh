@@ -900,6 +900,205 @@ assert_eq 'an unknown widget description fails closed' \
     '' \
     "$(widget_picker_description_preview_bounds "$widget_description_cells_xml" 'No such widget description')"
 
+# --- Weather picker collapse-regression fixtures ---------------------------
+# CI283 attempt2: the DotWel provider was already expanded but its Weather cell
+# was clipped at the bottom, so the strict description/preview helper returned
+# nothing. The old loop mistook that for a collapsed provider, tapped the header
+# again and collapsed it. The pure decision must now reveal the clipped expanded
+# cell by measured scrolling and must never expand an already-expanded provider.
+
+weather_picker_clipped_xml="$TMP_DIR/weather-picker-clipped.xml"
+cat > "$weather_picker_clipped_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[239,1441][557,1498]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,1450][300,1490]" />
+        <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,1490][300,1498]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" content-desc="Weather, opens weather settings" bounds="[69,1610][1011,1920]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_clipped_viewport=$(widget_picker_viewport_bounds "$weather_picker_clipped_xml")
+assert_eq 'the CI283 clipped expanded Weather picker viewport is measured' \
+    '0 350 1080 1820' "$weather_picker_clipped_viewport"
+assert_eq 'the strict helper still finds no complete pair in the clipped cell' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$weather_picker_clipped_xml" 'Weather, opens weather settings')"
+assert_eq 'the clipped Weather provider is classified as expanded, not collapsed' \
+    'expanded' \
+    "$(widget_picker_provider_state "$weather_picker_clipped_xml" '239 1441 557 1498')"
+assert_eq 'the clipped expanded Weather cell content is measured for scroll direction' \
+    '69 1610 1011 1920' \
+    "$(widget_picker_provider_content_bounds "$weather_picker_clipped_xml" '239 1441 557 1498')"
+assert_eq 'the clipped expanded Weather cell needs a downward reveal' \
+    'down' \
+    "$(widget_picker_weather_scroll_direction \
+        '69 1610 1011 1920' "$weather_picker_clipped_viewport" '239 1441 557 1498')"
+assert_eq 'the measured reveal scroll stays inside the clipped picker list' \
+    '540 1528 652' \
+    "$(widget_picker_scroll_target_dir "$weather_picker_clipped_xml" down)"
+assert_eq 'the opposite reveal scroll is bounded to the same measured list' \
+    '540 652 1528' \
+    "$(widget_picker_scroll_target_dir "$weather_picker_clipped_xml" up)"
+assert_eq 'the loop decision reveals a clipped already-expanded provider instead of collapsing it' \
+    'reveal' \
+    "$(widget_picker_weather_decision "$weather_picker_clipped_xml" \
+        '239 1441 557 1498' '' "$weather_picker_clipped_viewport" 1 0 2 4)"
+assert_eq 'the loop decision never expands an already-expanded clipped provider' \
+    'reveal' \
+    "$(widget_picker_weather_decision "$weather_picker_clipped_xml" \
+        '239 1441 557 1498' '' "$weather_picker_clipped_viewport" 0 0 2 4)"
+assert_eq 'the clipped expanded provider fails closed after the bounded reveal scrolls' \
+    'fail' \
+    "$(widget_picker_weather_decision "$weather_picker_clipped_xml" \
+        '239 1441 557 1498' '' "$weather_picker_clipped_viewport" 1 4 2 4)"
+
+weather_picker_visible_xml="$TMP_DIR/weather-picker-visible.xml"
+cat > "$weather_picker_visible_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[239,600][557,657]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,610][300,650]" />
+        <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,650][300,657]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[69,769][1011,1080]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[100,790][980,1000]" />
+        <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[100,1010][980,1060]" />
+        <node index="2" text="Weather" resource-id="com.launchernos.dotwellabs.debug:id/widget_name" class="android.widget.TextView" bounds="[100,1062][980,1078]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_visible_viewport=$(widget_picker_viewport_bounds "$weather_picker_visible_xml")
+weather_picker_visible_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_visible_xml" 'Weather, opens weather settings')
+assert_eq 'after the reveal scroll the exact Weather preview is measured' \
+    '100 790 980 1000' "$weather_picker_visible_candidate"
+assert_eq 'after the reveal scroll the exact Weather cell is fully visible and selected' \
+    'select' \
+    "$(widget_picker_weather_decision "$weather_picker_visible_xml" \
+        '239 600 557 657' "$weather_picker_visible_candidate" \
+        "$weather_picker_visible_viewport" 1 1 2 4)"
+assert_eq 'the fully visible Weather cell still exposes its own caption' \
+    'Weather' \
+    "$(widget_picker_selected_caption "$weather_picker_visible_xml" \
+        "$weather_picker_visible_candidate")"
+
+weather_picker_collapsed_xml="$TMP_DIR/weather-picker-collapsed.xml"
+cat > "$weather_picker_collapsed_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+        <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+      </node>
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,900][1080,1020]">
+        <node index="0" text="Clock" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,920][300,960]" />
+        <node index="1" text="1 widget" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,965][300,1000]" />
+      </node>
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" bounds="[80,1100][500,1400]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_collapsed_viewport=$(widget_picker_viewport_bounds "$weather_picker_collapsed_xml")
+assert_eq 'a collapsed DotWel provider is classified as collapsed' \
+    'collapsed' \
+    "$(widget_picker_provider_state "$weather_picker_collapsed_xml" '0 300 1080 420')"
+assert_eq 'a collapsed provider never claims the next provider preview as its content' \
+    '' \
+    "$(widget_picker_provider_content_bounds "$weather_picker_collapsed_xml" '0 300 1080 420')"
+assert_eq 'the loop decision expands a genuinely collapsed provider' \
+    'expand' \
+    "$(widget_picker_weather_decision "$weather_picker_collapsed_xml" \
+        '0 300 1080 420' '' "$weather_picker_collapsed_viewport" 0 0 2 4)"
+
+weather_picker_duplicate_xml="$TMP_DIR/weather-picker-duplicate.xml"
+cat > "$weather_picker_duplicate_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+        <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][500,860]" />
+        <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][480,900]" />
+      </node>
+      <node index="2" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[560,440][1040,900]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[580,460][1020,860]" />
+        <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[600,860][1000,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_duplicate_viewport=$(widget_picker_viewport_bounds "$weather_picker_duplicate_xml")
+assert_eq 'duplicate Weather cells never resolve to one strict preview' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$weather_picker_duplicate_xml" 'Weather, opens weather settings')"
+assert_eq 'the loop decision never selects an ambiguous duplicate Weather cell' \
+    'reveal' \
+    "$(widget_picker_weather_decision "$weather_picker_duplicate_xml" \
+        '0 300 1080 420' '' "$weather_picker_duplicate_viewport" 0 0 2 4)"
+assert_eq 'an ambiguous Weather provider fails closed after the bounded scrolls' \
+    'fail' \
+    "$(widget_picker_weather_decision "$weather_picker_duplicate_xml" \
+        '0 300 1080 420' '' "$weather_picker_duplicate_viewport" 0 4 2 4)"
+
+weather_picker_wrong_cell_xml="$TMP_DIR/weather-picker-wrong-cell.xml"
+cat > "$weather_picker_wrong_cell_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/primary_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,300][1080,420]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,320][300,360]" />
+        <node index="1" text="4 widgets" resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,365][300,400]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][520,900]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][500,860]" />
+        <node index="1" text="Dot matrix clock, opens clock settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][480,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_wrong_viewport=$(widget_picker_viewport_bounds "$weather_picker_wrong_cell_xml")
+assert_eq 'a wrong-provider cell never resolves to the Weather description' \
+    '' \
+    "$(widget_picker_description_preview_bounds "$weather_picker_wrong_cell_xml" 'Weather, opens weather settings')"
+assert_eq 'the loop decision never selects a wrong-provider cell' \
+    'reveal' \
+    "$(widget_picker_weather_decision "$weather_picker_wrong_cell_xml" \
+        '0 300 1080 420' '' "$weather_picker_wrong_viewport" 0 0 2 4)"
+
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
@@ -5318,6 +5517,19 @@ assert_true 'the weather widget gate checks the exact numeric id and Weather com
     grep -Fq 'appwidget_launcher_instance_is' "$weather_widget_body"
 assert_false 'the weather widget gate never greps a bare id against the id<TAB>provider rows' \
     grep -Fq 'grep -qx "$_cww_new_id"' "$weather_widget_body"
+assert_true 'the weather widget gate uses the state-aware picker decision' \
+    grep -Fq 'widget_picker_weather_decision' "$weather_widget_body"
+assert_true 'the weather widget gate branches on select, expand and reveal' \
+    grep -Fq 'reveal|search)' "$weather_widget_body"
+assert_false 'the weather widget gate never expands just because the strict pair is absent' \
+    grep -Fq '[ -z "$_cww_candidate" ]' "$weather_widget_body"
+assert_true 'the weather widget gate re-resolves a fresh XML after every expansion' \
+    grep -Fq 'could not capture fresh picker XML after expanding Weather' \
+    "$weather_widget_body"
+assert_true 'the weather widget gate captures a PNG after every expansion' \
+    grep -Fq 'weather-widget-expand-$_cww_expand.png' "$weather_widget_body"
+assert_true 'the weather widget gate captures a PNG after every reveal scroll' \
+    grep -Fq 'weather-widget-scroll-$_cww_scroll.png' "$weather_widget_body"
 
 # --- static regression on the weather runtime gate --------------------------
 

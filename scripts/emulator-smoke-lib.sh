@@ -3041,6 +3041,226 @@ widget_picker_preview_is_visible() (
     return 0
 )
 
+# Print "expanded", "collapsed" or "none" for the provider whose exact measured
+# header bounds are $2. An expanded provider has at least one widget cell (or
+# preview/description/name node) between its header and the next provider header,
+# even when the cell is clipped and the strict description/preview pair cannot be
+# resolved. This lets the picker loop distinguish "collapsed, so expand it" from
+# "already expanded but clipped, so scroll instead of tapping the header again".
+# "none" means the header bounds were not found in the hierarchy.
+widget_picker_provider_state() (
+    xml=$1
+    header=$2
+    [ -s "$xml" ] || { printf 'none\n'; return 0; }
+    set -- $header
+    [ "$#" -eq 4 ] || { printf 'none\n'; return 0; }
+    want="[$1,$2][$3,$4]"
+    hy2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" -v hy2="$hy2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function y_of(b,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return -1
+                return p[2] + 0
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                bounds = attr($0, "bounds")
+                desc = attr($0, "content-desc")
+                if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                y1 = y_of(bounds)
+                if (y1 < 0) next
+                if (rid ~ /(^|\/)widgets_list_header$/) {
+                    if (bounds == want) found_header = 1
+                    nh++
+                    header_y[nh] = y1
+                } else if (cls ~ /(^|\.)WidgetCell$/ ||
+                    rid ~ /(^|\/)(widget_preview_container|widget_description|widget_name)$/ ||
+                    desc != "") {
+                    nc++
+                    content_y[nc] = y1
+                }
+            }
+            END {
+                if (!found_header) { print "none"; exit }
+                next_top = -1
+                for (i = 1; i <= nh; i++) {
+                    if (header_y[i] > hy2) {
+                        if (next_top < 0 || header_y[i] < next_top)
+                            next_top = header_y[i]
+                    }
+                }
+                expanded = 0
+                for (i = 1; i <= nc; i++) {
+                    if (content_y[i] <= hy2) continue
+                    if (next_top >= 0 && content_y[i] >= next_top) continue
+                    expanded = 1
+                    break
+                }
+                print expanded ? "expanded" : "collapsed"
+            }
+        '
+)
+
+# Print the bounding box ("x1 y1 x2 y2") of the provider content (widget cells,
+# preview/description/name nodes or content-described children) between the exact
+# measured header $2 and the next provider header. This is used only to choose a
+# measured scroll direction when a clipped cell cannot yet be resolved. Prints
+# nothing when the header or its content is absent.
+widget_picker_provider_content_bounds() (
+    xml=$1
+    header=$2
+    [ -s "$xml" ] || return 0
+    set -- $header
+    [ "$#" -eq 4 ] || return 0
+    want="[$1,$2][$3,$4]"
+    hy2=$4
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" -v hy2="$hy2" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function parse(b,    s, n, p) {
+                s = b
+                gsub(/[^0-9]+/, " ", s)
+                sub(/^ +/, "", s)
+                sub(/ +$/, "", s)
+                n = split(s, p, / +/)
+                if (n != 4) return 0
+                bx1 = p[1] + 0
+                by1 = p[2] + 0
+                bx2 = p[3] + 0
+                by2 = p[4] + 0
+                return 1
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                cls = attr($0, "class")
+                bounds = attr($0, "bounds")
+                desc = attr($0, "content-desc")
+                if (bounds !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) next
+                if (!parse(bounds)) next
+                if (rid ~ /(^|\/)widgets_list_header$/) {
+                    if (bounds == want) found_header = 1
+                    nh++
+                    header_y[nh] = by1
+                } else if (cls ~ /(^|\.)WidgetCell$/ ||
+                    rid ~ /(^|\/)(widget_preview_container|widget_description|widget_name)$/ ||
+                    desc != "") {
+                    nc++
+                    cx1[nc] = bx1
+                    cy1[nc] = by1
+                    cx2[nc] = bx2
+                    cy2[nc] = by2
+                }
+            }
+            END {
+                if (!found_header) exit
+                next_top = -1
+                for (i = 1; i <= nh; i++) {
+                    if (header_y[i] > hy2) {
+                        if (next_top < 0 || header_y[i] < next_top)
+                            next_top = header_y[i]
+                    }
+                }
+                have = 0
+                for (i = 1; i <= nc; i++) {
+                    if (cy1[i] <= hy2) continue
+                    if (next_top >= 0 && cy1[i] >= next_top) continue
+                    if (!have) {
+                        minx = cx1[i]; miny = cy1[i]
+                        maxx = cx2[i]; maxy = cy2[i]
+                        have = 1
+                    } else {
+                        if (cx1[i] < minx) minx = cx1[i]
+                        if (cy1[i] < miny) miny = cy1[i]
+                        if (cx2[i] > maxx) maxx = cx2[i]
+                        if (cy2[i] > maxy) maxy = cy2[i]
+                    }
+                }
+                if (have) print minx, miny, maxx, maxy
+            }
+        '
+)
+
+# Print the measured scroll direction ("up" or "down") needed to reveal the
+# provider content $1 inside the viewport $2, falling back to the provider header
+# $3 and finally to "down". This never guesses a coordinate; it only selects which
+# bounded measured scroll target to use.
+widget_picker_weather_scroll_direction() (
+    content=$1
+    viewport=$2
+    header=$3
+    if [ -n "$content" ]; then
+        weather_target_scroll_direction "$content" "$viewport" && return 0
+    fi
+    if [ -n "$header" ]; then
+        weather_target_scroll_direction "$header" "$viewport" && return 0
+    fi
+    printf 'down\n'
+)
+
+# Decide the next bounded action for the Weather picker loop. This is the exact
+# decision the runtime loop uses, so the unit fixtures prove a clipped but already
+# expanded provider is revealed by scrolling and is never collapsed by tapping its
+# header again. Prints one of:
+#   select - the exact unique description/preview pair is fully visible
+#   expand - the provider is collapsed and may be expanded
+#   reveal - the provider is already expanded; scroll to reveal its cell
+#   search - the provider header is not in view; scroll to find it
+#   fail   - no bounded action remains
+widget_picker_weather_decision() (
+    xml=$1
+    header=$2
+    candidate=$3
+    viewport=$4
+    expand_count=${5:-0}
+    scroll_count=${6:-0}
+    max_expand=${7:-2}
+    max_scroll=${8:-4}
+    if [ -n "$header" ] && [ -n "$candidate" ] &&
+        widget_picker_preview_is_visible "$candidate" "$viewport"; then
+        printf 'select\n'
+        return 0
+    fi
+    state=$(widget_picker_provider_state "$xml" "$header")
+    if [ -n "$header" ] && [ "$state" = collapsed ] &&
+        [ "$expand_count" -lt "$max_expand" ]; then
+        printf 'expand\n'
+        return 0
+    fi
+    if [ -n "$header" ] && [ "$state" = expanded ] &&
+        [ "$scroll_count" -lt "$max_scroll" ]; then
+        printf 'reveal\n'
+        return 0
+    fi
+    if [ -z "$header" ] && [ "$scroll_count" -lt "$max_scroll" ]; then
+        printf 'search\n'
+        return 0
+    fi
+    printf 'fail\n'
+)
+
 # Print the bounds of the measured widget list (inherited primary/search list or
 # the Compose catalog) used for a bounded genuine scroll.
 widget_picker_list_bounds() (
@@ -3079,10 +3299,13 @@ widget_picker_list_bounds() (
 )
 
 # Print "x y_from y_to" for a genuine vertical scroll inside the measured widget
-# list, clamped to the usable viewport so the gesture never lands on the
-# navigation bar. Prints nothing when the list or viewport is unavailable.
-widget_picker_scroll_target() (
+# list in the requested direction: "down" reveals later content (the gesture moves
+# up) and "up" reveals earlier content (the gesture moves down). Both are clamped
+# to the usable viewport so the gesture never lands on the navigation bar. Prints
+# nothing when the list, viewport, direction or a usable band is unavailable.
+widget_picker_scroll_target_dir() (
     xml=$1
+    direction=${2:-down}
     list=$(widget_picker_list_bounds "$xml")
     viewport=$(widget_picker_viewport_bounds "$xml")
     if [ -z "$list" ] || [ -z "$viewport" ]; then
@@ -3114,12 +3337,27 @@ widget_picker_scroll_target() (
     if [ "$span" -lt 200 ]; then
         return 1
     fi
-    y_from=$((bottom - span / 5))
-    y_to=$((top + span / 5))
-    if [ "$y_from" -le "$y_to" ]; then
-        return 1
-    fi
+    case "$direction" in
+        down)
+            y_from=$((bottom - span / 5))
+            y_to=$((top + span / 5))
+            [ "$y_from" -gt "$y_to" ] || return 1
+            ;;
+        up)
+            y_from=$((top + span / 5))
+            y_to=$((bottom - span / 5))
+            [ "$y_to" -gt "$y_from" ] || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
     printf '%s %s %s\n' "$x" "$y_from" "$y_to"
+)
+
+# Backwards-compatible downward scroll target.
+widget_picker_scroll_target() (
+    widget_picker_scroll_target_dir "$1" down
 )
 
 # Print the bounds of the exposed widget Add button by its real resource id.

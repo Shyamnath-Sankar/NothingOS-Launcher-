@@ -3586,10 +3586,16 @@ capture_weather_widget() {
 
     # Select only the cell whose own description exactly matches the Weather
     # widget. A provider header, a same-row clock, an ambiguous duplicate and a
-    # clipped preview fail closed.
+    # clipped preview fail closed. The pure decision distinguishes a collapsed
+    # provider from an already-expanded provider whose cell is merely clipped:
+    # only a collapsed provider may be expanded, so a visible expanded group is
+    # never collapsed by a second header tap. A clipped expanded cell is revealed
+    # by measured scrolling instead.
     _cww_selected=0
     _cww_expand=0
     _cww_scroll=0
+    _cww_max_expand=2
+    _cww_max_scroll=4
     _cww_preview=
     _cww_provider_xml=
     while [ "$_cww_selected" -eq 0 ]; do
@@ -3598,48 +3604,72 @@ capture_weather_widget() {
         _cww_candidate=$(widget_picker_description_preview_bounds \
             "$_cww_picker_xml" "$_cww_description")
         _cww_viewport=$(widget_picker_viewport_bounds "$_cww_picker_xml")
-        if [ -n "$_cww_header" ] && [ -n "$_cww_candidate" ] &&
-            widget_picker_preview_is_visible \
-                "$_cww_candidate" "$_cww_viewport"; then
-            _cww_preview=$_cww_candidate
-            _cww_provider_xml=$_cww_picker_xml
-            _cww_selected=1
-            break
-        fi
-        if [ -n "$_cww_header" ] && [ -z "$_cww_candidate" ] &&
-            [ "$_cww_expand" -lt 2 ]; then
-            tap_center_of_bounds "$_cww_header" ||
-                fail "could not tap the measured DotWel provider header to expand Weather"
-            _cww_expand=$((_cww_expand + 1))
-            _cww_expand_poll=1
-            while [ "$_cww_expand_poll" -le 5 ]; do
+        _cww_action=$(widget_picker_weather_decision \
+            "$_cww_picker_xml" "$_cww_header" "$_cww_candidate" \
+            "$_cww_viewport" "$_cww_expand" "$_cww_scroll" \
+            "$_cww_max_expand" "$_cww_max_scroll")
+        printf 'step=%s expand=%s scroll=%s header=%s candidate=%s\n' \
+            "$_cww_action" "$_cww_expand" "$_cww_scroll" \
+            "${_cww_header:-none}" "${_cww_candidate:-none}" >> "$_cww_log"
+        case "$_cww_action" in
+            select)
+                _cww_preview=$_cww_candidate
+                _cww_provider_xml=$_cww_picker_xml
+                _cww_selected=1
+                break
+                ;;
+            expand)
+                tap_center_of_bounds "$_cww_header" ||
+                    fail "could not tap the measured DotWel provider header to expand Weather"
+                _cww_expand=$((_cww_expand + 1))
+                _cww_expand_xml=
+                _cww_expand_poll=1
+                while [ "$_cww_expand_poll" -le 5 ]; do
+                    sleep 1
+                    if capture_ui_xml \
+                        "weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"; then
+                        _cww_expand_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"
+                        break
+                    fi
+                    _cww_expand_poll=$((_cww_expand_poll + 1))
+                done
+                [ -n "$_cww_expand_xml" ] ||
+                    fail "could not capture fresh picker XML after expanding Weather"
+                _cww_picker_xml=$_cww_expand_xml
+                capture_screenshot_to "weather-widget-expand-$_cww_expand.png"
+                continue
+                ;;
+            reveal|search)
+                _cww_dir=down
+                if [ "$_cww_action" = reveal ] && [ -n "$_cww_header" ]; then
+                    _cww_content=$(widget_picker_provider_content_bounds \
+                        "$_cww_picker_xml" "$_cww_header")
+                    _cww_dir=$(widget_picker_weather_scroll_direction \
+                        "$_cww_content" "$_cww_viewport" "$_cww_header") ||
+                        _cww_dir=down
+                fi
+                _cww_scroll_target=$(widget_picker_scroll_target_dir \
+                    "$_cww_picker_xml" "$_cww_dir") || break
+                set -- $_cww_scroll_target
+                printf 'scroll=%s direction=%s from=%s,%s to=%s,%s\n' \
+                    "$((_cww_scroll + 1))" "$_cww_dir" "$1" "$2" "$1" "$3" \
+                    >> "$_cww_log"
+                adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
+                    >> "$_cww_log" 2>&1 ||
+                    fail "could not scroll the measured widget list to the Weather cell"
+                _cww_scroll=$((_cww_scroll + 1))
                 sleep 1
-                if capture_ui_xml \
-                    "weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"; then
-                    _cww_picker_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"
+                if ! capture_ui_xml "weather-widget-scroll-$_cww_scroll.xml"; then
                     break
                 fi
-                _cww_expand_poll=$((_cww_expand_poll + 1))
-            done
-            continue
-        fi
-        if [ "$_cww_scroll" -ge 4 ]; then
-            break
-        fi
-        _cww_scroll_target=$(widget_picker_scroll_target "$_cww_picker_xml") ||
-            break
-        set -- $_cww_scroll_target
-        printf 'scroll=%s from=%s,%s to=%s,%s\n' \
-            "$((_cww_scroll + 1))" "$1" "$2" "$1" "$3" >> "$_cww_log"
-        adb_cmd shell input swipe "$1" "$2" "$1" "$3" 600 \
-            >> "$_cww_log" 2>&1 ||
-            fail "could not scroll the measured widget list to the Weather cell"
-        _cww_scroll=$((_cww_scroll + 1))
-        sleep 1
-        if ! capture_ui_xml "weather-widget-scroll-$_cww_scroll.xml"; then
-            break
-        fi
-        _cww_picker_xml="$ARTIFACTS/weather-widget-scroll-$_cww_scroll.xml"
+                _cww_picker_xml="$ARTIFACTS/weather-widget-scroll-$_cww_scroll.xml"
+                capture_screenshot_to "weather-widget-scroll-$_cww_scroll.png"
+                continue
+                ;;
+            *)
+                break
+                ;;
+        esac
     done
     if [ "$_cww_selected" -eq 0 ]; then
         cp "$_cww_picker_xml" "$ARTIFACTS/weather-widget-picker-last.xml" || true
