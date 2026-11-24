@@ -3,37 +3,82 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI280 Weather truthfulness test-contract fix — committed as `a14c630`, PENDING ACTUAL
-  CI.** Parent-reported CI280 run45311806545 failed in 25m36 **after** the real Weather widget was
-  placed and **before** the tile tap/restart/resize. The clock passed the post-grid strict check
-  again and 290 units / 176 Weather tests were zero-error, but the runtime is NOT green. The cause
-  was a pure smoke-test contract drift: `1106312` intentionally changed the visible Weather status
-  to short `Off` / `Not connected` copy, while `weather_widget_text_is_truthful` still required the
-  old long `Weather off · tap to set up` / `No forecast yet` detail with `Provider not connected`.
-  The real CI280 XML had value `--`, detail `Off`, empty as-of and the full off setup copy in the
-  root content description; the actual PNG showed `Off` clearly legible. This run corrects only the
-  pure helper/fixtures, not app code. Restart and resize were **NOT REACHED** and remain unproven.
+- current_phase: **CI283 attempt2 Weather picker collapse fix — committed as `638d25d`, PENDING ACTUAL
+  CI.** Parent-reported CI283 attempt2 failed in 24m16 at the Weather picker **before** placement.
+  Artifact 14889225168: `weather-widget-expand-1-1.xml` held an already-expanded DotWel header at
+  `239,1441,557,1498` and the actual `WeatherWidgetCell` (content-desc ending "Weather settings") at
+  `69,1610,1011,1920`, clipped at the bottom. The strict description helper found no complete
+  `widget_description`/`widget_preview_container` pair and returned empty, so the loop mistook the
+  clipped expanded provider for a collapsed one, tapped the header again (`expand-2-1.xml` collapsed)
+  and then scrolled past the provider four times. This run corrects only the smoke harness.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `a14c630` (truthful Weather test contract) on `45e92fe` (CI277 record) on `1106312` (compact
-  Weather status legibility) on `dccec32` (exact-id parser fix), from the `1c672fb` null-tag
-  recycling checkpoint and the earlier `f6f0475` caption identity fix. The STATE commit follows
+- head: `638d25d` (state-aware picker reveal) on `6da483a` (CI280 record) on `a14c630` (truthful
+  Weather test contract), from the `1c672fb` null-tag recycling checkpoint. The STATE commit follows
   this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI280 run45311806545 failed in 25m36 after the real Weather placement, before tap/restart/
-  resize.** Clock-after-grid passed again; 290 unit tests and 176 Weather tests were zero-error. The
-  failure was `weather_widget_text_is_truthful` still accepting the pre-`1106312` long detail copy.
-  The actual off tile rendered legibly (`Off`) with `--`, empty as-of and the full off content
-  description on the root. Restart and resize were not reached. There is no CI result yet for
-  `a14c630`, and this is not all-green.
-- next: parent dispatches actual API 37 CI on `a14c630`; only that runtime can prove the corrected
-  helper accepts the real `Off`/`Not connected` tile and unblocks the tap/restart/resize path. Then
-  **repository activation** (wire the real MET repository behind the owner's injected
-  `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle instrumentation**,
-  then the **backup/SAF broader audit**. Release, hosting and merge stay paused. PrivateSpace,
-  settings round-trip, non-Play, large-screen, backup/restore and performance audits stay open. Do
-  not claim a forecast is connected or that the Weather tile has runtime pixel evidence.
+- ci: **CI283 attempt2 failed in 24m16 at the Weather picker before placement.** The provider was
+  already expanded but the Weather cell was clipped, so the strict pair was absent; the old loop
+  re-tapped the header and collapsed it. There is no CI result yet for `638d25d`, and this is not
+  all-green.
+- next: parent dispatches actual API 37 CI on `638d25d`; only that runtime can prove the state-aware
+  reveal reaches the fully visible Weather cell and unblocks Add/bind/tap/restart/resize. Attempt 1 on
+  `6da483a` passed the Weather replacement/tap/restart/measured vertical resize but later failed the
+  SECOND drawer open with a sparse MOVE; do not waive the drawer assertions or change the product
+  gesture without new repeat proof, and do not run a third unchanged retry. Then **repository
+  activation** (wire the real MET repository behind the owner's injected `WeatherLoadWork`, keeping
+  the widget render-only), then **targeted lifecycle instrumentation**, then the **backup/SAF broader
+  audit**. Release, hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play,
+  large-screen, backup/restore and performance audits stay open. Do not claim a forecast is connected
+  or that the Weather tile has runtime pixel evidence.
 
-## done (this run — CI280 truthful Weather test contract, PENDING ACTUAL CI)
+## done (this run — CI283 attempt2 state-aware picker reveal, PENDING ACTUAL CI)
+
+- **Exact CI283 attempt2 finding, not a placement failure:** the runtime ended in 24m16 at the Weather
+  picker before Add/bind. `weather-widget-expand-1-1.xml` contained an expanded DotWel header at
+  `[239,1441][557,1498]` and the real `WeatherWidgetCell` at `[69,1610][1011,1920]` with a content-desc
+  ending "Weather settings", clipped by the viewport bottom. `widget_picker_description_preview_bounds`
+  correctly returned empty because the cell's complete `widget_description`/`widget_preview_container`
+  pair was not exposed. The loop treated the empty pair as "collapsed", tapped the header again, and
+  `expand-2-1.xml` showed the provider collapsed; four scrolls then moved past it.
+- **State-aware decision:** new pure `widget_picker_provider_state` classifies the exact measured
+  header as `collapsed` (no cell content before the next header), `expanded` (any WidgetCell /
+  preview / description / name / content-described child before the next header) or `none`.
+  `widget_picker_weather_decision` is the actual loop decision and returns `select` (unique exact pair
+  fully visible), `expand` (only when collapsed), `reveal` (expanded but clipped/missing pair),
+  `search` (header absent) or `fail`. An expanded provider can never be expanded again, so the same
+  collapse is impossible.
+- **Measured reveal:** `widget_picker_provider_content_bounds` measures the expanded cell group;
+  `widget_picker_weather_scroll_direction` chooses up/down against the measured viewport;
+  `widget_picker_scroll_target_dir` produces the bounded gesture (the existing
+  `widget_picker_scroll_target` is now the downward case and is unchanged). The loop captures fresh
+  XML after every expansion and refuses to continue on a stale hierarchy, and captures PNG after
+  every expansion and reveal scroll for future audit.
+- **Strict gates retained:** selection still requires the exact `DotWel Launcher` provider header with
+  a positive widget count, the unique exact `Weather, opens weather settings` description plus its own
+  clickable preview, full viewport visibility, and the selected cell caption. Duplicates,
+  wrong-provider cells, missing/unknown descriptions and ambiguous cells never select; the bounded
+  scrolls end in `fail`.
+- **Executed fixtures:** the real CI283 clipped-expanded shape is classified `expanded` and decides
+  `reveal` even with expansion budget remaining; after the reveal shape the exact cell decides
+  `select` and exposes its caption; a genuinely collapsed provider decides `expand` and never claims
+  the next provider's preview; duplicate Weather cells and a wrong-provider cell never select and
+  fail closed after the scroll budget.
+- **Preserved:** the CI280 truthful Weather text contract (`a14c630`), the exact-id/provider binding
+  helper (`dccec32`), the null-tag recycling fix (`1c672fb`), the caption identity fix (`f6f0475`)
+  and every layout/binding/preservation/final-off gate. No app source, layout, resource, workflow,
+  manifest, SDK, dependency, applicationId, signing or product gesture changed. Weather network stays
+  OFF and the final consent stays disabled.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **1007 ok, 0 not ok, all passed** (the 980 CI280 baseline
+  plus 27 decision/fixture/static checks); `sh scripts/emulator-smoke-drawer-test.sh` all passed;
+  `sh scripts/nothingui-weather-guard-test.sh` all passed; `sh -n` is clean on all three edited
+  scripts; `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for `638d25d`, no emulator Add/bind/tap/restart/
+  resize and no new pixel evidence. The fixtures prove the helper/static decision, not that the real
+  CI283 picker now reaches the fully visible cell. Attempt 1's later second-drawer sparse MOVE is not
+  waived or explained here.
+
+## done (previous run — CI280 truthful Weather test contract, PENDING ACTUAL CI)
 
 - **Exact CI280 finding, not a placement failure:** run45311806545 ended in 25m36 after the real
   Weather widget was placed and before the tap/restart/resize. The clock passed the post-grid strict
