@@ -3452,7 +3452,7 @@ capture_weather_widget() {
     adb_cmd shell dumpsys appwidget \
         > "$ARTIFACTS/weather-widget-appwidget-before.txt" 2>&1 || true
     _cww_before="$ARTIFACTS/weather-widget-appwidget-before.txt"
-    _cww_prior_ids=$(appwidget_launcher_instances "$_cww_before" "$PKG" id |
+    _cww_prior_ids=$(appwidget_launcher_instances "$_cww_before" "$PKG" |
         awk -F '\t' 'NF >= 2 { print $1 }')
     [ -n "$_cww_prior_ids" ] ||
         fail "the accepted HOME has no launcher-owned widget bindings to preserve"
@@ -3462,7 +3462,7 @@ capture_weather_widget() {
         DotWelClockWidgetProvider \
         DotWelBatteryWidgetProvider \
         DotWelDeviceWidgetProvider; do
-        appwidget_launcher_instances "$_cww_before" "$PKG" id |
+        appwidget_launcher_instances "$_cww_before" "$PKG" |
             grep -Fq "$_cww_prior_class" ||
             fail "the accepted HOME is missing the $_cww_prior_class binding before Weather placement"
     done
@@ -3825,7 +3825,7 @@ capture_weather_widget() {
         DotWelBatteryWidgetProvider \
         DotWelDeviceWidgetProvider; do
         appwidget_launcher_instances \
-            "$ARTIFACTS/weather-widget-appwidget-after.txt" "$PKG" id |
+            "$ARTIFACTS/weather-widget-appwidget-after.txt" "$PKG" |
             grep -Fq "$_cww_prior_class" ||
             fail "the $_cww_prior_class binding disappeared after Weather placement"
     done
@@ -3864,10 +3864,10 @@ capture_weather_widget() {
         fail "WeatherPreferences screenshot capture failed"
     adb_cmd shell dumpsys appwidget \
         > "$ARTIFACTS/weather-widget-tap-appwidget.txt" 2>&1 || true
-    appwidget_launcher_instances \
-        "$ARTIFACTS/weather-widget-tap-appwidget.txt" "$PKG" id |
-        grep -qx "$_cww_new_id" ||
-        fail "the Weather binding disappeared while WeatherPreferences was open"
+    appwidget_launcher_instance_is \
+        "$ARTIFACTS/weather-widget-tap-appwidget.txt" "$PKG" "$_cww_new_id" \
+        "$PKG/$_cww_provider_class" ||
+        fail "the exact Weather binding disappeared while WeatherPreferences was open"
 
     # Return HOME and prove the exact same binding survived a real app switch.
     adb_cmd shell input keyevent KEYCODE_BACK \
@@ -3902,10 +3902,10 @@ capture_weather_widget() {
         fail "the Weather tile lost its truthful off/not-connected copy after the restart"
     adb_cmd shell dumpsys appwidget \
         > "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" 2>&1 || true
-    appwidget_launcher_instances \
-        "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" "$PKG" id |
-        grep -qx "$_cww_new_id" ||
-        fail "the Weather binding AppWidgetId=$_cww_new_id disappeared after the restart"
+    appwidget_launcher_instance_is \
+        "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" "$PKG" \
+        "$_cww_new_id" "$PKG/$_cww_provider_class" ||
+        fail "the exact Weather binding AppWidgetId=$_cww_new_id disappeared after the restart"
     appwidget_preserved_bindings \
         "$_cww_before" \
         "$ARTIFACTS/weather-widget-appwidget-after-restart.txt" "$PKG" ||
@@ -4039,10 +4039,10 @@ capture_weather_widget() {
                 fail "the resized Weather tile lost its truthful copy"
             adb_cmd shell dumpsys appwidget \
                 > "$ARTIFACTS/weather-widget-resize-appwidget.txt" 2>&1 || true
-            appwidget_launcher_instances \
-                "$ARTIFACTS/weather-widget-resize-appwidget.txt" "$PKG" id |
-                grep -qx "$_cww_new_id" ||
-                fail "resizing the Weather widget changed its AppWidgetId"
+            appwidget_launcher_instance_is \
+                "$ARTIFACTS/weather-widget-resize-appwidget.txt" "$PKG" \
+                "$_cww_new_id" "$PKG/$_cww_provider_class" ||
+                fail "resizing the Weather widget changed its AppWidgetId or provider"
             printf 'resize=%s reason=%s before=%s after=%s\n' \
                 "$_cww_resize" "$_cww_resize_reason" \
                 "$_cww_resize_before" "$_cww_drag_bounds" >> "$_cww_log"
@@ -4075,10 +4075,10 @@ capture_weather_widget() {
     appwidget_preserved_bindings \
         "$_cww_before" "$ARTIFACTS/weather-widget-appwidget-final.txt" "$PKG" ||
         fail "a prior launcher-owned widget binding disappeared after the Weather evidence gate"
-    appwidget_launcher_instances \
-        "$ARTIFACTS/weather-widget-appwidget-final.txt" "$PKG" id |
-        grep -qx "$_cww_new_id" ||
-        fail "the Weather binding AppWidgetId=$_cww_new_id disappeared before the final proof"
+    appwidget_launcher_instance_is \
+        "$ARTIFACTS/weather-widget-appwidget-final.txt" "$PKG" \
+        "$_cww_new_id" "$PKG/$_cww_provider_class" ||
+        fail "the exact Weather binding AppWidgetId=$_cww_new_id disappeared before the final proof"
 
     printf 'Weather widget: the real HOME long-press popup opened the native picker; the single DotWel Weather cell described as "%s" was measured and tapped; the real Add and bind-consent Create controls were used with Always allow unchecked; exactly one new launcher-owned %s binding (AppWidgetId=%s) was bound at measured bounds %s with truthful %s copy; tapping the tile opened the exact real WeatherPreferences; the same binding and bounds survived leaving settings and a force-stop/HOME restart; resize=%s (%s). Prior accepted clock/battery/device/third-party bindings were unchanged, no workspace item was reset/moved/deleted, no database/preference was written, no AppWidgetId was bound directly, and the final Weather consent is disabled.\n' \
         "$_cww_description" "$_cww_provider_class" "$_cww_new_id" \
@@ -4690,7 +4690,9 @@ _cwg_read_ids() {
 _cwg_widget_ids() {
     _cwi_file=$1
     adb_cmd shell dumpsys appwidget > "$_cwi_file" 2>&1 || return 1
-    appwidget_launcher_instances "$_cwi_file" "$PKG" id | sort | tr '\n' ' '
+    appwidget_launcher_instances "$_cwi_file" "$PKG" |
+        awk -F '\t' 'NF >= 2 && $1 != "" { print $1 }' |
+        sort | tr '\n' ' '
 }
 
 # Measure a real tappable control inside the settings scroll container. Each

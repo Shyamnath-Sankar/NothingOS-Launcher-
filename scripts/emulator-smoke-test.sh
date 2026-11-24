@@ -2325,6 +2325,63 @@ assert_eq 'a legacy launcher-owned instance keeps its id' \
     "$(printf '9\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider}')" \
     "$(appwidget_launcher_instances "$appwidget_legacy_instances" com.launchernos.dotwellabs.debug)"
 
+# The CI277 failure was the actual API37 row shape: the instance helper kept
+# its `<id><TAB><provider>` contract, so a bare `grep -x <id>` never matched.
+# These fixtures execute that exact shape and prove the column-aware lookup,
+# while the raw helper contract remains unchanged.
+appwidget_weather_instance="$TMP_DIR/appwidget-weather-instance.txt"
+cat > "$appwidget_weather_instance" <<'EOF'
+Widgets:
+  [0] id=10
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+Hosts:
+  [0] hostId=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    widgets.size=1
+EOF
+assert_eq 'the exact id 10 row keeps the id<TAB>provider helper contract' \
+    "$(printf '10\tprovider=ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}')" \
+    "$(appwidget_launcher_instances "$appwidget_weather_instance" com.launchernos.dotwellabs.debug)"
+assert_true 'the exact id 10 launcher-owned Weather component is found by its numeric column' \
+    appwidget_launcher_instance_is "$appwidget_weather_instance" \
+    com.launchernos.dotwellabs.debug 10 \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider
+assert_false 'a different numeric id does not match the id 10 Weather binding' \
+    appwidget_launcher_instance_is "$appwidget_weather_instance" \
+    com.launchernos.dotwellabs.debug 11 \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider
+assert_false 'the id 10 binding does not match a different provider class' \
+    appwidget_launcher_instance_is "$appwidget_weather_instance" \
+    com.launchernos.dotwellabs.debug 10 \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelClockWidgetProvider
+assert_false 'the id 10 Weather component is rejected when another host owns the block' \
+    appwidget_launcher_instance_is "$appwidget_weather_instance" \
+    com.other.launcher 10 \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider
+assert_false 'an expected provider in a foreign package is rejected' \
+    appwidget_launcher_instance_is "$appwidget_weather_instance" \
+    com.launchernos.dotwellabs.debug 10 \
+    com.other.launcher/app.dotwel.widgets.DotWelWeatherWidgetProvider
+
+appwidget_weather_malformed="$TMP_DIR/appwidget-weather-malformed.txt"
+cat > "$appwidget_weather_malformed" <<'EOF'
+Widgets:
+  [0] id=ten
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=ProviderId{cmp:ComponentInfo{com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider}, profile:0}
+  [1] id=10
+    host=HostId{user:0, app:10300, hostId:1030, pkg:com.launchernos.dotwellabs.debug}
+    provider=not-a-component
+EOF
+assert_false 'a non-numeric id is rejected' \
+    appwidget_launcher_instance_is "$appwidget_weather_malformed" \
+    com.launchernos.dotwellabs.debug ten \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider
+assert_false 'a numeric id with a malformed provider is rejected' \
+    appwidget_launcher_instance_is "$appwidget_weather_malformed" \
+    com.launchernos.dotwellabs.debug 10 \
+    com.launchernos.dotwellabs.debug/app.dotwel.widgets.DotWelWeatherWidgetProvider
+
 # --- widget bind consent fixtures ------------------------------------------
 
 widget_bind_consent_xml="$TMP_DIR/widget-bind-consent.xml"
@@ -5075,6 +5132,17 @@ assert_true 'the seeded cache content round-trips exactly' \
 assert_false 'the seed never writes to the outer device-shell path' \
     test -e \
     "$TMP_DIR/weather-probe-seed/device/no_backup/dotwel-weather-private/cache/fixture.weather"
+
+# --- static regression on the weather widget placement gate -----------------
+
+weather_widget_body="$TMP_DIR/capture_weather_widget.sh"
+sed -n '/^capture_weather_widget() {/,/^}/p' "$SMOKE" > "$weather_widget_body"
+[ -s "$weather_widget_body" ] || fail 'the weather widget gate body is present'
+
+assert_true 'the weather widget gate checks the exact numeric id and Weather component' \
+    grep -Fq 'appwidget_launcher_instance_is' "$weather_widget_body"
+assert_false 'the weather widget gate never greps a bare id against the id<TAB>provider rows' \
+    grep -Fq 'grep -qx "$_cww_new_id"' "$weather_widget_body"
 
 # --- static regression on the weather runtime gate --------------------------
 

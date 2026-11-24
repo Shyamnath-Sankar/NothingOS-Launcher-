@@ -3977,6 +3977,41 @@ appwidget_launcher_instances() (
     appwidget_new_providers '' "$dump" "$host" id
 )
 
+# Succeed only when the dump contains a launcher-owned record whose numeric id
+# column is exactly $3 and, when $4 is set, whose provider component is exactly
+# `$4` (`<package>/<class>`). "appwidget_launcher_instances" deliberately keeps
+# its `<id><TAB><provider>` contract, so this helper parses the first column
+# instead of a bare `grep -x` over the whole row. Ownership is still proven by
+# the host block, the id must be numeric, and the provider package and class are
+# compared as a whole component, never a prefix or substring.
+appwidget_launcher_instance_is() (
+    dump=$1
+    host=$2
+    want_id=$3
+    want_component=${4:-}
+    [ -s "$dump" ] || return 1
+    [ -n "$host" ] || return 1
+    case "$want_id" in
+        '' | *[!0-9]*) return 1 ;;
+    esac
+    appwidget_launcher_instances "$dump" "$host" |
+        awk -F '\t' -v want_id="$want_id" -v want_component="$want_component" '
+            function provider_component(provider,    info) {
+                if (provider !~ /^provider=ComponentInfo\{[^}]*\}$/) return ""
+                info = provider
+                sub(/^provider=ComponentInfo\{/, "", info)
+                sub(/\}$/, "", info)
+                return info
+            }
+            NF == 2 && $1 == want_id {
+                if (want_component == "" ||
+                    provider_component($2) == want_component)
+                    found = 1
+            }
+            END { exit found ? 0 : 1 }
+        '
+)
+
 # Print "<numeric AppWidgetId><TAB><provider class>" only when exactly one widget
 # was newly bound between the two dumps, its host and provider package are both
 # the running package, and its provider class is exactly
