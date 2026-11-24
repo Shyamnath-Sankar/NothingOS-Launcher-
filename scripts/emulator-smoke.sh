@@ -5541,10 +5541,13 @@ weather_harness_accept() {
 # even when the package is absent, so absence is a successful command with no
 # exact anchored match. The trailing sentinel proves the remote command ran to
 # completion, so a transport timeout, a remote error, or a truncated stream can
-# never be mistaken for absence. `pm path` corroborates the enumeration: real
-# Android exits 1 with empty stdout for an absent package, which is accepted
-# only together with a successful enumeration that also shows absence. A
-# present package must have a successful, non-empty `pm path`.
+# never be mistaken for absence. The adb transport itself must also exit 0: a
+# complete-looking payload with a nonzero transport exit is still a failed
+# query. `pm path` corroborates the enumeration: real Android exits 1 with empty
+# stdout for an absent package, which is accepted only together with a
+# successful enumeration that also shows absence. A present package must have a
+# successful, non-empty `pm path`. Malformed `package:` lines are corrupt
+# query output, never absence.
 weather_harness_pm_list_state() {
     _whls_file=$1
     _whls_pkg=$2
@@ -5565,6 +5568,12 @@ weather_harness_pm_list_state() {
             next
         }
         /^package:/ {
+            # Strict grammar: a non-empty path, one '=', and a valid dotted
+            # package name. A malformed line is a corrupt query, never absence.
+            if ($0 !~ /^package:[^=]+=[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/) {
+                invalid++
+                next
+            }
             count = split($0, parts, "=")
             if (parts[count] == pkg) matches++
             next
@@ -5593,7 +5602,7 @@ weather_harness_pm_path_state() {
     }
     awk '
         /^[[:space:]]*$/ { next }
-        /^package:.+$/ { installed++; next }
+        /^package:\/.+$/ { installed++; next }
         { invalid++ }
         END {
             if (invalid > 0) {
@@ -5609,8 +5618,16 @@ weather_harness_pm_path_state() {
 
 weather_harness_presence_state() {
     _whpv_enum=$1
-    _whpv_path_status=$2
-    _whpv_path_state=$3
+    _whpv_enum_status=$2
+    _whpv_path_status=$3
+    _whpv_path_state=$4
+    # A complete-looking payload is trusted only when the adb transport also
+    # reported success. A nonzero exit (1, 124, ...) means the stream may be
+    # stale or partial even if it happens to contain a valid list and sentinel.
+    if [ "$_whpv_enum_status" -ne 0 ]; then
+        printf 'query_failure\n'
+        return 0
+    fi
     case "$_whpv_enum" in
         present)
             if [ "$_whpv_path_status" -eq 0 ] && [ "$_whpv_path_state" = "installed" ]; then
@@ -5659,7 +5676,7 @@ weather_harness_package_state() {
     _whq_path_state=$(weather_harness_pm_path_state "$_whq_path")
 
     _whq_state=$(weather_harness_presence_state "$_whq_enum_state" \
-        "$_whq_path_status" "$_whq_path_state")
+        "$_whq_enum_status" "$_whq_path_status" "$_whq_path_state")
 
     {
         printf 'query_label=%s\n' "$_whq_label"
@@ -5673,14 +5690,15 @@ weather_harness_package_state() {
     } >> "$_whq_log"
 
     if [ "$_whq_enum_status" -ne 0 ]; then
-        printf 'query: %s enumeration failed at the adb transport (status %s)\n' \
+        printf 'query: %s enumeration failed at the adb transport (status %s); payload is not trusted\n' \
             "$_whq_label" "$_whq_enum_status" >> "$_whq_log"
     fi
     if [ "$_whq_enum_state" = "query_failure" ]; then
         printf 'query: %s was not a complete successful package enumeration\n' \
             "$_whq_label" >> "$_whq_log"
     fi
-    if [ "$_whq_state" = "query_failure" ]; then
+    if [ "$_whq_state" = "query_failure" ] && [ "$_whq_enum_status" -eq 0 ] &&
+        [ "$_whq_enum_state" != "query_failure" ]; then
         printf 'query: %s pm path did not corroborate the enumeration\n' \
             "$_whq_label" >> "$_whq_log"
     fi

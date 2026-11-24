@@ -6744,6 +6744,12 @@ assert_true 'the cleanup accepts an absent pm path exit 1 only when corroborated
     grep -Fq '"$_whpv_path_status" -eq 1' "$SMOKE"
 assert_true 'the cleanup refuses a failed enumeration as absence' \
     grep -Fq 'not a complete successful package enumeration' "$SMOKE"
+assert_true 'the cleanup passes the enumeration transport status into presence proof' \
+    grep -Fq '"$_whq_enum_status" "$_whq_path_status" "$_whq_path_state"' "$SMOKE"
+assert_true 'the presence proof rejects a nonzero enumeration transport' \
+    grep -Fq '"$_whpv_enum_status" -ne 0' "$SMOKE"
+assert_true 'the cleanup rejects a malformed package line as a corrupt query' \
+    grep -Fq '^package:[^=]+=[A-Za-z]' "$SMOKE"
 assert_true 'the cleanup logs stdout, stderr and status for every query' \
     grep -Fq 'pm_list_transport_status=' "$SMOKE" &&
     grep -Fq 'pm_path_status=' "$SMOKE" &&
@@ -6782,6 +6788,80 @@ else
     fail 'the weather runtime harness runs at the very end, after the visual gates'
 fi
 
+# --- Package-presence parser and transport contract -----------------------
+#
+# The presence proof must not trust a complete-looking payload when the adb
+# transport itself failed. These executed cases also pin the strict
+# `package:/path=name` grammar so a corrupt stream cannot read as absence.
+
+weather_presence_functions="$TMP_DIR/weather-presence-functions.sh"
+{
+    sed -n '/^weather_harness_pm_list_state() {/,/^}/p' "$SMOKE"
+    sed -n '/^weather_harness_pm_path_state() {/,/^}/p' "$SMOKE"
+    sed -n '/^weather_harness_presence_state() {/,/^}/p' "$SMOKE"
+} > "$weather_presence_functions"
+assert_true 'the pure package-presence parser functions are extractable' \
+    test -s "$weather_presence_functions"
+if [ -s "$weather_presence_functions" ]; then
+    # shellcheck source=/dev/null
+    . "$weather_presence_functions"
+fi
+
+if command -v weather_harness_pm_list_state >/dev/null 2>&1; then
+    _presence_pkg=com.launchernos.dotwellabs.debug.test
+    _presence_valid="$TMP_DIR/weather-presence-valid.txt"
+    printf 'package:/data/app/base.apk=%s\nPM_ENUM_RC=0\n' "$_presence_pkg" \
+        > "$_presence_valid"
+    assert_eq 'a complete valid enumeration anchors the exact package' 'present' \
+        "$(weather_harness_pm_list_state "$_presence_valid" "$_presence_pkg")"
+
+    _presence_other="$TMP_DIR/weather-presence-other.txt"
+    printf 'package:/data/app/other.apk=com.example.other\nPM_ENUM_RC=0\n' \
+        > "$_presence_other"
+    assert_eq 'a complete valid enumeration of another package proves absence' 'absent' \
+        "$(weather_harness_pm_list_state "$_presence_other" "$_presence_pkg")"
+
+    _presence_malformed() {
+        _pml_name=$1
+        _pml_line=$2
+        _pml_file="$TMP_DIR/weather-presence-malformed-$_pml_name.txt"
+        printf '%s\nPM_ENUM_RC=0\n' "$_pml_line" > "$_pml_file"
+        assert_eq "a malformed package line ($_pml_name) is a query failure" \
+            'query_failure' \
+            "$(weather_harness_pm_list_state "$_pml_file" "$_presence_pkg")"
+    }
+    _presence_malformed no-equals 'package:/data/app/base.apk'
+    _presence_malformed empty-path 'package:=com.example.other'
+    _presence_malformed empty-name 'package:/data/app/base.apk='
+    _presence_malformed no-dot 'package:/data/app/base.apk=com'
+    _presence_malformed bad-char 'package:/data/app/base.apk=com.example.bad-name'
+
+    _presence_path="$TMP_DIR/weather-presence-path.txt"
+    printf 'package:garbage\n' > "$_presence_path"
+    assert_eq 'a malformed pm path line is not proof of installation' 'query_failure' \
+        "$(weather_harness_pm_path_state "$_presence_path")"
+    printf 'package:/data/app/base.apk\n' > "$_presence_path"
+    assert_eq 'a real non-empty pm path is proof of installation' 'installed' \
+        "$(weather_harness_pm_path_state "$_presence_path")"
+
+    assert_eq 'transport success plus a matching path proves presence' 'present' \
+        "$(weather_harness_presence_state present 0 0 installed)"
+    assert_eq 'a nonzero transport cannot prove presence' 'query_failure' \
+        "$(weather_harness_presence_state present 1 0 installed)"
+    assert_eq 'a nonzero transport cannot prove absence' 'query_failure' \
+        "$(weather_harness_presence_state absent 1 1 empty)"
+    assert_eq 'a timeout transport cannot prove absence' 'query_failure' \
+        "$(weather_harness_presence_state absent 124 1 empty)"
+    assert_eq 'a successful enumeration plus empty pm path proves absence' 'absent' \
+        "$(weather_harness_presence_state absent 0 1 empty)"
+    assert_eq 'a present enumeration without a matching path fails closed' 'query_failure' \
+        "$(weather_harness_presence_state present 0 1 empty)"
+    assert_eq 'an absent enumeration with a timeout path fails closed' 'query_failure' \
+        "$(weather_harness_presence_state absent 0 124 empty)"
+else
+    fail 'the pure package-presence parser functions are missing'
+fi
+
 # --- Executed weather runtime orchestration fixture -----------------------
 #
 # These run the real `run_weather_runtime_harness` function from
@@ -6802,7 +6882,10 @@ weather_runtime_fixture_run() {
     : > "$_wrf_order"
     printf 'fixture test apk\n' > "$_wrf_apk"
     case "$_wrf_scenario" in
-        preinstall-present) : > "$_wrf_installed" ;;
+        preinstall-present | pm-exit1-present | pm-exit124-present | \
+            pm-exit1-after-uninstall | pm-exit124-after-uninstall)
+            : > "$_wrf_installed"
+            ;;
     esac
 
     cat > "$_wrf_dir/root/gradlew" <<'GRADLE_STUB'
@@ -6911,6 +6994,12 @@ case "$2" in
             printf 'package:/fixture/test.apk=%s\n' "$FIXTURE_TEST_PKG"
         fi
         printf 'PM_ENUM_RC=0\n'
+        if [ "${FIXTURE_PM_EXIT_ALWAYS:-0}" = "1" ]; then
+            exit "$FIXTURE_PM_EXIT_STATUS"
+        fi
+        if [ "${FIXTURE_PM_EXIT_WHEN:-}" = "absent" ] && [ ! -f "$FIXTURE_INSTALLED" ]; then
+            exit "$FIXTURE_PM_EXIT_STATUS"
+        fi
         exit 0
         ;;
 esac
@@ -6966,6 +7055,9 @@ ADB_STUB
         FIXTURE_PM_TRUNCATED=0
         FIXTURE_PM_PATH_ERROR=0
         FIXTURE_PM_PATH_TIMEOUT=0
+        FIXTURE_PM_EXIT_STATUS=0
+        FIXTURE_PM_EXIT_ALWAYS=0
+        FIXTURE_PM_EXIT_WHEN=
         case "$_wrf_scenario" in
             build-fail) FIXTURE_BUILD_FAIL=1 ;;
             install-fail) FIXTURE_INSTALL_FAIL=1 ;;
@@ -6980,6 +7072,30 @@ ADB_STUB
             pm-truncated) FIXTURE_PM_TRUNCATED=1 ;;
             pm-path-error) FIXTURE_PM_PATH_ERROR=1 ;;
             pm-path-timeout) FIXTURE_PM_PATH_TIMEOUT=1 ;;
+            pm-exit1-absent)
+                FIXTURE_PM_EXIT_ALWAYS=1
+                FIXTURE_PM_EXIT_STATUS=1
+                ;;
+            pm-exit124-absent)
+                FIXTURE_PM_EXIT_ALWAYS=1
+                FIXTURE_PM_EXIT_STATUS=124
+                ;;
+            pm-exit1-present)
+                FIXTURE_PM_EXIT_ALWAYS=1
+                FIXTURE_PM_EXIT_STATUS=1
+                ;;
+            pm-exit124-present)
+                FIXTURE_PM_EXIT_ALWAYS=1
+                FIXTURE_PM_EXIT_STATUS=124
+                ;;
+            pm-exit1-after-uninstall)
+                FIXTURE_PM_EXIT_WHEN=absent
+                FIXTURE_PM_EXIT_STATUS=1
+                ;;
+            pm-exit124-after-uninstall)
+                FIXTURE_PM_EXIT_WHEN=absent
+                FIXTURE_PM_EXIT_STATUS=124
+                ;;
             aapt-fail) FIXTURE_AAPT_FAIL=1 ;;
             aapt-v1) FIXTURE_AAPT_TOOL=aapt ;;
         esac
@@ -6989,6 +7105,7 @@ ADB_STUB
         export FIXTURE_AAPT_TOOL
         export FIXTURE_PM_QUERY_FAIL FIXTURE_PM_TIMEOUT FIXTURE_PM_ERROR_STDOUT
         export FIXTURE_PM_TRUNCATED FIXTURE_PM_PATH_ERROR FIXTURE_PM_PATH_TIMEOUT
+        export FIXTURE_PM_EXIT_STATUS FIXTURE_PM_EXIT_ALWAYS FIXTURE_PM_EXIT_WHEN
         export PATH="$_wrf_dir/bin:$PATH"
         export FIXTURE_ORDER="$_wrf_order"
         export FIXTURE_INSTALLED="$_wrf_installed"
@@ -7212,6 +7329,102 @@ assert_file_has_lines 'pm path timeout is not accepted as absence' \
     'presence_state=query_failure'
 assert_false 'a pm path timeout never installs the test APK' \
     grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-path-timeout/order.txt"
+
+weather_runtime_fixture_run pm-exit1-absent
+assert_false 'a complete absence payload with a nonzero rc1 transport stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a nonzero rc1 transport overrides a complete absence payload' \
+    "$TMP_DIR/weather-runtime-pm-exit1-absent/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_transport_status=1' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=query_failure'
+assert_false 'a nonzero rc1 absence payload never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit1-absent/order.txt"
+
+weather_runtime_fixture_run pm-exit124-absent
+assert_false 'a complete absence payload with a timeout rc124 transport stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a timeout rc124 transport overrides a complete absence payload' \
+    "$TMP_DIR/weather-runtime-pm-exit124-absent/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_transport_status=124' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=query_failure'
+assert_false 'a timeout rc124 absence payload never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit124-absent/order.txt"
+
+weather_runtime_fixture_run pm-exit1-present
+assert_false 'a complete presence payload with a nonzero rc1 transport stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a nonzero rc1 transport overrides a complete presence payload' \
+    "$TMP_DIR/weather-runtime-pm-exit1-present/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_transport_status=1' \
+    'pm_list_state=present' \
+    'pm_path_status=0' \
+    'pm_path_state=installed' \
+    'presence_state=query_failure'
+assert_false 'a nonzero rc1 presence payload never uninstalls on unproven presence' \
+    grep -Fq 'adb|uninstall ' "$TMP_DIR/weather-runtime-pm-exit1-present/order.txt"
+assert_false 'a nonzero rc1 presence payload never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit1-present/order.txt"
+
+weather_runtime_fixture_run pm-exit124-present
+assert_false 'a complete presence payload with a timeout rc124 transport stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a timeout rc124 transport overrides a complete presence payload' \
+    "$TMP_DIR/weather-runtime-pm-exit124-present/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'pm_list_transport_status=124' \
+    'pm_list_state=present' \
+    'pm_path_status=0' \
+    'pm_path_state=installed' \
+    'presence_state=query_failure'
+assert_false 'a timeout rc124 presence payload never uninstalls on unproven presence' \
+    grep -Fq 'adb|uninstall ' "$TMP_DIR/weather-runtime-pm-exit124-present/order.txt"
+assert_false 'a timeout rc124 presence payload never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit124-present/order.txt"
+
+weather_runtime_fixture_run pm-exit1-after-uninstall
+assert_false 'a nonzero rc1 transport after uninstall stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a nonzero rc1 absence after uninstall is not cleanup success' \
+    "$TMP_DIR/weather-runtime-pm-exit1-after-uninstall/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'query_label=preinstall-after' \
+    'pm_list_transport_status=1' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=query_failure' \
+    'result=after_query_failure phase=preinstall'
+assert_false 'a nonzero rc1 after-uninstall query never claims absent-after-uninstall' \
+    grep -Fq 'result=absent_after_uninstall phase=preinstall' \
+    "$TMP_DIR/weather-runtime-pm-exit1-after-uninstall/artifacts/weather-harness-cleanup-preinstall.txt"
+assert_true 'the rc1 after-uninstall fixture did uninstall the package' \
+    grep -Fq 'adb|uninstall ' "$TMP_DIR/weather-runtime-pm-exit1-after-uninstall/order.txt"
+assert_false 'a nonzero rc1 after-uninstall query never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit1-after-uninstall/order.txt"
+
+weather_runtime_fixture_run pm-exit124-after-uninstall
+assert_false 'a timeout rc124 transport after uninstall stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_file_has_lines 'a timeout rc124 absence after uninstall is not cleanup success' \
+    "$TMP_DIR/weather-runtime-pm-exit124-after-uninstall/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'query_label=preinstall-after' \
+    'pm_list_transport_status=124' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=query_failure' \
+    'result=after_query_failure phase=preinstall'
+assert_false 'a timeout rc124 after-uninstall query never claims absent-after-uninstall' \
+    grep -Fq 'result=absent_after_uninstall phase=preinstall' \
+    "$TMP_DIR/weather-runtime-pm-exit124-after-uninstall/artifacts/weather-harness-cleanup-preinstall.txt"
+assert_true 'the rc124 after-uninstall fixture did uninstall the package' \
+    grep -Fq 'adb|uninstall ' "$TMP_DIR/weather-runtime-pm-exit124-after-uninstall/order.txt"
+assert_false 'a timeout rc124 after-uninstall query never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-pm-exit124-after-uninstall/order.txt"
 
 weather_runtime_fixture_run aapt-v1
 assert_eq 'the executed harness orchestration succeeds with legacy aapt' '0' \
