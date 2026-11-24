@@ -5462,7 +5462,7 @@ fail() {
 # source them without a device or Gradle.
 
 WEATHER_HARNESS_TEST_PKG="$PKG.test"
-WEATHER_HARNESS_RUNNER="app/nothingui/weather/harness/WeatherRuntimeInstrumentation"
+WEATHER_HARNESS_RUNNER="app.nothingui.weather.harness.WeatherRuntimeInstrumentation"
 WEATHER_HARNESS_COMPONENT="$WEATHER_HARNESS_TEST_PKG/$WEATHER_HARNESS_RUNNER"
 
 weather_harness_cases() {
@@ -5536,8 +5536,60 @@ weather_harness_accept() {
 }
 
 weather_harness_cleanup() {
-    if command -v adb >/dev/null 2>&1 && [ -n "${SERIAL:-}" ]; then
-        ADB_TIMEOUT=60 adb_cmd uninstall "$WEATHER_HARNESS_TEST_PKG" >/dev/null 2>&1 || true
+    _whc_log="$ARTIFACTS/weather-harness-cleanup.txt"
+    _whc_pm_before="$ARTIFACTS/weather-harness-cleanup-pm-path-before.txt"
+    _whc_pm_after="$ARTIFACTS/weather-harness-cleanup-pm-path.txt"
+    : > "$_whc_log" || return 1
+    if ! command -v adb >/dev/null 2>&1; then
+        printf 'cleanup: adb is not on PATH\n' >> "$_whc_log"
+        return 1
+    fi
+    if [ -z "${SERIAL:-}" ]; then
+        printf 'cleanup: no adb serial selected\n' >> "$_whc_log"
+        return 1
+    fi
+
+    _whc_before_status=0
+    ADB_TIMEOUT=30 adb_cmd shell pm path "$WEATHER_HARNESS_TEST_PKG" \
+        > "$_whc_pm_before" 2>>"$_whc_log" || _whc_before_status=$?
+    _whc_before=$(tr -d '\r' < "$_whc_pm_before")
+    printf 'package_before_status=%s\n' "$_whc_before_status" >> "$_whc_log"
+    printf 'package_before=%s\n' "$_whc_before" >> "$_whc_log"
+    if [ "$_whc_before_status" -ne 0 ]; then
+        printf 'cleanup: could not query %s before cleanup\n' \
+            "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
+        return 1
+    fi
+    if [ -z "$_whc_before" ]; then
+        printf 'cleanup: %s is already absent\n' "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
+        : > "$_whc_pm_after"
+        return 0
+    fi
+
+    _whc_uninstall=0
+    ADB_TIMEOUT=60 adb_cmd uninstall "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log" 2>&1 ||
+        _whc_uninstall=$?
+    _whc_after_status=0
+    ADB_TIMEOUT=30 adb_cmd shell pm path "$WEATHER_HARNESS_TEST_PKG" \
+        > "$_whc_pm_after" 2>>"$_whc_log" || _whc_after_status=$?
+    _whc_after=$(tr -d '\r' < "$_whc_pm_after")
+    printf 'uninstall_exit=%s\n' "$_whc_uninstall" >> "$_whc_log"
+    printf 'package_after_status=%s\n' "$_whc_after_status" >> "$_whc_log"
+    printf 'package_after=%s\n' "$_whc_after" >> "$_whc_log"
+
+    if [ "$_whc_uninstall" -ne 0 ]; then
+        printf 'cleanup: uninstall exited %s\n' "$_whc_uninstall" >> "$_whc_log"
+        return 1
+    fi
+    if [ "$_whc_after_status" -ne 0 ]; then
+        printf 'cleanup: could not verify %s after cleanup\n' \
+            "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
+        return 1
+    fi
+    if [ -n "$_whc_after" ]; then
+        printf 'cleanup: %s is still installed after uninstall\n' \
+            "$WEATHER_HARNESS_TEST_PKG" >> "$_whc_log"
+        return 1
     fi
     return 0
 }
@@ -5552,7 +5604,8 @@ run_weather_runtime_harness() {
     weather_harness_cases > "$_wrh_cases"
 
     printf 'weather-harness: building the test APK\n'
-    if ! ( cd "$ROOT" && ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace ) \
+    if ! ( cd "$ROOT" &&
+        run_with_timeout 900 ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace ) \
         > "$_wrh_gradle" 2>&1; then
         fail "could not build the weather runtime test APK; see $_wrh_gradle"
     fi
@@ -5566,22 +5619,34 @@ run_weather_runtime_harness() {
         fail "expected exactly one weather runtime test APK, found $_wrh_apk_count"
     fi
     _wrh_apk=$(printf '%s\n' "$_wrh_apks" | sed -n '1p')
+    [ -s "$_wrh_apk" ] || fail "the weather runtime test APK is empty: $_wrh_apk"
 
     if command -v sha256sum >/dev/null 2>&1; then
         _wrh_sha=$(sha256sum "$_wrh_apk" | awk '{print $1}')
     else
         _wrh_sha=$(shasum -a 256 "$_wrh_apk" | awk '{print $1}')
     fi
+    case "$_wrh_sha" in
+        '' | *[!0-9a-fA-F]*) fail "could not hash the weather runtime test APK" ;;
+    esac
+    [ "${#_wrh_sha}" -eq 64 ] || fail "the weather runtime test APK hash is not SHA-256"
+
+    _wrh_aapt_badging=0
+    _wrh_aapt_manifest=0
     {
         printf 'test_apk=%s\n' "$_wrh_apk"
         printf 'test_package=%s\n' "$WEATHER_HARNESS_TEST_PKG"
         printf 'runner=%s\n' "$WEATHER_HARNESS_COMPONENT"
         printf 'sha256=%s\n' "$_wrh_sha"
-        "$AAPT" dump badging "$_wrh_apk" 2>&1 || true
-        "$AAPT" dump xmltree "$_wrh_apk" AndroidManifest.xml 2>&1 || true
+        "$AAPT" dump badging "$_wrh_apk" 2>&1 || _wrh_aapt_badging=$?
+        "$AAPT" dump xmltree "$_wrh_apk" AndroidManifest.xml 2>&1 || _wrh_aapt_manifest=$?
     } > "$_wrh_evidence" 2>&1
+    if [ "$_wrh_aapt_badging" -ne 0 ] || [ "$_wrh_aapt_manifest" -ne 0 ]; then
+        fail "could not read the weather runtime test APK manifest; see $_wrh_evidence"
+    fi
 
-    weather_harness_cleanup
+    weather_harness_cleanup ||
+        fail "could not remove an existing weather runtime test APK before install; see $ARTIFACTS/weather-harness-cleanup.txt"
     if ! ADB_TIMEOUT=180 adb_cmd install -t -r "$_wrh_apk" \
         > "$ARTIFACTS/weather-harness-install.txt" 2>&1; then
         fail "could not install the weather runtime test APK"
@@ -5592,11 +5657,21 @@ run_weather_runtime_harness() {
         > "$_wrh_output" 2>&1 || _wrh_exit=$?
 
     weather_harness_summary "$_wrh_output" > "$_wrh_summary" 2>/dev/null || true
-    weather_harness_cleanup
+    _wrh_accept=0
+    weather_harness_accept "$_wrh_exit" "$_wrh_output" "$_wrh_cases" || _wrh_accept=$?
+    _wrh_cleanup=0
+    weather_harness_cleanup || _wrh_cleanup=$?
 
-    if weather_harness_accept "$_wrh_exit" "$_wrh_output" "$_wrh_cases"; then
+    if [ "$_wrh_accept" -eq 0 ]; then
+        if [ "$_wrh_cleanup" -ne 0 ]; then
+            fail "could not remove the weather runtime test APK after the run; see $ARTIFACTS/weather-harness-cleanup.txt"
+        fi
         printf 'weather-harness: PASS; summary: %s\n' "$_wrh_summary"
         return 0
+    fi
+    if [ "$_wrh_cleanup" -ne 0 ]; then
+        printf 'weather-harness: cleanup also failed after the run; see %s\n' \
+            "$ARTIFACTS/weather-harness-cleanup.txt" >&2
     fi
     fail "the weather runtime harness failed; see $_wrh_output"
 }
@@ -5633,7 +5708,14 @@ _SMOKE_EVIDENCE_CAPTURED=0
 
 smoke_exit_trap() {
     _trap_status=$?
-    weather_harness_cleanup || true
+    _trap_cleanup_status=0
+    weather_harness_cleanup || _trap_cleanup_status=$?
+    if [ "$_trap_cleanup_status" -ne 0 ]; then
+        printf 'emulator-smoke: cleanup could not remove %s; see %s\n' \
+            "$WEATHER_HARNESS_TEST_PKG" "$ARTIFACTS/weather-harness-cleanup.txt" >&2
+        printf 'emulator-smoke: preserving original exit status %s after the cleanup failure\n' \
+            "$_trap_status" >&2
+    fi
     if [ "$_trap_status" -ne 0 ] && [ "$_SMOKE_EVIDENCE_CAPTURED" -eq 0 ]; then
         if command -v adb >/dev/null 2>&1; then
             capture_logcat

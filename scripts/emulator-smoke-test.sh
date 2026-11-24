@@ -6691,6 +6691,33 @@ assert_true 'the harness parses the bounded runner result' \
     grep -Fq 'weather_harness_accept' "$weather_runtime_harness_body"
 assert_true 'the harness uninstalls the test APK after the run' \
     grep -Fq 'weather_harness_cleanup' "$weather_runtime_harness_body"
+assert_true 'the runner constant is the dotted platform component class' \
+    grep -Fq 'WEATHER_HARNESS_RUNNER="app.nothingui.weather.harness.WeatherRuntimeInstrumentation"' \
+    "$SMOKE"
+assert_false 'the runner constant is never a slash-separated class' \
+    grep -Fq 'WEATHER_HARNESS_RUNNER="app/nothingui' "$SMOKE"
+assert_true 'the Gradle test-APK build is bounded to 15 minutes' \
+    grep -Fq 'run_with_timeout 900 ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest' \
+    "$weather_runtime_harness_body"
+assert_true 'the cleanup retains its uninstall log' \
+    grep -Fq 'weather-harness-cleanup.txt' "$weather_runtime_harness_body"
+assert_true 'the cleanup verifies the test package is absent' \
+    grep -Fq 'shell pm path "$WEATHER_HARNESS_TEST_PKG"' "$SMOKE"
+assert_true 'the trap records a cleanup failure without replacing its status' \
+    grep -Fq 'preserving original exit status' "$SMOKE"
+
+assert_true 'the Kotlin harness imports the async extension' \
+    grep -Fq 'import kotlinx.coroutines.async' "$WEATHER_HARNESS_KT"
+assert_true 'the Kotlin harness calls async on the coroutineScope receiver' \
+    grep -Fq 'val deferred = async(Dispatchers.IO)' "$WEATHER_HARNESS_KT"
+assert_false 'the Kotlin harness never calls the extension as a static function' \
+    grep -Fq 'kotlinx.coroutines.async(Dispatchers.IO)' "$WEATHER_HARNESS_KT"
+assert_true 'the Kotlin runner uses the instrumentation test-APK context' \
+    grep -Fq 'WeatherRuntimeHarness.run(harnessContext)' "$WEATHER_RUNNER_KT"
+assert_false 'the Kotlin runner never falls back to the target context' \
+    grep -Fq 'targetContext ?: context' "$WEATHER_RUNNER_KT"
+assert_true 'the Kotlin runner fails closed unless it is the isolated test package' \
+    grep -Fq '.packageName}.test' "$WEATHER_RUNNER_KT"
 
 assert_true 'the app APK discovery excludes the androidTest output tree' \
     grep -Fq "grep -v '/androidTest/'" "$SMOKE"
@@ -6706,6 +6733,248 @@ if [ -n "$wallpaper_line" ] && [ -n "$harness_call_line" ] && [ -n "$ok_line" ] 
 else
     fail 'the weather runtime harness runs at the very end, after the visual gates'
 fi
+
+# --- Executed weather runtime orchestration fixture -----------------------
+#
+# These run the real `run_weather_runtime_harness` function from
+# emulator-smoke.sh, with stub Gradle/AAPT/adb processes and a temp APK. They
+# assert the actual build arguments, install/instrument/cleanup order, the
+# retained hash/manifest evidence, and that each failure mode stays red.
+
+weather_runtime_fixture_run() {
+    _wrf_scenario=$1
+    _wrf_dir="$TMP_DIR/weather-runtime-$_wrf_scenario"
+    rm -rf "$_wrf_dir"
+    mkdir -p "$_wrf_dir/bin" \
+        "$_wrf_dir/root/build/outputs/apk/androidTest/debug" \
+        "$_wrf_dir/artifacts"
+    _wrf_order="$_wrf_dir/order.txt"
+    _wrf_installed="$_wrf_dir/installed"
+    _wrf_apk="$_wrf_dir/root/build/outputs/apk/androidTest/debug/fixture-androidTest.apk"
+    : > "$_wrf_order"
+    printf 'fixture test apk\n' > "$_wrf_apk"
+
+    cat > "$_wrf_dir/root/gradlew" <<'GRADLE_STUB'
+#!/bin/sh
+printf 'gradle|%s\n' "$*" >> "$FIXTURE_ORDER"
+if [ "${FIXTURE_BUILD_FAIL:-0}" = "1" ]; then
+    exit 1
+fi
+exit 0
+GRADLE_STUB
+
+    cat > "$_wrf_dir/bin/aapt2" <<'AAPT_STUB'
+#!/bin/sh
+printf 'aapt|%s\n' "$*" >> "$FIXTURE_ORDER"
+if [ "${FIXTURE_AAPT_FAIL:-0}" = "1" ]; then
+    exit 1
+fi
+if [ "$2" = "badging" ]; then
+    printf "package: name='%s'\n" "$FIXTURE_TEST_PKG"
+fi
+exit 0
+AAPT_STUB
+
+    cat > "$_wrf_dir/bin/adb" <<'ADB_STUB'
+#!/bin/sh
+if [ "$1" = "install" ]; then
+    if [ "${FIXTURE_INSTALL_FAIL:-0}" = "1" ]; then
+        exit 1
+    fi
+    : > "$FIXTURE_INSTALLED"
+    printf 'Success\n'
+    exit 0
+fi
+if [ "$1" = "uninstall" ]; then
+    if [ "${FIXTURE_UNINSTALL_FAIL:-0}" = "1" ]; then
+        exit 1
+    fi
+    rm -f "$FIXTURE_INSTALLED"
+    printf 'Success\n'
+    exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "pm" ] && [ "$3" = "path" ]; then
+    if [ -f "$FIXTURE_INSTALLED" ]; then
+        printf 'package:/fixture/test.apk\n'
+    fi
+    exit 0
+fi
+if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "instrument" ]; then
+    if [ "${FIXTURE_TIMEOUT:-0}" = "1" ]; then
+        exit 124
+    fi
+    if [ "${FIXTURE_CRASH:-0}" = "1" ]; then
+        printf 'INSTRUMENTATION_FAILED: app.nothingui.weather.harness.WeatherRuntimeInstrumentation\n'
+        exit 0
+    fi
+    printf 'INSTRUMENTATION_RESULT: harness_version=1\n'
+    printf 'INSTRUMENTATION_RESULT: status=PASS\n'
+    printf 'INSTRUMENTATION_RESULT: cases_total=6\n'
+    printf 'INSTRUMENTATION_RESULT: cases_passed=6\n'
+    printf 'INSTRUMENTATION_RESULT: cases_failed=0\n'
+    printf 'INSTRUMENTATION_RESULT: cases_skipped=0\n'
+    for _adb_case in \
+        okhttp-request-shape \
+        okhttp-parse-cache-expires \
+        okhttp-conditional-304 \
+        throttle-persistence-across-restart \
+        cancel-late-response-dropped \
+        owner-lifecycle-seam; do
+        if [ "${FIXTURE_MISSING_CASE:-}" = "$_adb_case" ]; then
+            continue
+        fi
+        printf 'INSTRUMENTATION_RESULT: caseResult.%s=PASS\n' "$_adb_case"
+    done
+    printf 'INSTRUMENTATION_CODE: -1\n'
+    exit 0
+fi
+exit 0
+ADB_STUB
+    chmod +x "$_wrf_dir/root/gradlew" "$_wrf_dir/bin/aapt2" "$_wrf_dir/bin/adb"
+
+    _weather_runtime_fixture_exit=0
+    (
+        set -eu
+        FIXTURE_BUILD_FAIL=0
+        FIXTURE_INSTALL_FAIL=0
+        FIXTURE_TIMEOUT=0
+        FIXTURE_CRASH=0
+        FIXTURE_UNINSTALL_FAIL=0
+        FIXTURE_AAPT_FAIL=0
+        FIXTURE_MISSING_CASE=
+        case "$_wrf_scenario" in
+            build-fail) FIXTURE_BUILD_FAIL=1 ;;
+            install-fail) FIXTURE_INSTALL_FAIL=1 ;;
+            timeout) FIXTURE_TIMEOUT=1 ;;
+            crash) FIXTURE_CRASH=1 ;;
+            missing-case) FIXTURE_MISSING_CASE=cancel-late-response-dropped ;;
+            uninstall-fail) FIXTURE_UNINSTALL_FAIL=1 ;;
+            aapt-fail) FIXTURE_AAPT_FAIL=1 ;;
+        esac
+        export FIXTURE_BUILD_FAIL FIXTURE_INSTALL_FAIL FIXTURE_TIMEOUT FIXTURE_CRASH
+        export FIXTURE_UNINSTALL_FAIL FIXTURE_AAPT_FAIL FIXTURE_MISSING_CASE
+        export PATH="$_wrf_dir/bin:$PATH"
+        export FIXTURE_ORDER="$_wrf_order"
+        export FIXTURE_INSTALLED="$_wrf_installed"
+        export FIXTURE_TEST_PKG="com.launchernos.dotwellabs.debug.test"
+        export ARTIFACTS="$_wrf_dir/artifacts"
+        export _EMULATOR_SMOKE_SOURCE_ONLY=1
+        export _EMULATOR_SMOKE_SCRIPT_DIR="$SCRIPT_DIR"
+        set --
+        . "$SMOKE" >/dev/null 2>&1
+        ROOT="$_wrf_dir/root"
+        SERIAL="fixture-serial"
+        AAPT="$_wrf_dir/bin/aapt2"
+        adb_cmd() {
+            printf 'adb|%s\n' "$*" >> "$FIXTURE_ORDER"
+            "$_wrf_dir/bin/adb" "$@"
+        }
+        fail() {
+            printf 'fail|%s\n' "$*" >> "$FIXTURE_ORDER"
+            exit 1
+        }
+        run_weather_runtime_harness
+    ) || _weather_runtime_fixture_exit=$?
+}
+
+weather_runtime_fixture_run success
+assert_eq 'the executed harness orchestration succeeds against stub tools' '0' \
+    "$_weather_runtime_fixture_exit"
+_wrf_success_order="$TMP_DIR/weather-runtime-success/order.txt"
+_wrf_success_apk="$TMP_DIR/weather-runtime-success/root/build/outputs/apk/androidTest/debug/fixture-androidTest.apk"
+_wrf_success_evidence="$TMP_DIR/weather-runtime-success/artifacts/weather-harness-test-apk.txt"
+assert_true 'the fixture built the exact AndroidTest task with Gradle' \
+    grep -Fq 'gradle|assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace' \
+    "$_wrf_success_order"
+assert_true 'the fixture installed the discovered temp APK with the test flag' \
+    grep -Fxq "adb|install -t -r $_wrf_success_apk" "$_wrf_success_order"
+assert_true 'the fixture used the dotted package/class instrumentation component' \
+    grep -Fxq 'adb|shell am instrument -w -r com.launchernos.dotwellabs.debug.test/app.nothingui.weather.harness.WeatherRuntimeInstrumentation' \
+    "$_wrf_success_order"
+assert_false 'the executed orchestration never uses a slash-separated class' \
+    grep -Fq 'app/nothingui/' "$_wrf_success_order"
+assert_true 'the fixture uninstalled the exact test package' \
+    grep -Fxq 'adb|uninstall com.launchernos.dotwellabs.debug.test' \
+    "$_wrf_success_order"
+_wrf_gradle_line=$(grep -n '^gradle|' "$_wrf_success_order" | sed -n '1s/:.*//p')
+_wrf_install_line=$(grep -n '^adb|install ' "$_wrf_success_order" | sed -n '1s/:.*//p')
+_wrf_instrument_line=$(grep -n '^adb|shell am instrument ' "$_wrf_success_order" | sed -n '1s/:.*//p')
+_wrf_uninstall_line=$(grep -n '^adb|uninstall ' "$_wrf_success_order" | sed -n '1s/:.*//p')
+_wrf_first_pm_line=$(grep -n '^adb|shell pm path ' "$_wrf_success_order" | sed -n '1s/:.*//p')
+_wrf_last_pm_line=$(grep -n '^adb|shell pm path ' "$_wrf_success_order" | tail -n 1 | sed -n '1s/:.*//p')
+if [ -n "$_wrf_gradle_line" ] && [ -n "$_wrf_install_line" ] &&
+    [ -n "$_wrf_instrument_line" ] && [ -n "$_wrf_uninstall_line" ] &&
+    [ -n "$_wrf_first_pm_line" ] && [ -n "$_wrf_last_pm_line" ] &&
+    [ "$_wrf_gradle_line" -lt "$_wrf_first_pm_line" ] &&
+    [ "$_wrf_first_pm_line" -lt "$_wrf_install_line" ] &&
+    [ "$_wrf_install_line" -lt "$_wrf_instrument_line" ] &&
+    [ "$_wrf_instrument_line" -lt "$_wrf_uninstall_line" ] &&
+    [ "$_wrf_uninstall_line" -lt "$_wrf_last_pm_line" ]; then
+    pass 'the executed orchestration orders build, pre-clean, install, run, uninstall, post-check'
+else
+    fail 'the executed orchestration orders build, pre-clean, install, run, uninstall, post-check'
+fi
+assert_true 'the retained evidence records the exact test package' \
+    grep -Fxq 'test_package=com.launchernos.dotwellabs.debug.test' "$_wrf_success_evidence"
+assert_true 'the retained evidence records the dotted runner component' \
+    grep -Fxq 'runner=com.launchernos.dotwellabs.debug.test/app.nothingui.weather.harness.WeatherRuntimeInstrumentation' \
+    "$_wrf_success_evidence"
+_wrf_expected_sha=$(sha256sum "$_wrf_success_apk" | awk '{print $1}')
+assert_true 'the retained evidence records the real SHA-256 of the test APK' \
+    grep -Fxq "sha256=$_wrf_expected_sha" "$_wrf_success_evidence"
+assert_true 'the retained evidence includes the AAPT badging dump' \
+    grep -Fq 'aapt|dump badging ' "$_wrf_success_order"
+assert_true 'the retained evidence includes the AAPT manifest dump' \
+    grep -Fq 'aapt|dump xmltree ' "$_wrf_success_order"
+assert_true 'the normal run verifies the package is absent after cleanup' \
+    grep -Fxq 'package_after=' \
+    "$TMP_DIR/weather-runtime-success/artifacts/weather-harness-cleanup.txt"
+assert_false 'the normal run leaves no test package installed' \
+    test -f "$TMP_DIR/weather-runtime-success/installed"
+
+weather_runtime_fixture_run build-fail
+assert_false 'a failed Gradle test-APK build stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_false 'a failed build never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-build-fail/order.txt"
+
+weather_runtime_fixture_run install-fail
+assert_false 'a failed test-APK install stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_false 'a failed install never runs instrumentation' \
+    grep -Fq 'adb|shell am instrument ' "$TMP_DIR/weather-runtime-install-fail/order.txt"
+
+weather_runtime_fixture_run timeout
+assert_false 'a timed-out instrumentation run stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_true 'the timeout fixture still ran the exact instrumentation component' \
+    grep -Fq 'adb|shell am instrument -w -r com.launchernos.dotwellabs.debug.test/app.nothingui.weather.harness.WeatherRuntimeInstrumentation' \
+    "$TMP_DIR/weather-runtime-timeout/order.txt"
+
+weather_runtime_fixture_run crash
+assert_false 'an instrumentation crash marker stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+
+weather_runtime_fixture_run missing-case
+assert_false 'a missing named harness case stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+
+weather_runtime_fixture_run uninstall-fail
+assert_false 'an uninstall that leaves the test package installed stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_true 'the uninstall failure fixture still leaves the package installed' \
+    test -f "$TMP_DIR/weather-runtime-uninstall-fail/installed"
+assert_true 'the uninstall failure is recorded as evidence' \
+    grep -Fq 'uninstall_exit=1' \
+    "$TMP_DIR/weather-runtime-uninstall-fail/artifacts/weather-harness-cleanup.txt"
+
+weather_runtime_fixture_run aapt-fail
+assert_false 'an unreadable test-APK manifest stays red' \
+    test "$_weather_runtime_fixture_exit" -eq 0
+assert_true 'the failed manifest dump is still retained as evidence' \
+    test -s "$TMP_DIR/weather-runtime-aapt-fail/artifacts/weather-harness-test-apk.txt"
+assert_false 'a failed manifest dump never installs the test APK' \
+    grep -Fq 'adb|install ' "$TMP_DIR/weather-runtime-aapt-fail/order.txt"
 
 if [ "$failures" -ne 0 ]; then
     printf '%d test(s) failed\n' "$failures" >&2

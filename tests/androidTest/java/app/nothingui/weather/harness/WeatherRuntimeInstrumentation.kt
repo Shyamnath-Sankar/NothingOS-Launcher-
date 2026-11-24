@@ -39,7 +39,21 @@ class WeatherRuntimeInstrumentation : Instrumentation() {
     override fun onStart() {
         val results = Bundle()
         try {
-            val report = WeatherRuntimeHarness.run(targetContext ?: context)
+            val harnessContext = context
+            val target = targetContext
+            if (target == null || harnessContext == null ||
+                harnessContext.packageName != "${target.packageName}.test"
+            ) {
+                results.putString("status", STATUS_FAIL)
+                results.putString(
+                    REPORT_KEY_STREAMRESULT,
+                    "the weather runtime harness did not run in the isolated test package: " +
+                        "harness=${harnessContext?.packageName} target=${target?.packageName}",
+                )
+                finish(Activity.RESULT_CANCELED, results)
+                return
+            }
+            val report = WeatherRuntimeHarness.run(harnessContext)
             val cases = report.cases
             results.putInt("harness_version", WeatherRuntimeHarness.VERSION)
             results.putString("status", if (report.passed) STATUS_PASS else STATUS_FAIL)

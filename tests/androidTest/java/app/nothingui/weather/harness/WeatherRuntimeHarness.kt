@@ -56,6 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
@@ -497,7 +498,7 @@ object WeatherRuntimeHarness {
             clock = FakeClock(fixedNow),
         )
         coroutineScope {
-            val deferred = kotlinx.coroutines.async(Dispatchers.IO) { lateWork.load(session) }
+            val deferred = async(Dispatchers.IO) { lateWork.load(session) }
             try {
                 HarnessAssert.check(gate.awaitStarted(5_000), "the gated transport never started")
                 provider.session = session.copy(generation = session.generation + 1)

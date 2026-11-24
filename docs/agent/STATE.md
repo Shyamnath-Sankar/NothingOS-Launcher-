@@ -3,33 +3,77 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — HARNESS-ONLY Weather screen artifact-path fix,
-  PENDING ACTUAL CI.** The CI302 attempt2 Weather settings proof (consent, invalid/draft, enable,
-  restart, disable, cache clear) passed with the private state finally disabled, and the native
-  Weather binding/tap reached the exact Preferences screen. `capture_weather_widget` then copied a
-  reconstructed `weather-widget-tap-screen-notice.*` path while the helper (given tag
-  `weather-widget-tap`) retained `weather-weather-widget-tap-screen-notice.*`; the missing-source
-  `cp` failed under `set -e`. No app source, resource, layout, manifest, workflow, dependency, SDK,
-  applicationId or build change was made.
+- current_phase: **home-widget-composition-v1-new — narrow Weather runtime-harness correction on
+  `461822c`, PENDING ACTUAL CI (state 116, not native proof).** This run fixed the test-APK-only
+  harness/orchestrator, not the app: the runner component is now dotted; the Kotlin `async` call is a
+  real `CoroutineScope` extension with its import; the instrumentation uses its own test-APK context
+  and fails closed unless it is `target.packageName + ".test"`; cleanup captures its uninstall/pm
+  evidence, verifies the test package is absent, and still preserves an original trap status; the
+  assemble step is bounded at 900s. No app source, resource, layout, manifest, workflow, dependency,
+  SDK, applicationId, network/debug switch or build type was changed.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `fe76343` (returned Weather screen artifact fixture/fix); this STATE update follows.
+- head: **this run's fix commit** (parent `461822c`); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Parent facts, not rerun here:** CI30245346657551 attempt2 ended at 21m49 after the real
-  Weather settings flow and native placement tap succeeded; artifact `14899669684` contains the
-  double-prefixed success proof. CI300's failure was a stale Viewport record, not an app
-  regression. CI302 attempt1's SystemUI ANR was environmental, not an app regression; attempt2
-  reached the real Weather settings and native Weather tap before the harness copy bug. No actual
-  CI exists for `fe76343`.
-- next: parent dispatches actual CI on `fe76343`. The widget-tap caller now copies the helper's
-  returned `_weather_screen_notice_xml`/`_weather_screen_notice_activities`, so the same-screen
-  immediate artifacts match what the helper actually wrote. The executed fixture runs the real
-  orchestrator helper and caller block, so a future missing-source `cp` fails locally. Release,
-  hosting, merge, signing and any new build type stay paused.
-- blockers: no actual CI, APK or emulator run here by instruction. The network stays debug OFF and
-  the release wire is still unproven. The new path contract is proven by an executed pure shell
-  fixture, not by a device.
+- ci: **Parent fact, not rerun here:** the last actual green was CI305 with **301 units and 187
+  Weather tests**, 0 errors. There is **no actual CI, APK or emulator run for state 116**, so no
+  native proof is claimed. The previously recorded CI302 attempt2 failure was a harness artifact-path
+  bug, not a Weather app regression.
+- next: parent dispatches actual CI on this correction commit. The executed fixture runs the real
+  `run_weather_runtime_harness` with stub Gradle/AAPT/adb and asserts the exact build args, dotted
+  `pkg/dottedclass` component, install/count/hash/report/cleanup order, and red build/install/
+  timeout/crash/missing-case/uninstall-fail/aapt-fail paths. Release, hosting, merge, signing and any
+  new build type stay paused.
+- blockers: no actual CI, APK or emulator run here by instruction. The coroutine/compile check is a
+  non-Android `kotlinc` build against minimal stubs, not a Gradle/Android build; the release wire and
+  native device behavior remain unproven.
 
-## done (this run — Weather widget-tap artifact-path fix, scripts-only, PENDING ACTUAL CI)
+## done (this run — runtime-harness correction on `461822c`, harness-only, PENDING ACTUAL CI)
+
+- **Runner component corrected:** `WEATHER_HARNESS_RUNNER` changed from the invalid
+  `app/nothingui/weather/harness/WeatherRuntimeInstrumentation` to the dotted
+  `app.nothingui.weather.harness.WeatherRuntimeInstrumentation`, so `am instrument` receives the
+  valid `pkg/dottedclass` component.
+- **Kotlin compile defect corrected:** `caseCancelLateResponse` now imports
+  `kotlinx.coroutines.async` and calls `async(Dispatchers.IO)` on the enclosing `coroutineScope`
+  receiver instead of the invalid unqualified static-style call.
+- **Isolated test context corrected:** `WeatherRuntimeInstrumentation` now passes its own
+  `context` (the test APK context) to `WeatherRuntimeHarness.run`, not `targetContext`, and finishes
+  `RESULT_CANCELED` unless `harnessContext.packageName == targetContext.packageName + ".test"`.
+  Harness writes therefore stay below the test APK's own `noBackupFilesDir` as the comments claim.
+- **Cleanup evidence corrected:** `weather_harness_cleanup` no longer discards uninstall output. It
+  records `pm path` before/after status and output plus the uninstall exit code, treats an adb query
+  failure as a cleanup failure, and requires the package to be absent. The normal run fails if
+  cleanup after a green harness fails; the EXIT trap records cleanup failure but returns the original
+  `_trap_status`.
+- **Bounded assemble:** the `assembleLawnWithQuickstepPlayDebugAndroidTest` call is now wrapped in
+  `run_with_timeout 900` (15 minutes); install/instrument remained bounded at 180s/300s.
+- **Evidence hardened:** the test-APK must be non-empty, its SHA-256 must be 64 hex characters, and
+  both `aapt dump badging` and `aapt dump xmltree AndroidManifest.xml` failures are recorded in
+  `weather-harness-test-apk.txt` and then fail the run instead of being ignored.
+- **Executed orchestration fixture, not string greps only:** the suite sources the real
+  `emulator-smoke.sh` in source-only mode, overrides only Gradle/AAPT/adb with stubs and a temp APK,
+  and runs the real `run_weather_runtime_harness`. It asserts the exact
+  `assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace` args, exactly one APK, the exact
+  `com.launchernos.dotwellabs.debug.test/app.nothingui.weather.harness.WeatherRuntimeInstrumentation`
+  component, `install -t -r`, `pm path`/uninstall/`pm path` ordering, the retained real SHA-256 and
+  manifest dumps, and cleanup absence. Negative fixtures prove build, install, 300s-run timeout,
+  crash marker, missing named case, uninstall-left-installed and AAPT-failure all stay red.
+- **Full 826-line review + stubs compile:** all 826 lines of `WeatherRuntimeHarness.kt` and the
+  runner were compared against the production weather contracts. `kotlinc` (no Gradle/Android build)
+  compiles both files against minimal stubs mirroring those contracts, with no errors. This is a
+  type/compile check only, not an Android instrumentation run.
+- **Verification actually run (shell/Kotlin only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **1247 ok, 0 not ok, all passed** (previous 1155 plus
+  the new executed orchestration/negative checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/nothingui-weather-guard-test.sh` reports **34 ok, 0 not ok**;
+  `sh scripts/emulator-smoke-drawer-test.sh` reports **38 ok, 0 not ok**;
+  `sh scripts/verify-android-resources.sh` compiles `strings.xml` with SDK `aapt2` (OK); `sh -n` is
+  clean on both edited scripts and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for state 116, no APK, no emulator, no forecast,
+  no native instrumentation result. The fixture proves the orchestrator contract; the stub compile
+  proves types, not Android runtime behavior.
+
+## done (previous run — Weather widget-tap artifact-path fix, scripts-only, PENDING ACTUAL CI)
 
 - **Exact CI302 attempt2 finding, not a Weather failure:** the full Weather consent, invalid/draft,
   enable, restart, disable and cache-clear settings proof passed and the private state ended
