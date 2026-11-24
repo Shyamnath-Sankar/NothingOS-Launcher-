@@ -3,7 +3,6 @@ package app.lawnchair.backup
 import android.annotation.SuppressLint
 import android.app.WallpaperManager
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -17,6 +16,7 @@ import app.lawnchair.wallpaper.WallpaperManagerCompat
 import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherFiles
+import com.android.launcher3.LauncherPrefs
 import com.android.launcher3.R
 import com.android.launcher3.model.DeviceGridState
 import com.android.launcher3.model.ModelDbController
@@ -96,6 +96,9 @@ class LawnchairBackup(
             stagingRoot,
             "run-${System.currentTimeMillis()}-${STAGING_COUNTER.incrementAndGet()}",
         )
+        // The recovery directory is a sibling of the run directory. Staging
+        // cleanup never deletes it, so a failed rollback keeps its only copy.
+        val recoveryDirectory = File(stagingRoot, "recovery-${runDirectory.name}")
         try {
             val staged = withContext(Dispatchers.IO) {
                 openArchive().use {
@@ -112,7 +115,7 @@ class LawnchairBackup(
                 throw BackupArchive.ValidationException("The backup changed before restore")
             }
             withContext(Dispatchers.IO) {
-                applyRestore(staged, stagedInfo, plan)
+                applyRestore(staged, stagedInfo, plan, recoveryDirectory)
             }
         } finally {
             BackupArchive.deleteStaging(stagingRoot, runDirectory)
@@ -126,80 +129,198 @@ class LawnchairBackup(
         staged: BackupArchive.StagedRestore,
         stagedInfo: BackupInfo,
         plan: BackupArchive.RestorePlan,
+        recoveryDirectory: File,
     ) {
+        // -------- PREFLIGHT: nothing below may touch live state. --------
+        var launcherSnapshot: BackupArchive.DatabaseSnapshot? = null
+        var preferencesSnapshot: BackupArchive.DatabaseSnapshot? = null
+        var restoredPreferences: Map<String, Any>? = null
+        var wallpaperBitmap: Bitmap? = null
+
+        if (plan.restoreLayout) {
+            launcherSnapshot = AndroidDatabaseSnapshot.read(
+                staged.file(BackupArchive.LAUNCHER_DB_FILE_NAME),
+            )
+            BackupArchive.validateLauncherDatabase(launcherSnapshot)
+            staged.files[BackupArchive.PREFS_DB_FILE_NAME]?.let { preferencesDatabase ->
+                preferencesSnapshot = AndroidDatabaseSnapshot.read(preferencesDatabase)
+                BackupArchive.validatePreferencesDatabase(preferencesSnapshot)
+            }
+            staged.files[BackupArchive.PREFS_FILE_NAME]?.let { preferencesFile ->
+                restoredPreferences = BackupPreferences.parse(preferencesFile)
+            }
+        }
+        if (plan.restoreWallpaper) {
+            wallpaperBitmap = BitmapFactory.decodeFile(
+                staged.file(BackupArchive.WALLPAPER_FILE_NAME).path,
+            ) ?: throw BackupArchive.ValidationException(
+                "The backup wallpaper could not be decoded",
+            )
+        }
+
+        // Best effort only. If the prior wallpaper cannot be read, a later
+        // layout failure cannot silently claim it was restored.
+        val priorWallpaper = if (plan.restoreWallpaper) {
+            runCatching { WallpaperManager.getInstance(context).drawable?.toBitmap() }.getOrNull()
+        } else {
+            null
+        }
+
+        // -------- MUTATION PHASE: every step has an undo or a safe restart boundary. --------
         var removedDatabases: BackupArchive.RemovedDatabases? = null
         var installedRestore: BackupArchive.InstalledRestore? = null
-        var installedPreferences: BackupArchive.InstalledRestore? = null
+        var installedPreferencesDatabase: BackupArchive.InstalledRestore? = null
+        var installedDataStore: BackupArchive.InstalledRestore? = null
+        var priorPreferences: Map<String, Any>? = null
+        var preferencesApplied = false
+        var preferencesDatabaseClosed = false
+        var liveDatabaseName: String? = null
+        var wallpaperApplied = false
+
         try {
+            // Apply wallpaper before the irreversible layout commit. A failure
+            // here leaves layout and preferences untouched.
+            if (plan.restoreWallpaper) {
+                val bitmap = wallpaperBitmap
+                    ?: throw BackupArchive.ValidationException(
+                        "The backup wallpaper could not be decoded",
+                    )
+                WallpaperManager.getInstance(context).setBitmap(bitmap)
+                wallpaperApplied = true
+            }
+
             if (plan.restoreLayout) {
-                val launcherDb = staged.file(BackupArchive.LAUNCHER_DB_FILE_NAME)
-                validateSqliteDatabase(launcherDb, "launcher database")
-                staged.files[BackupArchive.PREFS_DB_FILE_NAME]?.let {
-                    validateSqliteDatabase(it, "preferences database")
+                // Restore preferences first. The intended grid state is written
+                // afterwards so the restored XML can never erase it.
+                if (restoredPreferences != null) {
+                    priorPreferences = snapshotSharedPreferences()
+                    applySharedPreferences(restoredPreferences)
+                    preferencesApplied = true
                 }
-                val databaseDirectory = context.getDatabasePath(BackupArchive.LAUNCHER_DB_FILE_NAME)
-                    .parentFile
-                    ?: throw BackupArchive.ValidationException("The launcher database directory is unavailable")
-                val rollbackDirectory = File(staged.directory, ROLLBACK_DIRECTORY)
-                removedDatabases = BackupArchive.removeLauncherDatabases(
-                    databaseDirectory,
-                    GRID_DATABASE_NAMES,
-                    File(rollbackDirectory, "databases"),
-                )
-                val restoredDatabase = context.getDatabasePath(BackupArchive.RESTORED_DB_FILE_NAME)
-                installedRestore = BackupArchive.installStaged(
-                    staged,
-                    mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to restoredDatabase),
-                    File(rollbackDirectory, "launcher-db"),
-                )
                 if (stagedInfo.gridState.gridSize.isNotBlank()) {
                     DeviceGridState(stagedInfo.gridState).writeToPrefs(context, true)
                 }
+
+                liveDatabaseName = currentLauncherDbName()
+                val databaseDirectory = context
+                    .getDatabasePath(BackupArchive.LAUNCHER_DB_FILE_NAME)
+                    .parentFile
+                    ?: throw BackupArchive.ValidationException(
+                        "The launcher database directory is unavailable",
+                    )
+                removedDatabases = BackupArchive.removeLauncherDatabases(
+                    databaseDirectory,
+                    GRID_DATABASE_NAMES,
+                    File(recoveryDirectory, "databases"),
+                )
+                val restoredDatabase = context.getDatabasePath(
+                    BackupArchive.RESTORED_DB_FILE_NAME,
+                )
+                installedRestore = BackupArchive.installStaged(
+                    staged,
+                    mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to restoredDatabase),
+                    File(recoveryDirectory, "launcher-db"),
+                )
                 val restored = RestoreDbTask.performRestore(context, ModelDbController(context))
                 if (!restored) {
                     throw BackupArchive.ValidationException(
                         "RestoreDbTask could not apply the launcher database",
                     )
                 }
-                if (staged.files[BackupArchive.PREFS_DB_FILE_NAME] != null) {
-                    closePreferencesDatabase()
+                // RestoreDbTask may consume migration keys; re-assert the
+                // intended grid state after preferences are installed.
+                if (stagedInfo.gridState.gridSize.isNotBlank()) {
+                    DeviceGridState(stagedInfo.gridState).writeToPrefs(context, true)
                 }
-                val preferenceTargets = buildMap {
-                    staged.files[BackupArchive.PREFS_FILE_NAME]?.let {
-                        put(BackupArchive.PREFS_FILE_NAME, prefsFile(context))
-                    }
-                    staged.files[BackupArchive.PREFS_DB_FILE_NAME]?.let {
-                        put(BackupArchive.PREFS_DB_FILE_NAME, prefsDbFile(context))
-                    }
-                    staged.files[BackupArchive.PREFS_DATASTORE_FILE_NAME]?.let {
-                        put(BackupArchive.PREFS_DATASTORE_FILE_NAME, prefsDataStoreFile(context))
-                    }
-                }
-                if (preferenceTargets.isNotEmpty()) {
-                    installedPreferences = BackupArchive.installStaged(
+
+                if (preferencesSnapshot != null) {
+                    closePreferencesDatabaseIfInitialized()
+                    preferencesDatabaseClosed = true
+                    installedPreferencesDatabase = BackupArchive.installStaged(
                         staged,
-                        preferenceTargets,
-                        File(rollbackDirectory, "preferences"),
+                        mapOf(
+                            BackupArchive.PREFS_DB_FILE_NAME to
+                                prefsDbFile(context),
+                        ),
+                        File(recoveryDirectory, "preferences-db"),
+                    )
+                    // Drop the closed Room singleton so a later access cannot
+                    // reuse a closed instance.
+                    AppDatabase.INSTANCE.reset()
+                    preferencesDatabaseClosed = false
+                }
+                // DataStore is installed last. The successful restore path is
+                // immediately followed by restartLauncher(), which kills the
+                // process; the restarted process reopens this file. No
+                // preference edit is allowed in that window.
+                if (staged.files[BackupArchive.PREFS_DATASTORE_FILE_NAME] != null) {
+                    installedDataStore = BackupArchive.installStaged(
+                        staged,
+                        mapOf(
+                            BackupArchive.PREFS_DATASTORE_FILE_NAME to
+                                prefsDataStoreFile(context),
+                        ),
+                        File(recoveryDirectory, "preferences-datastore"),
                     )
                 }
             }
-            if (plan.restoreWallpaper) {
-                val bitmap = BitmapFactory.decodeFile(
-                    staged.file(BackupArchive.WALLPAPER_FILE_NAME).path,
-                ) ?: throw BackupArchive.ValidationException("The backup wallpaper could not be decoded")
-                WallpaperManager.getInstance(context).setBitmap(bitmap)
-            }
-            installedPreferences?.discard()
+
+            installedDataStore?.discard()
+            installedPreferencesDatabase?.discard()
             installedRestore?.discard()
             removedDatabases?.discard()
         } catch (t: Throwable) {
-            installedPreferences?.rollback()
-            if (plan.restoreLayout) {
-                deleteGridDatabaseFiles()
+            val rollbackFailures = mutableListOf<String>()
+
+            installedDataStore?.rollback()?.let { report ->
+                if (!report.succeeded) {
+                    rollbackFailures += "preferences datastore: ${report.failures.joinToString("; ")}"
+                }
             }
-            removedDatabases?.rollback()
-            installedRestore?.rollback()
-            throw t
+            installedPreferencesDatabase?.rollback()?.let { report ->
+                if (!report.succeeded) {
+                    rollbackFailures += "preferences database: ${report.failures.joinToString("; ")}"
+                }
+            }
+            if (preferencesDatabaseClosed) {
+                AppDatabase.INSTANCE.reset()
+            }
+            // Delete only the live database this invocation created. Never
+            // bulk-delete every grid file in the catch path.
+            liveDatabaseName?.let { deleteLauncherDatabase(it) }
+            removedDatabases?.rollback()?.let { report ->
+                if (!report.succeeded) {
+                    rollbackFailures += "launcher databases: ${report.failures.joinToString("; ")}"
+                }
+            }
+            installedRestore?.rollback()?.let { report ->
+                if (!report.succeeded) {
+                    rollbackFailures += "restored database: ${report.failures.joinToString("; ")}"
+                }
+            }
+            if (preferencesApplied && priorPreferences != null) {
+                runCatching { applySharedPreferences(priorPreferences) }
+                    .onFailure { rollbackFailures += "shared preferences: ${it.message ?: it}" }
+            }
+            if (wallpaperApplied) {
+                val restoredWallpaper = priorWallpaper
+                if (restoredWallpaper == null) {
+                    rollbackFailures += "wallpaper: the prior wallpaper could not be captured"
+                } else {
+                    runCatching {
+                        WallpaperManager.getInstance(context).setBitmap(restoredWallpaper)
+                    }.onFailure { rollbackFailures += "wallpaper: ${it.message ?: it}" }
+                }
+            }
+
+            if (rollbackFailures.isEmpty()) {
+                throw t
+            }
+            throw BackupArchive.ValidationException(
+                "The restore failed and rollback was incomplete: " +
+                    rollbackFailures.joinToString("; "),
+                t,
+            )
         }
     }
 
@@ -242,43 +363,52 @@ class LawnchairBackup(
         }
     }
 
-    private fun validateSqliteDatabase(file: File, label: String) {
-        val database = try {
-            SQLiteDatabase.openDatabase(file.path, null, SQLiteDatabase.OPEN_READONLY)
-        } catch (t: Throwable) {
-            throw BackupArchive.ValidationException("The staged $label is not a valid database", t)
-        }
-        try {
-            database.rawQuery("pragma integrity_check", null).use { cursor ->
-                if (!cursor.moveToFirst() || cursor.getString(0) != "ok") {
-                    throw BackupArchive.ValidationException("The staged $label failed its integrity check")
-                }
-            }
-            database.rawQuery(
-                "select name from sqlite_master where type = 'table' and name = 'favorites'",
-                null,
-            ).use { cursor ->
-                if (!cursor.moveToFirst()) {
-                    throw BackupArchive.ValidationException("The staged $label has no favorites table")
-                }
-            }
-        } finally {
-            database.close()
+    private fun currentLauncherDbName(): String {
+        @Suppress("DEPRECATION")
+        val configured = LauncherPrefs.get(context).get(LauncherPrefs.DB_FILE)
+        return if (configured.isNotBlank()) configured else LauncherAppState.getIDP(context).dbFile
+    }
+
+    private fun deleteLauncherDatabase(databaseName: String) {
+        val directory = context.getDatabasePath(databaseName).parentFile ?: return
+        BackupArchive.DATABASE_SIDECARS.forEach { suffix ->
+            runCatching { File(directory, "$databaseName$suffix").delete() }
         }
     }
 
-    private fun closePreferencesDatabase() {
-        runCatching { AppDatabase.INSTANCE.get(context).close() }
+    @Suppress("DEPRECATION")
+    private fun snapshotSharedPreferences(): Map<String, Any> {
+        val preferences = LauncherPrefs.getPrefs(context)
+        return preferences.all.mapValues { (_, value) ->
+            if (value is Set<*>) value.map { it.toString() }.toSet() else value as Any
+        }
     }
 
-    private fun deleteGridDatabaseFiles() {
-        val directory = context.getDatabasePath(BackupArchive.LAUNCHER_DB_FILE_NAME).parentFile
-            ?: return
-        GRID_DATABASE_NAMES.forEach { name ->
-            BackupArchive.DATABASE_SIDECARS.forEach { suffix ->
-                runCatching { File(directory, "$name$suffix").delete() }
+    @Suppress("DEPRECATION")
+    private fun applySharedPreferences(values: Map<String, Any>) {
+        val preferences = LauncherPrefs.getPrefs(context)
+        val editor = preferences.edit().clear()
+        values.forEach { (key, value) ->
+            when (value) {
+                is String -> editor.putString(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Set<*> -> editor.putStringSet(key, value.map { it.toString() }.toSet())
+                else -> throw BackupArchive.ValidationException(
+                    "The restored preferences contain an unsupported value for $key",
+                )
             }
         }
+        if (!editor.commit()) {
+            throw BackupArchive.ValidationException("The restored preferences could not be committed")
+        }
+    }
+
+    private fun closePreferencesDatabaseIfInitialized() {
+        val database = AppDatabase.INSTANCE.peek() ?: return
+        database.close()
     }
 
     private fun openArchive(): InputStream {
@@ -310,7 +440,6 @@ class LawnchairBackup(
         )
 
         private const val STAGING_ROOT = "backup-restore"
-        private const val ROLLBACK_DIRECTORY = "rollback"
         private val STAGING_COUNTER = AtomicLong()
         private val LIMITS = BackupArchive.Limits()
         private val GRID_DATABASE_NAMES: Set<String> = LauncherFiles.GRID_DB_FILES.toSet()
@@ -331,7 +460,7 @@ class LawnchairBackup(
 
         @SuppressLint("MissingPermission")
         suspend fun create(context: Context, contents: Int, screenshotBitmap: Bitmap, fileUri: Uri) {
-            val wallpaperBitmap = if (BackupArchive.hasFlag(contents, INCLUDE_WALLPAPER)) {
+            val wallpaperBitmap = if (BackupArchive.hasFlag(contents, BackupArchive.INCLUDE_WALLPAPER)) {
                 WallpaperManager.getInstance(context).drawable?.toBitmap()
             } else {
                 null
@@ -362,10 +491,6 @@ class LawnchairBackup(
                 .build()
 
             withContext(Dispatchers.IO) {
-                if (plan.requiresPreferenceCheckpoint) {
-                    AppDatabase.INSTANCE.get(context).checkpoint()
-                    checkpointLauncherDatabase(context)
-                }
                 val temporaryRoot = File(context.cacheDir, "backup-create")
                 if (!temporaryRoot.exists() && !temporaryRoot.mkdirs()) {
                     throw IOException("Could not create the backup staging directory")
@@ -375,7 +500,8 @@ class LawnchairBackup(
                     "create-${System.currentTimeMillis()}-${STAGING_COUNTER.incrementAndGet()}.lawnchairbackup",
                 )
                 try {
-                    writeArchive(temporaryFile, backupInfo, plan, screenshotBitmap, wallpaperBitmap, context)
+                    val snapshots = snapshotLayoutEntries(context, plan, temporaryRoot)
+                    writeArchive(temporaryFile, backupInfo, plan, screenshotBitmap, wallpaperBitmap, snapshots)
                     copyToDestination(fileUri, temporaryFile, context)
                 } finally {
                     runCatching { temporaryFile.delete() }
@@ -386,13 +512,43 @@ class LawnchairBackup(
             }
         }
 
+        /**
+         * Copies every exported layout entry before the archive is written. The
+         * databases use the real checkpoint/lock policy in
+         * [BackupArchive.snapshotDatabase]; a busy or incomplete WAL fails the
+         * export instead of shipping a stale or mixed file.
+         */
+        private fun snapshotLayoutEntries(
+            context: Context,
+            plan: BackupArchive.ExportPlan,
+            temporaryRoot: File,
+        ): Map<String, File> {
+            val liveFiles = getFiles(context)
+            val snapshots = linkedMapOf<String, File>()
+            plan.layoutEntries.forEach { entryName ->
+                val liveFile = liveFiles[entryName] ?: return@forEach
+                if (!liveFile.isFile) return@forEach
+                val snapshot = File(temporaryRoot, "snapshot-$entryName")
+                if (entryName == LAUNCHER_DB_FILE_NAME || entryName == PREFS_DB_FILE_NAME) {
+                    BackupArchive.snapshotDatabase(
+                        AndroidDatabaseSnapshot.source(liveFile),
+                        snapshot,
+                    )
+                } else {
+                    liveFile.copyTo(snapshot, overwrite = true)
+                }
+                snapshots[entryName] = snapshot
+            }
+            return snapshots
+        }
+
         private fun writeArchive(
             destination: File,
             backupInfo: BackupInfo,
             plan: BackupArchive.ExportPlan,
             screenshotBitmap: Bitmap,
             wallpaperBitmap: Bitmap?,
-            context: Context,
+            layoutSnapshots: Map<String, File>,
         ) {
             FileOutputStream(destination).buffered().use { output ->
                 ZipOutputStream(output).use { zip ->
@@ -407,9 +563,8 @@ class LawnchairBackup(
                         screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, zip)
                     }
                     if (plan.includeLayout) {
-                        val files = getFiles(context)
                         plan.layoutEntries.forEach { entryName ->
-                            val file = files[entryName] ?: return@forEach
+                            val file = layoutSnapshots[entryName] ?: return@forEach
                             if (!file.isFile) return@forEach
                             zip.putNextEntry(ZipEntry(entryName))
                             file.inputStream().use { it.copyTo(zip) }
@@ -428,27 +583,6 @@ class LawnchairBackup(
                     output.flush()
                     descriptor.fileDescriptor.sync()
                 }
-            }
-        }
-
-        private fun checkpointLauncherDatabase(context: Context) {
-            val databaseFile = context.getDatabasePath(LauncherAppState.getIDP(context).dbFile)
-            if (!databaseFile.isFile) return
-            val database = try {
-                SQLiteDatabase.openDatabase(
-                    databaseFile.path,
-                    null,
-                    SQLiteDatabase.OPEN_READWRITE,
-                )
-            } catch (t: Throwable) {
-                throw BackupArchive.ValidationException("Could not open the launcher database", t)
-            }
-            try {
-                database.rawQuery("pragma wal_checkpoint(full)", null).use { it.moveToFirst() }
-            } catch (t: Throwable) {
-                throw BackupArchive.ValidationException("Could not checkpoint the launcher database", t)
-            } finally {
-                database.close()
             }
         }
 

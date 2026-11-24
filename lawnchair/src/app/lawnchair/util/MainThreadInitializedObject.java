@@ -68,6 +68,23 @@ public class MainThreadInitializedObject<T> {
         return mValue;
     }
 
+    /**
+     * Returns the already-created value without creating it. Used by restore
+     * paths that must close a live singleton before replacing its backing file
+     * without accidentally creating an empty database first.
+     */
+    public synchronized T peek() {
+        return mValue;
+    }
+
+    /**
+     * Drops the cached value so the next [get] creates a fresh instance. The
+     * caller is responsible for closing the old value when it is closeable.
+     */
+    public synchronized void reset() {
+        mValue = null;
+    }
+
     protected void onPostInit(Context context) {
     }
 

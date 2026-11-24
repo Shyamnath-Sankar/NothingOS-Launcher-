@@ -19,11 +19,13 @@ package app.lawnchair.backup
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -127,7 +129,7 @@ class BackupArchiveTest {
     @Test
     fun wallpaperOnlyRestoreNeverPlansLayoutEntries() {
         val plan = BackupArchive.restorePlan(
-            BackupArchive.SUPPORTED_CONTENTS,
+            BackupArchive.INCLUDE_WALLPAPER,
             BackupArchive.SUPPORTED_CONTENTS,
             BackupArchive.RELEVANT_ENTRY_NAMES,
         )
@@ -182,8 +184,16 @@ class BackupArchiveTest {
     @Test
     fun scanRejectsDuplicateRelevantEntries() {
         val bytes = renameEntry(
-            buildZip(BackupArchive.INFO_FILE_NAME to byteArrayOf(1), "launcher.dc" to byteArrayOf(2)),
-            "launcher.dc",
+            renameEntry(
+                buildZip(
+                    BackupArchive.INFO_FILE_NAME to byteArrayOf(1),
+                    "launcher.dc" to byteArrayOf(2),
+                    "launcher.dd" to byteArrayOf(3),
+                ),
+                "launcher.dc",
+                BackupArchive.LAUNCHER_DB_FILE_NAME,
+            ),
+            "launcher.dd",
             BackupArchive.LAUNCHER_DB_FILE_NAME,
         )
 
@@ -193,7 +203,7 @@ class BackupArchiveTest {
     @Test
     fun scanRejectsTruncatedArchives() {
         val bytes = buildZip(BackupArchive.INFO_FILE_NAME to ByteArray(4096) { it.toByte() })
-        val truncated = bytes.copyOf(bytes.size - 20)
+        val truncated = bytes.copyOf(bytes.size / 2)
 
         expectValidation { BackupArchive.scanArchive(ByteArrayInputStream(truncated)) }
     }
@@ -394,6 +404,306 @@ class BackupArchiveTest {
         }
         expectValidation {
             BackupArchive.validateMetadata(BackupArchive.BACKUP_VERSION, BackupArchive.SUPPORTED_CONTENTS, "4,6", -1)
+        }
+    }
+
+    @Test
+    fun launcherSchemaAcceptsFavoritesAndRejectsAWrongOrCorruptDatabase() {
+        BackupArchive.validateLauncherDatabase(launcherSnapshot())
+
+        expectValidation {
+            BackupArchive.validateLauncherDatabase(launcherSnapshot(integrityOk = false))
+        }
+        expectValidation {
+            BackupArchive.validateLauncherDatabase(launcherSnapshot(tables = setOf("other")))
+        }
+        expectValidation {
+            BackupArchive.validateLauncherDatabase(
+                launcherSnapshot(columns = setOf("_id", "itemType")),
+            )
+        }
+    }
+
+    @Test
+    fun preferencesSchemaUsesTheActualRoomSchemaNotLauncherFavorites() {
+        BackupArchive.validatePreferencesDatabase(preferencesSnapshot(version = 3))
+        BackupArchive.validatePreferencesDatabase(
+            preferencesSnapshot(version = 1, tables = setOf("IconOverride")),
+        )
+
+        // A valid launcher database is not a valid preferences database.
+        expectValidation {
+            BackupArchive.validatePreferencesDatabase(
+                BackupArchive.DatabaseSnapshot(
+                    integrityOk = true,
+                    userVersion = 0,
+                    tables = setOf("favorites"),
+                    columns = mapOf("favorites" to BackupArchive.LAUNCHER_REQUIRED_COLUMNS),
+                ),
+            )
+        }
+        expectValidation {
+            BackupArchive.validatePreferencesDatabase(preferencesSnapshot(integrityOk = false))
+        }
+        expectValidation {
+            BackupArchive.validatePreferencesDatabase(
+                preferencesSnapshot(tables = setOf("IconOverride", "unknown")),
+            )
+        }
+        expectValidation {
+            BackupArchive.validatePreferencesDatabase(
+                preferencesSnapshot(version = 3, tables = setOf("IconOverride")),
+            )
+        }
+        expectValidation {
+            BackupArchive.validatePreferencesDatabase(preferencesSnapshot(version = 4))
+        }
+    }
+
+    @Test
+    fun preferencesSchemaConstantsMatchTheShippedRoomJson() {
+        assertEquals(BackupArchive.PREFERENCES_KNOWN_TABLES, schemaTables(3))
+        assertEquals(setOf("IconOverride"), schemaTables(1))
+        assertTrue(
+            BackupArchive.PREFERENCES_KNOWN_TABLES.containsAll(BackupArchive.PREFERENCES_V2_TABLES),
+        )
+    }
+
+    @Test
+    fun snapshotFailsOnBusyCheckpointWithoutCopying() {
+        val source = FakeSnapshotSource(
+            checkpoint = BackupArchive.CheckpointResult(busy = 1, log = 5, checkpointed = 2),
+            walBytes = 0,
+        )
+        withTempDirectory { root ->
+            val destination = File(root, "snapshot.db")
+            expectValidation { BackupArchive.snapshotDatabase(source, destination) }
+            assertFalse(source.copied)
+            assertFalse(destination.exists())
+        }
+    }
+
+    @Test
+    fun snapshotFailsWhenTheWalIsNotEmptyUnderTheLock() {
+        val source = FakeSnapshotSource(
+            checkpoint = BackupArchive.CheckpointResult(busy = 0, log = 5, checkpointed = 5),
+            walBytes = 32,
+        )
+        withTempDirectory { root ->
+            expectValidation {
+                BackupArchive.snapshotDatabase(source, File(root, "snapshot.db"))
+            }
+            assertFalse(source.copied)
+        }
+    }
+
+    @Test
+    fun snapshotCopiesOnlyAfterACompleteCheckpoint() {
+        val source = FakeSnapshotSource(
+            checkpoint = BackupArchive.CheckpointResult(busy = 0, log = 0, checkpointed = 0),
+            walBytes = 0,
+        )
+        withTempDirectory { root ->
+            val destination = File(root, "snapshot.db")
+            BackupArchive.snapshotDatabase(source, destination)
+            assertTrue(source.copied)
+            assertEquals("snapshot", destination.readText())
+        }
+    }
+
+    @Test
+    fun installRegistersUndoBeforeMovingTheOriginal() {
+        withTempDirectory { root ->
+            val target = File(root, "live/launcher.db").apply {
+                parentFile?.mkdirs()
+                writeText("original")
+            }
+            val stage = File(root, "stage").apply { mkdirs() }
+            val source = File(stage, BackupArchive.LAUNCHER_DB_FILE_NAME).apply {
+                writeText("replacement")
+            }
+            val staged = BackupArchive.StagedRestore(
+                stage,
+                mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to source),
+            )
+            val failure = runCatching {
+                BackupArchive.installStaged(
+                    staged,
+                    mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to target),
+                    File(root, "rollback"),
+                ) { from, to ->
+                    if (from == source) throw IOException("replacement move failed")
+                    Files.move(from.toPath(), to.toPath())
+                }
+            }.exceptionOrNull()
+
+            assertNotNull(failure)
+            assertEquals("original", target.readText())
+        }
+    }
+
+    @Test
+    fun installRollsBackEarlierFilesWhenALaterMoveFails() {
+        withTempDirectory { root ->
+            val live = File(root, "live").apply { mkdirs() }
+            val targetA = File(live, "a.db").apply { writeText("original-a") }
+            val targetB = File(live, "b.db").apply { writeText("original-b") }
+            val stage = File(root, "stage").apply { mkdirs() }
+            val sourceA = File(stage, "a.db").apply { writeText("new-a") }
+            val sourceB = File(stage, "b.db").apply { writeText("new-b") }
+            val staged = BackupArchive.StagedRestore(
+                stage,
+                linkedMapOf("a.db" to sourceA, "b.db" to sourceB),
+            )
+            val failure = runCatching {
+                BackupArchive.installStaged(
+                    staged,
+                    linkedMapOf("a.db" to targetA, "b.db" to targetB),
+                    File(root, "rollback"),
+                ) { from, to ->
+                    if (from == targetB) throw IOException("original B move failed")
+                    Files.move(from.toPath(), to.toPath())
+                }
+            }.exceptionOrNull()
+
+            assertNotNull(failure)
+            assertEquals("original-a", targetA.readText())
+            assertEquals("original-b", targetB.readText())
+        }
+    }
+
+    @Test
+    fun installRetainsThePreviousCopyWhenRollbackFails() {
+        withTempDirectory { root ->
+            val target = File(root, "live/launcher.db").apply {
+                parentFile?.mkdirs()
+                writeText("original")
+            }
+            val stage = File(root, "stage").apply { mkdirs() }
+            val source = File(stage, BackupArchive.LAUNCHER_DB_FILE_NAME).apply {
+                writeText("replacement")
+            }
+            val staged = BackupArchive.StagedRestore(
+                stage,
+                mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to source),
+            )
+            val rollback = File(root, "rollback")
+            val failure = runCatching {
+                BackupArchive.installStaged(
+                    staged,
+                    mapOf(BackupArchive.LAUNCHER_DB_FILE_NAME to target),
+                    rollback,
+                ) { from, to ->
+                    if (from == source) throw IOException("install failed")
+                    if (from.name.endsWith(".previous")) throw IOException("rollback failed")
+                    Files.move(from.toPath(), to.toPath())
+                }
+            }.exceptionOrNull()
+
+            assertTrue(failure is BackupArchive.ValidationException)
+            val previous = File(rollback, "${BackupArchive.LAUNCHER_DB_FILE_NAME}.previous")
+            assertTrue("the only previous copy must be retained", previous.exists())
+            assertEquals("original", previous.readText())
+            assertFalse(target.exists())
+        }
+    }
+
+    @Test
+    fun removeLauncherDatabasesRollsBackEarlierMovesOnFailure() {
+        withTempDirectory { root ->
+            val databases = File(root, "databases").apply { mkdirs() }
+            val databaseA = File(databases, "launcher_a.db").apply { writeText("a") }
+            val databaseB = File(databases, "launcher_b.db").apply { writeText("b") }
+            val failure = runCatching {
+                BackupArchive.removeLauncherDatabases(
+                    databases,
+                    linkedSetOf("launcher_a.db", "launcher_b.db"),
+                    File(root, "rollback"),
+                ) { from, to ->
+                    if (from == databaseB) throw IOException("second original move failed")
+                    Files.move(from.toPath(), to.toPath())
+                }
+            }.exceptionOrNull()
+
+            assertNotNull(failure)
+            assertEquals("a", databaseA.readText())
+            assertEquals("b", databaseB.readText())
+        }
+    }
+
+    @Test
+    fun stagingCleanupNeverDeletesTheRecoverySibling() {
+        withTempDirectory { root ->
+            val run = File(root, "run").apply { mkdirs() }
+            val recovery = File(root, "recovery-run").apply { mkdirs() }
+            val previous = File(recovery, "launcher.db.previous").apply { writeText("original") }
+
+            BackupArchive.deleteStaging(root, run)
+
+            assertFalse(run.exists())
+            assertTrue(previous.exists())
+            assertEquals("original", previous.readText())
+        }
+    }
+
+    private fun launcherSnapshot(
+        integrityOk: Boolean = true,
+        tables: Set<String> = setOf("favorites"),
+        columns: Set<String> = BackupArchive.LAUNCHER_REQUIRED_COLUMNS,
+    ): BackupArchive.DatabaseSnapshot = BackupArchive.DatabaseSnapshot(
+        integrityOk = integrityOk,
+        userVersion = 0,
+        tables = tables,
+        columns = mapOf("favorites" to columns),
+    )
+
+    private fun preferencesSnapshot(
+        version: Int = 3,
+        integrityOk: Boolean = true,
+        tables: Set<String> = BackupArchive.PREFERENCES_KNOWN_TABLES,
+    ): BackupArchive.DatabaseSnapshot = BackupArchive.DatabaseSnapshot(
+        integrityOk = integrityOk,
+        userVersion = version,
+        tables = tables,
+        columns = tables.associateWith { emptySet() },
+    )
+
+    private fun schemaTables(version: Int): Set<String> {
+        val text = findSchema(version).readText()
+        return Regex("\"tableName\"\\s*:\\s*\"([^\"]+)\"")
+            .findAll(text)
+            .map { it.groupValues[1] }
+            .toSet()
+    }
+
+    private fun findSchema(version: Int): File {
+        var directory: File? = File(System.getProperty("user.dir") ?: ".").absoluteFile
+        while (directory != null) {
+            val candidate = File(
+                directory,
+                "schemas/app.lawnchair.data.AppDatabase/$version.json",
+            )
+            if (candidate.isFile) return candidate
+            directory = directory.parentFile
+        }
+        throw AssertionError("Could not find schemas/app.lawnchair.data.AppDatabase/$version.json")
+    }
+
+    private class FakeSnapshotSource(
+        private val checkpoint: BackupArchive.CheckpointResult,
+        private val walBytes: Long,
+    ) : BackupArchive.DatabaseSnapshotSource {
+        var copied = false
+
+        override fun checkpoint(): BackupArchive.CheckpointResult = checkpoint
+
+        override fun walBytes(): Long = walBytes
+
+        override fun <T> withExclusiveWriter(block: () -> T): T = block()
+
+        override fun copyMainTo(destination: File) {
+            copied = true
+            destination.writeText("snapshot")
         }
     }
 
