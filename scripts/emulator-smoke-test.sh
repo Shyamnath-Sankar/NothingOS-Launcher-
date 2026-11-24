@@ -6827,6 +6827,35 @@ if command -v weather_harness_pm_list_state >/dev/null 2>&1; then
     assert_eq 'a complete valid enumeration of another package proves absence' 'absent' \
         "$(weather_harness_pm_list_state "$_presence_other" "$_presence_pkg")"
 
+    _presence_single="$TMP_DIR/weather-presence-single-component.txt"
+    printf 'package:/system/framework/framework-res.apk=android\nPM_ENUM_RC=0\n' \
+        > "$_presence_single"
+    assert_eq 'a single-component framework package name is valid' 'present' \
+        "$(weather_harness_pm_list_state "$_presence_single" android)"
+
+    _presence_platform="$TMP_DIR/weather-presence-platform-list.txt"
+    _presence_platform_rows() {
+        printf 'package:/system/framework/framework-res.apk=android\n'
+        printf 'package:/system/framework/framework.jar=com.android.framework\n'
+        printf 'package:/system/priv-app/Settings/Settings.apk=com.android.settings\n'
+        printf 'package:/system/priv-app/SystemUI/SystemUI.apk=com.android.systemui\n'
+        printf 'package:/system/priv-app/TelephonyProvider/TelephonyProvider.apk=com.android.providers.telephony\n'
+        if [ "${1:-absent}" = "present" ]; then
+            printf 'package:/data/app/~~QGxY==/com.launchernos.dotwellabs.debug.test-abc==/base.apk=%s\n' \
+                "$_presence_pkg"
+        fi
+        printf 'PM_ENUM_RC=0\n'
+    }
+    _presence_platform_present="$TMP_DIR/weather-presence-platform-present.txt"
+    _presence_platform_rows present > "$_presence_platform_present"
+    assert_eq 'a realistic platform list with the target anchors presence' 'present' \
+        "$(weather_harness_pm_list_state "$_presence_platform_present" "$_presence_pkg")"
+
+    _presence_platform_absent="$TMP_DIR/weather-presence-platform-absent.txt"
+    _presence_platform_rows absent > "$_presence_platform_absent"
+    assert_eq 'a realistic platform list without the target proves absence' 'absent' \
+        "$(weather_harness_pm_list_state "$_presence_platform_absent" "$_presence_pkg")"
+
     _presence_malformed() {
         _pml_name=$1
         _pml_line=$2
@@ -6839,7 +6868,8 @@ if command -v weather_harness_pm_list_state >/dev/null 2>&1; then
     _presence_malformed no-equals 'package:/data/app/base.apk'
     _presence_malformed empty-path 'package:=com.example.other'
     _presence_malformed empty-name 'package:/data/app/base.apk='
-    _presence_malformed no-dot 'package:/data/app/base.apk=com'
+    _presence_malformed leading-digit 'package:/data/app/base.apk=1com'
+    _presence_malformed empty-component 'package:/data/app/base.apk=com..example'
     _presence_malformed bad-char 'package:/data/app/base.apk=com.example.bad-name'
 
     _presence_path="$TMP_DIR/weather-presence-path.txt"
@@ -6889,7 +6919,8 @@ weather_runtime_fixture_run() {
     printf 'fixture test apk\n' > "$_wrf_apk"
     case "$_wrf_scenario" in
         preinstall-present | pm-exit1-present | pm-exit124-present | \
-            pm-exit1-after-uninstall | pm-exit124-after-uninstall)
+            pm-exit1-after-uninstall | pm-exit124-after-uninstall | \
+            platform-list-present)
             : > "$_wrf_installed"
             ;;
     esac
@@ -6996,8 +7027,21 @@ case "$2" in
             printf 'package:/fixture/truncated.apk=%s\n' "$FIXTURE_TEST_PKG"
             exit 0
         fi
+        if [ "${FIXTURE_PM_PLATFORM_LIST:-0}" = "1" ]; then
+            printf 'package:/system/framework/framework-res.apk=android\n'
+            printf 'package:/system/framework/framework.jar=com.android.framework\n'
+            printf 'package:/system/priv-app/Settings/Settings.apk=com.android.settings\n'
+            printf 'package:/system/priv-app/SystemUI/SystemUI.apk=com.android.systemui\n'
+            printf 'package:/system/priv-app/TelephonyProvider/TelephonyProvider.apk=com.android.providers.telephony\n'
+            printf 'package:/system/priv-app/Shell/Shell.apk=com.android.shell\n'
+        fi
         if [ -f "$FIXTURE_INSTALLED" ]; then
-            printf 'package:/fixture/test.apk=%s\n' "$FIXTURE_TEST_PKG"
+            if [ "${FIXTURE_PM_PLATFORM_LIST:-0}" = "1" ]; then
+                printf 'package:/data/app/~~QGxY==/com.launchernos.dotwellabs.debug.test-abc==/base.apk=%s\n' \
+                    "$FIXTURE_TEST_PKG"
+            else
+                printf 'package:/fixture/test.apk=%s\n' "$FIXTURE_TEST_PKG"
+            fi
         fi
         printf 'PM_ENUM_RC=0\n'
         if [ "${FIXTURE_PM_EXIT_ALWAYS:-0}" = "1" ]; then
@@ -7064,6 +7108,7 @@ ADB_STUB
         FIXTURE_PM_EXIT_STATUS=0
         FIXTURE_PM_EXIT_ALWAYS=0
         FIXTURE_PM_EXIT_WHEN=
+        FIXTURE_PM_PLATFORM_LIST=0
         case "$_wrf_scenario" in
             build-fail) FIXTURE_BUILD_FAIL=1 ;;
             install-fail) FIXTURE_INSTALL_FAIL=1 ;;
@@ -7102,6 +7147,8 @@ ADB_STUB
                 FIXTURE_PM_EXIT_WHEN=absent
                 FIXTURE_PM_EXIT_STATUS=124
                 ;;
+            platform-list-present) FIXTURE_PM_PLATFORM_LIST=1 ;;
+            platform-list-absent) FIXTURE_PM_PLATFORM_LIST=1 ;;
             aapt-fail) FIXTURE_AAPT_FAIL=1 ;;
             aapt-v1) FIXTURE_AAPT_TOOL=aapt ;;
         esac
@@ -7112,6 +7159,7 @@ ADB_STUB
         export FIXTURE_PM_QUERY_FAIL FIXTURE_PM_TIMEOUT FIXTURE_PM_ERROR_STDOUT
         export FIXTURE_PM_TRUNCATED FIXTURE_PM_PATH_ERROR FIXTURE_PM_PATH_TIMEOUT
         export FIXTURE_PM_EXIT_STATUS FIXTURE_PM_EXIT_ALWAYS FIXTURE_PM_EXIT_WHEN
+        export FIXTURE_PM_PLATFORM_LIST
         export PATH="$_wrf_dir/bin:$PATH"
         export FIXTURE_ORDER="$_wrf_order"
         export FIXTURE_INSTALLED="$_wrf_installed"
@@ -7271,6 +7319,50 @@ assert_file_has_lines 'the preinstall cleanup recognizes and verifies a present 
     'uninstall_exit=0' \
     'presence_state=absent' \
     'result=absent_after_uninstall phase=preinstall'
+
+weather_runtime_fixture_run platform-list-present
+assert_eq 'the executed orchestration accepts a realistic platform list with the target present' '0' \
+    "$_weather_runtime_fixture_exit"
+_wrf_platform_present="$TMP_DIR/weather-runtime-platform-list-present"
+assert_file_has_lines 'the real platform list proves present then absent after uninstall' \
+    "$_wrf_platform_present/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'phase=preinstall' \
+    'query_label=preinstall-before' \
+    'pm_list_state=present' \
+    'pm_path_status=0' \
+    'pm_path_state=installed' \
+    'presence_state=present' \
+    'uninstall_exit=0' \
+    'query_label=preinstall-after' \
+    'pm_list_state=absent' \
+    'presence_state=absent' \
+    'result=absent_after_uninstall phase=preinstall'
+assert_false 'the platform android row never turns the present target into query failure' \
+    grep -Fq 'pm_list_state=query_failure' \
+    "$_wrf_platform_present/artifacts/weather-harness-cleanup-preinstall.txt"
+assert_true 'the present platform-list fixture uninstalled the target' \
+    grep -Fq 'adb|uninstall ' "$_wrf_platform_present/order.txt"
+assert_true 'the present platform-list fixture installed the target' \
+    grep -Fq 'adb|install ' "$_wrf_platform_present/order.txt"
+
+weather_runtime_fixture_run platform-list-absent
+assert_eq 'the executed orchestration accepts a realistic platform list without the target' '0' \
+    "$_weather_runtime_fixture_exit"
+_wrf_platform_absent="$TMP_DIR/weather-runtime-platform-list-absent"
+assert_file_has_lines 'the real platform list without the target still proves absence' \
+    "$_wrf_platform_absent/artifacts/weather-harness-cleanup-preinstall.txt" \
+    'phase=preinstall' \
+    'query_label=preinstall-before' \
+    'pm_list_state=absent' \
+    'pm_path_status=1' \
+    'pm_path_state=empty' \
+    'presence_state=absent' \
+    'result=already_absent phase=preinstall'
+assert_false 'the platform android row never turns an absent target into query failure' \
+    grep -Fq 'pm_list_state=query_failure' \
+    "$_wrf_platform_absent/artifacts/weather-harness-cleanup-preinstall.txt"
+assert_true 'the absent platform-list fixture installed the target' \
+    grep -Fq 'adb|install ' "$_wrf_platform_absent/order.txt"
 
 weather_runtime_fixture_run pm-query-fail
 assert_false 'a failed package enumeration stays red' \

@@ -5569,10 +5569,12 @@ weather_harness_pm_list_state() {
         }
         /^package:/ {
             # Strict grammar: a non-empty path, a final '=', and a valid
-            # dotted package name. Real Android paths may themselves contain
+            # Java-style package name. Real Android paths may themselves contain
             # '=' (base64 directory names), so only the last '=' separates the
-            # name. A malformed line is a corrupt query, never absence.
-            if ($0 !~ /^package:[^[:space:]]+=[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$/) {
+            # name. A package name may be a single component: the platform's
+            # framework package is literally `android`. Empty components and
+            # bad characters are still corrupt, never absence.
+            if ($0 !~ /^package:[^[:space:]]+=[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/) {
                 invalid++
                 next
             }
