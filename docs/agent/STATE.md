@@ -3,41 +3,84 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI272 placed-widget identity correction — diagnosis/fix committed as `f6f0475` on the
-  `f6d6da8` checkpoint, PENDING ACTUAL CI.** CI272 run45294228258 attempt2 ended in 20m28. The strict
-  new HOME readiness passed in the first attempt with the actual clock/date, all three original widget
-  children and the launcher foreground. The later existing `capture_widgets_picker` selected the Clock
-  provider header, but the selected widget caption was `Analog clock`. Every real placed host in
-  `widgets-home-placed-attempt-15.xml` and the placement-page XML is a `LauncherAppWidgetHostView`
-  content-desc `Analog clock`, bounds `38,107,524,517`, inside the workspace around a real deskclock
-  analog child. The old `home_widget_bounds` and page searches expected the provider title `Clock`,
-  rejected the real host and failed. This run keeps the provider header only for picker selection and
-  uses the selected widget caption for host identity, bind consent, persistence and every page check;
-  the actual bound provider/component/new launcher-owned AppWidget ID proof is unchanged. Only the
-  shell harness and its executed fixtures changed. No app source, manifest, SDK, dependency,
-  applicationId or workflow changed.** Production Weather network stays OFF, the final consent stays
-  disabled, the Weather gate was **NOT REACHED** with no Weather artifacts, and the existing 104
-  readiness passed here but does not make this run all-green. Attempt 1's startup SystemUI ANR overlay
-  was environmental; no app-code fix was made for it.
+- current_phase: **CI277 widget parser contract + compact Weather status legibility — fixes committed
+  as `dccec32` and `1106312`, PENDING ACTUAL CI.** Parent-reported CI277 run45306446146 failed in
+  24m39 **after** placing the real Weather widget and tapping the exact real WeatherPreferences. The
+  clock passed the post-grid strict check on all three hosts with no null-item error, and the earlier
+  null-tag recycling checkpoint `1c672fb` compiled its 3 unit tests. The failure was a new parser
+  contract bug: `appwidget_launcher_instances` deliberately emits `<numeric id><TAB><provider>` and
+  its unused third `id` argument is ignored, but four Weather presence probes compared that row to a
+  bare `grep -qx <id>`, so they could never match even when id 10 was present. This run adds a
+  column-aware exact-id/exact-component lookup and keeps the existing helper contract unchanged. It
+  also makes the original compact 2x1/2x2 Weather status visibly read `Off` / `Not connected`, with
+  the full setup copy retained for accessibility. Only the shell harness/fixtures and the original
+  Weather XML/strings/provider presentation changed; production Weather network stays OFF and the
+  final consent stays disabled.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `f6f0475` (this identity fix); previous `f6d6da8` state record, `9ecfa82` CI269 readiness fix,
-  then `dacff49` checkpoint, `f7158e5` placement helpers and `b0bb658` weather render work. The STATE
+- head: `1106312` (compact Weather status legibility) on `dccec32` (exact-id parser fix), from the
+  `1c672fb` null-tag recycling checkpoint and the earlier `f6f0475` caption identity fix. The STATE
   commit follows this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI272 run45294228258 attempt2 ended in 20m28.** The strict new HOME readiness passed in the
-  first attempt, but `capture_widgets_picker` then expected the Clock provider title as the HOME host
-  label; the real selected widget was the Analog clock caption at `38,107,524,517`. The Weather gate
-  was **not reached** and produced no weather-widget artifacts, so it is neither failed nor passed.
-  Attempt 1's startup SystemUI ANR overlay was environmental. The existing 104 readiness passed in
-  this run, but there is no all-green claim and no CI result for `f6f0475` yet.
-- next: parent dispatches actual API 37 CI on `f6f0475`; only that runtime can prove the caption
-  identity unblocks the third-party placement/persistence path. Native optional Weather
-  placement/tap/restart/conditional-resize evidence is still pending actual CI. Then **repository
+- ci: **CI277 run45306446146 failed in 24m39 after the real Weather placement and WeatherPreferences
+  tap.** The clock passed the post-grid strict check on all three hosts with no null-item error; 290
+  unit tests and 176 Weather tests were zero-error. The real Weather id 10 preserved prior ids
+  6/7/8/9, bounds `556,107,1042,517`, the native Add/Create controls were used with Always allow
+  unchecked and the tap opened exact WeatherPreferences. The failing Weather-presence checks grepped
+  bare ids against `id<TAB>provider` rows. Restart and resize were not reached, so they remain
+  pending. There is no CI result yet for `dccec32` or `1106312`, and this is not all-green.
+- next: parent dispatches actual API 37 CI on `1106312`; only that runtime can prove the parser fix
+  unblocks the remaining Weather restart/resize path and that the compact status renders legibly in
+  real 2x1/2x2 pixels. Restart, resize and pixel evidence remain pending. Then **repository
   activation** (wire the real MET repository behind the owner's injected `WeatherLoadWork`, keeping
   the widget render-only), then **targeted lifecycle instrumentation**, then the **backup/SAF broader
   audit**. Release, hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play,
   large-screen, backup/restore and performance audits stay open. Do not claim a forecast is connected
-  or that the Weather tile has runtime evidence.
+  or that the Weather tile has runtime pixel evidence.
+
+## done (this run — CI277 parser contract and compact Weather status, PENDING ACTUAL CI)
+
+- **Exact CI277 finding, not a Weather placement failure:** run45306446146 ended in 24m39 after the
+  real Weather widget was placed and its exact WeatherPreferences opened. The clock strict check
+  passed all three hosts with no null-item error. The new failure was in the smoke parser contract:
+  `appwidget_launcher_instances` returns `<numeric id><TAB><provider>` and its unused third `id`
+  argument never changes that row shape, while four later Weather-presence probes piped it into
+  `grep -qx "$_cww_new_id"`. A present id 10 therefore produced a false negative. The older
+  null-tag recycling checkpoint `1c672fb` (`WidgetViewRecycling.resolveItemTag`, 3 unit tests) was
+  already committed and is not the 277 cause.
+- **Column-aware contract fix, helper unchanged:** new executed helper
+  `appwidget_launcher_instance_is <dump> <host> <numeric id> [<package>/<class>]` first requires the
+  launcher-owned host block and a numeric id, then compares the exact numeric first column and, when
+  supplied, the exact full provider component. All four Weather presence probes pass the new id and
+  `$PKG/app.dotwel.widgets.DotWelWeatherWidgetProvider`, so provider ownership and exact class are
+  re-proven after tap, restart, resize and the final gate. The ignored `id` arguments were removed
+  from the remaining plain-list callers, and `_cwg_widget_ids` now strips the provider column before
+  its set comparison. `appwidget_launcher_instances` still emits `<id><TAB><provider>` and
+  `appwidget_preserved_bindings` is unchanged, so no binding-preservation check was weakened.
+- **Executed fixtures use the actual row shape:** id 10 with the exact Weather component passes; id
+  11, the clock provider, a foreign host, a foreign provider package, a non-numeric id and a
+  malformed provider all fail closed. A static gate also rejects a reappearance of the bare
+  `grep -qx "$_cww_new_id"` check. `sh scripts/emulator-smoke-test.sh` reports **959 ok, 0 not ok,
+  all passed** (the 949 baseline plus 10 parser checks).
+- **Compact Weather status legibility:** the original layout keeps its bounded 2x1/2x2 row but the
+  detail line now uses short visual labels `Off` and `Not connected` instead of the long setup copy
+  that clipped to `Weather`. The full copy remains in the root content description, including the
+  existing not-connected accessibility sentence. The detail line wraps to at most two lines and
+  auto-sizes 8-11sp; the as-of line auto-sizes 7-9sp; padding/margin/weight give the status column
+  more width. The default preview text is the short label. No forecast, network path, new feature or
+  redesign was added.
+- **Guard:** `scripts/nothingui-weather-guard.sh` now requires the short strings, the provider's
+  short-detail/full-accessibility split, and a wrapping/auto-sizing detail line, and forbids
+  reintroducing the long off/not-connected detail. The mutation suite adds three checks and reports
+  **21 ok, 0 not ok**.
+- **Verification actually run (shell/XML only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` 959 ok; `sh scripts/nothingui-weather-guard-test.sh` 21 ok;
+  `sh scripts/emulator-smoke-drawer-test.sh` all passed; `sh scripts/verify-play-build-test.sh` 13 ok;
+  the home/widget/polish/weather/wallpaper/icon/role plus Play brand/identity guards and their
+  selected mutation suites passed; the edited Weather layout, strings and widget-info XML all parse;
+  `sh -n` is clean on the edited scripts and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI for `dccec32`/`1106312`, no emulator restart,
+  resize or 2x1/2x2 pixel proof, and no forecast connection. The parent-reported 290 units / 176
+  Weather tests were not rerun here. This run is not all-green.
 
 ## done (this run — CI272 placed-widget caption identity correction, PENDING ACTUAL CI)
 
