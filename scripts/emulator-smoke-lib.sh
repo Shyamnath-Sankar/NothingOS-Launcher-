@@ -3328,12 +3328,13 @@ widget_bind_always_allow_is_checked() (
 # empty. A host inside a widget-picker preview or sheet is never accepted; when
 # the hierarchy exposes a workspace, only a host inside that workspace counts.
 #
-# $3 is an optional expected provider label (the picker-selected app title). It
-# is matched against the host content-desc so a new Calendar is not confused
-# with an existing own Clock at the same geometry: reference hosts with another
-# label are ignored, pending hosts are never accepted, and the result must be a
-# real host inside a visible workspace. Without $3 the previous first-unseen
-# behaviour is preserved.
+# $3 is an optional expected host identity: the selected widget caption from the
+# picker's widget_name ("Analog clock"), never the provider header/app title
+# ("Clock"). It is matched against the host content-desc so a new Analog clock
+# is not confused with an existing own Clock at the same geometry: reference
+# hosts with another caption are ignored, pending hosts are never accepted, and
+# the result must be a real host inside a visible workspace. Without $3 the
+# previous first-unseen behaviour is preserved.
 home_widget_bounds() (
     xml=$1
     reference=${2:-}

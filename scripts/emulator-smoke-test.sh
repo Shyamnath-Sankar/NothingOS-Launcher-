@@ -1387,6 +1387,84 @@ assert_eq 'the provider-label mode still finds a real Calendar after two own hos
     '38 770 524 1401' \
     "$(home_widget_bounds "$multi_host_placed_xml" "$multi_host_ref_xml" Calendar)"
 
+# The real Clock provider header is only a picker selection label. The selected
+# widget caption ("Analog clock") is the host identity on HOME. The exact new
+# host from CI272 (content-desc Analog clock, bounds 38,107,524,517) must be
+# found by the caption, while the header Clock, a wrong provider caption, a
+# pre-existing host and a picker preview must all fail closed.
+third_party_caption_ref_xml="$TMP_DIR/third-party-caption-ref.xml"
+cat > "$third_party_caption_ref_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Clock" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Battery" bounds="[556,328][1042,738]" />
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,770][524,1180]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+third_party_caption_placed_xml="$TMP_DIR/third-party-caption-placed.xml"
+cat > "$third_party_caption_placed_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Clock" bounds="[38,328][524,738]" />
+      <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Battery" bounds="[556,328][1042,738]" />
+      <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,770][524,1180]" />
+      <node index="3" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Analog clock" bounds="[38,107][524,517]">
+        <node index="0" text="10:08" class="android.widget.TextView" bounds="[80,150][480,420]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the CI272 Analog clock host is found by its selected widget caption' \
+    '38 107 524 517' \
+    "$(home_widget_bounds "$third_party_caption_placed_xml" "$third_party_caption_ref_xml" 'Analog clock')"
+assert_eq 'the provider header Clock is not the Analog clock host caption' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_placed_xml" "$third_party_caption_ref_xml" Clock)"
+assert_eq 'a sibling Digital clock caption is not the Analog clock host' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_placed_xml" "$third_party_caption_ref_xml" 'Digital clock')"
+assert_eq 'a wrong third-party provider caption is not accepted for the Analog clock host' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_placed_xml" "$third_party_caption_ref_xml" Calendar)"
+assert_eq 'an Analog clock host already present in the reference is not new' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_placed_xml" "$third_party_caption_placed_xml" 'Analog clock')"
+third_party_caption_wrong_xml="$TMP_DIR/third-party-caption-wrong.xml"
+cat > "$third_party_caption_wrong_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/workspace" class="com.android.launcher3.Workspace" bounds="[0,0][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Clock" bounds="[38,107][524,517]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a Clock host at the exact bounds is not the selected Analog clock host' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_wrong_xml" "$third_party_caption_ref_xml" 'Analog clock')"
+third_party_caption_preview_xml="$TMP_DIR/third-party-caption-preview.xml"
+cat > "$third_party_caption_preview_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" bounds="[38,107][524,517]">
+      <node index="0" text="" class="com.android.launcher3.appwidget.LauncherAppWidgetHostView" content-desc="Analog clock" bounds="[38,107][524,517]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an Analog clock preview host is not a placed Analog clock host' \
+    '' \
+    "$(home_widget_bounds "$third_party_caption_preview_xml" "$third_party_caption_ref_xml" 'Analog clock')"
+
 # CI159: a third-party Calendar placed on a later page has no launcher
 # search_container_workspace header there, so its y=107 top is valid even though
 # the first page's header bottom is 312. The check must use the actual placed
@@ -3021,7 +3099,9 @@ assert_true 'the widgets capture reads the selected caption from the measured pr
     grep -Fq 'widget_picker_selected_caption' "$widgets_body"
 assert_true 'the widgets capture fails closed when the selected caption is missing or ambiguous' \
     grep -Fq 'exposes no unambiguous widget_name caption' "$widgets_body"
-assert_true 'the widgets capture keeps the provider title for HOME host and page identity' \
+assert_true 'the widgets capture uses the selected widget caption for the new HOME host identity' \
+    grep -Fq '"$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_widget_caption"' "$widgets_body"
+assert_false 'the widgets capture never uses the provider header for the new HOME host identity' \
     grep -Fq '"$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
 assert_false 'the widgets capture never passes the provider header to consent as the widget name' \
     grep -Fq '"$EXPECTED_LABEL" "$_cwp_provider_title"' "$widgets_body"
@@ -3061,7 +3141,9 @@ assert_true 'the widgets capture proves a new bound app widget provider' \
     grep -Fq 'appwidget_new_providers' "$widgets_body"
 assert_true 'the widgets capture validates the widget on the actual placed page geometry' \
     grep -Fq 'placed_widget_page_is_safe' "$widgets_body"
-assert_true 'the widgets capture passes the placed page, reference, provider label and bounds' \
+assert_true 'the widgets capture passes the placed page, reference, selected caption and bounds' \
+    grep -Fq '"$_cwp_placed" "$_cwp_ref" "$_cwp_widget_caption"' "$widgets_body"
+assert_false 'the widgets capture never passes the provider header to the placed-page identity' \
     grep -Fq '"$_cwp_placed" "$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
 assert_false 'the widgets capture never inherits the first-page header band' \
     grep -Fq '_cwp_ref_header_bottom' "$widgets_body"
@@ -3087,19 +3169,29 @@ assert_false 'the widgets capture never binds a widget or edits the database dir
     grep -Eq 'bindAppWidget|addItemToDatabase|LauncherSettings|content://|sqlite' "$widgets_body"
 assert_false 'the widgets capture never uses a fixed Add tap coordinate' \
     grep -Eq 'input tap [0-9]+ [0-9]+' "$widgets_body"
-assert_true 'the widgets capture identifies the placed provider by its selected label' \
+assert_true 'the widgets capture identifies the placed host by its selected widget caption' \
+    grep -Fq '"$_cwp_ref" "$_cwp_widget_caption"' "$widgets_body"
+assert_false 'the widgets capture never identifies the placed host by the provider title' \
     grep -Fq '"$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
+assert_true 'the widgets capture re-proves exact placed bounds by the selected caption' \
+    grep -Fq '"$_cwp_search_xml" "$_cwp_ref" "$_cwp_widget_caption"' "$widgets_body"
+assert_false 'the widgets capture never re-proves placed bounds by the provider title' \
+    grep -Fq '"$_cwp_search_xml" "$_cwp_ref" "$_cwp_provider_title"' "$widgets_body"
 assert_false 'the widgets capture never uses bounds-only widget identity' \
     grep -Fq 'home_has_widget_bounds' "$SMOKE"
 assert_true 'the widgets capture searches measured HOME pages during initial placement' \
     grep -Fq 'search_home_pages_for_widget \' "$widgets_body"
+assert_true 'the widgets capture passes the selected caption to initial page discovery' \
+    grep -Fq '"$_cwp_widget_caption" "$_cwp_ref" "$_cwp_last_xml"' "$widgets_body"
+assert_false 'the widgets capture never passes the provider title to page discovery' \
+    grep -Fq '"$_cwp_provider_title" "$_cwp_ref"' "$widgets_body"
 assert_true 'the widgets capture bounds initial page discovery to three advances' \
     grep -Fq '[ "$_shw_page" -lt 3 ]' "$search_pages_body"
 assert_true 'the page search requires the launcher to be resumed before a swipe' \
     grep -Fq 'foreground_is_component' "$search_pages_body"
 assert_true 'the page search refuses to swipe while any non-launcher activity owns the foreground' \
     grep -Fq '"$PKG" "$LAUNCHER_ACTIVITY"' "$search_pages_body"
-assert_true 'the page search proves a real workspace host by provider label' \
+assert_true 'the page search proves a real workspace host by the selected widget caption' \
     grep -Fq 'home_widget_bounds "$_shw_xml" "$_shw_ref" "$_shw_label"' \
     "$search_pages_body"
 assert_true 'the page search stores XML and PNG evidence per page' \

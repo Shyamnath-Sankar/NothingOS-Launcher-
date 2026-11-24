@@ -3296,10 +3296,11 @@ exercise_device_settings_shortcuts() {
         >> "$ARTIFACTS/device-settings.txt"
 }
 
-# Search up to three measured HOME page advances for the newly placed provider,
-# identified by the picker-selected label and a real workspace host, and never
-# by geometry alone. The caller must have already verified the launcher is
-# resumed and the new launcher-owned AppWidgetId is bound. An open bind consent
+# Search up to three measured HOME page advances for the newly placed widget,
+# identified by the picker-selected widget caption and a real workspace host,
+# and never by the provider header or geometry alone. The caller must have
+# already verified the launcher is resumed and the new launcher-owned
+# AppWidgetId is bound. An open bind consent
 # or a configuration activity stops the search before any swipe. Results are
 # returned in _cwp_search_page, _cwp_search_bounds and _cwp_search_xml; every
 # page advance saves XML/PNG plus a line in the page log.
@@ -4313,9 +4314,10 @@ capture_widgets_picker() {
                     capture_screenshot_to widgets-add-last.png
                     fail "the native widget picker exposed no Clock/Calendar provider with a fully visible preview above the navigation bar (clipped previews are rejected)"
                 fi
-                # Two identities: the provider/app title ("Clock") stays the
-                # HOME host and page-search identity, while the consent names
-                # the selected preview's own widget caption ("Analog clock").
+                # Two identities: the provider header/app title ("Clock") only
+                # selects the picker cell, while the selected preview's own
+                # widget caption ("Analog clock") is the host identity for
+                # binding consent, placement, persistence and every page search.
                 # Read the caption only from the actual WidgetCell that owns the
                 # measured preview; never the provider header or a global
                 # widget_name. A missing or ambiguous caption fails closed.
@@ -4467,7 +4469,7 @@ capture_widgets_picker() {
                             fi
                         fi
                         _cwp_candidate_bounds=$(home_widget_bounds \
-                            "$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_provider_title")
+                            "$_cwp_candidate_xml" "$_cwp_ref" "$_cwp_widget_caption")
                         if [ -n "$_cwp_candidate_bounds" ]; then
                             _cwp_placed=$_cwp_candidate_xml
                             _cwp_placed_bounds=$_cwp_candidate_bounds
@@ -4500,7 +4502,7 @@ capture_widgets_picker() {
                         fail "no new launcher-owned AppWidgetId was bound before HOME page discovery"
                     : > "$ARTIFACTS/widgets-page-log.txt"
                     if search_home_pages_for_widget \
-                        "$_cwp_provider_title" "$_cwp_ref" "$_cwp_last_xml" \
+                        "$_cwp_widget_caption" "$_cwp_ref" "$_cwp_last_xml" \
                         widgets-placement "$ARTIFACTS/widgets-page-log.txt"; then
                         _cwp_placed=$_cwp_search_xml
                         _cwp_placed_bounds=$_cwp_search_bounds
@@ -4509,7 +4511,7 @@ capture_widgets_picker() {
                             >> "$ARTIFACTS/widgets-add-log.txt"
                     else
                         capture_screenshot_to widgets-page-last.png
-                        fail "the new $_cwp_provider_title widget was not found on the first three measured HOME pages after Add and consent"
+                        fail "the new $_cwp_widget_caption widget was not found on the first three measured HOME pages after Add and consent"
                     fi
                 fi
                 if [ -z "$_cwp_placed" ]; then
@@ -4533,9 +4535,9 @@ capture_widgets_picker() {
                 # may legitimately have no first-page search_container_workspace
                 # header, so never inherit the reference page's header band.
                 placed_widget_page_is_safe \
-                    "$_cwp_placed" "$_cwp_ref" "$_cwp_provider_title" \
+                    "$_cwp_placed" "$_cwp_ref" "$_cwp_widget_caption" \
                     "$_cwp_placed_bounds" ||
-                    fail "the placed $_cwp_provider_title widget is not a genuine workspace host inside the actual page's workspace, header and dock bounds ($_cwp_placed_bounds)"
+                    fail "the placed $_cwp_widget_caption widget is not a genuine workspace host inside the actual page's workspace, header and dock bounds ($_cwp_placed_bounds)"
 
                 # The new widget id must be bound and owned by this launcher,
                 # not merely an installed provider or another host's widget.
@@ -4578,10 +4580,10 @@ capture_widgets_picker() {
                 # page, then navigate back to the widget page and re-prove the
                 # same identity and bounds.
                 if ! search_home_pages_for_widget \
-                    "$_cwp_provider_title" "$_cwp_ref" \
+                    "$_cwp_widget_caption" "$_cwp_ref" \
                     "$ARTIFACTS/widgets-home-after-home.xml" widgets-survival \
                     "$ARTIFACTS/widgets-page-log.txt"; then
-                    fail "the placed $_cwp_provider_title widget was not found on the first three measured HOME pages after launching Settings and returning HOME"
+                    fail "the placed $_cwp_widget_caption widget was not found on the first three measured HOME pages after launching Settings and returning HOME"
                 fi
                 _cwp_page=$_cwp_search_page
                 _cwp_search_xml=$_cwp_search_xml
@@ -4623,12 +4625,12 @@ capture_widgets_picker() {
                     done
                 fi
                 _cwp_recheck_bounds=$(home_widget_bounds \
-                    "$_cwp_search_xml" "$_cwp_ref" "$_cwp_provider_title")
+                    "$_cwp_search_xml" "$_cwp_ref" "$_cwp_widget_caption")
                 [ "$_cwp_recheck_bounds" = "$_cwp_placed_bounds" ] ||
-                    fail "the placed $_cwp_provider_title widget did not survive bounded page navigation (expected $_cwp_placed_bounds, got '${_cwp_recheck_bounds:-none}')"
+                    fail "the placed $_cwp_widget_caption widget did not survive bounded page navigation (expected $_cwp_placed_bounds, got '${_cwp_recheck_bounds:-none}')"
 
-                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings, returning HOME and a bounded page search/return that found the widget on its actual page.\n' \
-                    "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
+                printf 'Widgets: the real HOME long-press popup opened the native picker; a real %s widget from the %s provider was expanded, its preview tapped, Add used, the exact bind consent Create control tapped with Always allow unchecked, and a new AppWidgetHostView plus a new launcher-owned AppWidgetId survived launching Settings, returning HOME and a bounded page search/return that found the widget on its actual page.\n' \
+                    "$_cwp_widget_caption" "$_cwp_provider_title" > "$ARTIFACTS/widgets-picker.txt"
                 printf 'Provider: %s\n' "$_cwp_new_providers" \
                     >> "$ARTIFACTS/widgets-picker.txt"
                 printf 'Widget bounds: %s\n' "$_cwp_placed_bounds" \
