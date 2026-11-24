@@ -4,19 +4,19 @@ Updated by the agent-dev workflow at the end of every run. The next dispatch rea
 when no task input is given, and continues from "next".
 
 - current_phase: **home-widget-composition-v1-new — MET repository and OkHttp transport wired behind the
-  owner load seam. Committed as `f3d53e0`, PENDING ACTUAL CI.** The release path now builds the real
+  owner load seam. Committed as `368b40d`, PENDING ACTUAL CI.** The release path now builds the real
   MET work graph with the app-private no-backup cache, the persisted throttle store and the
   owner-backed session provider. Debug/test builds use the explicit network-off mode so the emulator
   smoke gate's synthetic enable cannot reach the live MET endpoint. No actual MET request was made in
   this coding run.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `f3d53e0` (MET work wiring) on `f3a2224` (CI283 attempt2 record); the STATE commit follows this
-  list.
+- head: `368b40d` (MET wiring plus test-import cleanup) on `7af3cdb` (state record) on `f3d53e0`
+  (MET work wiring) on `f3a2224` (CI283 attempt2 record); this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
 - ci: **Parent-reported CI28645325785121 was FULL GREEN in 30m51 with 290 units and 176 Weather
   tests.** It placed the actual Weather widget as id 10, preserved the existing 6/7/8/9 taps, kept the
   exact settings restart, the same bounds and a 2x2 -> 2x1 vertical resize, and passed the drawer
-  boundary. There is no actual CI result yet for `f3d53e0`, and this is not all-green for this run.
+  boundary. There is no actual CI result yet for `368b40d`, and this is not all-green for this run.
 - next: parent dispatches actual CI on `f3d53e0`; only that runtime can compile the Android runtime
   path and prove the debug network-off mode still installs/runs. Then a **controlled live forecast
   test** in a release build is required before claiming any forecast is connected. Do not attribute
