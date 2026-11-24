@@ -23,6 +23,9 @@ when no task input is given, and continues from "next".
   forecast pixels or live API success to this run. Then targeted lifecycle instrumentation and the
   backup/SAF broader audit. Release, hosting and merge stay paused. PrivateSpace, settings
   round-trip, non-Play, large-screen, backup/restore and performance audits stay open.
+- blockers: no actual CI for `368b40d`, so the Android runtime compile/install and the debug
+  network-off boundary are still unproven at runtime. A controlled live forecast test needs a
+  release build and the parent's audit; no forecast, endpoint success or runtime pixel is claimed.
 
 ## done (this run — MET work wiring behind the gated owner, PENDING ACTUAL CI)
 
