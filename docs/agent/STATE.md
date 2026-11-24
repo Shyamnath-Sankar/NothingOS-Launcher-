@@ -3,27 +3,62 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — compile-only native test-APK preflight on
-  `24d8f98`, PASSED in the existing Actions coding runner (state 117).** The real
-  `assembleLawnWithQuickstepPlayDebugAndroidTest` Gradle build succeeded with AGP 9.5.2, Kotlin
-  2.4.21, compileSdk 37.2 and build-tools 37.0.0. A real AAPT2 syntax defect was found and fixed in
-  the smoke orchestrator only: `aapt2 dump xmltree` requires `--file AndroidManifest.xml`, while
-  legacy `aapt` is positional. No app source, resource, manifest, permission, workflow, dependency,
-  SDK, Gradle, applicationId, network/debug switch or build type was changed.
+- current_phase: **home-widget-composition-v1-new — presence-proof transport hardening on
+  `8662ac4` (state 119), shell-only, PENDING ACTUAL CI.** `weather_harness_package_state` now
+  requires a successful adb transport exit (0) in addition to a complete sentinel/list and a
+  corroborating `pm path` before it reports present/absent. A nonzero transport (1 or 124) with a
+  complete-looking payload is now `query_failure`, so cleanup fails closed instead of proving
+  absence or presence. The list parser also rejects malformed `package:` lines as corrupt output.
+  No Android build, app source, Kotlin, workflow, manifest, permission, applicationId, build type,
+  dependency, network policy, merge, release or signing change.
 - branch: `agent/home-widget-composition-v1-new`
-- head: **this run's fix/docs commit** (parent `24d8f98`); this STATE update follows.
+- head: **`e689cc6`**; this STATE update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **Actual local Actions-runner Gradle build, not an Android CI rerun:** test-APK build
-  **BUILD SUCCESSFUL** in 6m11s (660 tasks); production debug APK **BUILD SUCCESSFUL** in 1m14s.
-  Test APK SHA-256 `f540599c…2b77348`; production APK SHA-256 `aa508f38…b3538595`. The last
-  parent-reported green remains CI305 with 301 units and 187 Weather tests.
-- next: parent decides whether to dispatch actual Android CI/emulator on this AAPT fix. The executed
-  smoke fixture now rejects the old positional aapt2 syntax and covers both aapt2 and aapt. Release,
-  hosting, merge, signing and any new build type stay paused.
+- ci: **No CI run for this shell-only commit.** Parent-recorded facts: CI310 passed with **301 unit
+  tests and 187 Weather tests**; **0 native instrumentation cases executed** here. The last
+  compile proof remains the state 117 test-APK build on `24d8f98`.
+- next: parent decides whether to dispatch actual Android CI on `e689cc6`. Release, hosting, merge,
+  signing and any new build type stay paused.
 - blockers: no emulator, no `am instrument`, no device runtime and no Android CI rerun here by
-  instruction. Compile/manifest/AAPT proof is real; runtime and forecast pixels are not claimed.
+  instruction. The executed fixtures prove orchestrator fail-closed behavior; runtime, forecast and
+  native instrumentation remain unproven.
 
-## done (this run — compile-only native test-APK preflight on `24d8f98`, PASSED)
+## done (this run — presence-proof transport hardening on `8662ac4`, shell-only, PENDING ACTUAL CI)
+
+- **Root cause confirmed, not guessed:** `weather_harness_package_state` recorded
+  `_whq_enum_status` but only logged it; `weather_harness_presence_state` classified from the
+  `pm list` payload and `pm path` alone. A complete valid-looking payload with `PM_ENUM_RC=0` plus
+  a nonzero adb transport exit (1 or 124) could therefore prove absence before install or presence
+  before cleanup. The old list parser also accepted `package:` lines without `=` as a valid
+  non-match, so a corrupt query could read as absence.
+- **Fail-closed fix:** the enumeration transport status is now passed into the presence proof, and
+  any nonzero status returns `query_failure` regardless of how complete the payload looks. Present
+  still requires a successful, non-empty `pm path`; absent still accepts real Android's empty
+  `pm path` exit 1 only with a successful enumeration. The logged `presence_state` is the same
+  failed final state, with a truthful transport diagnostic.
+- **Strict grammar:** `package:/nonempty-path=valid.dotted.package` is required for enumeration
+  rows; malformed rows (missing `=`, empty path, empty name, no dot, bad character) are
+  `query_failure`, never absence. `pm path` rows now require a non-empty `package:/...` path.
+- **Executed regressions:** six orchestration fixtures inject rc1 and rc124 with a complete valid
+  payload and sentinel: absent before install, present before cleanup, and absent after uninstall.
+  All stay red; the absent/present-before cases never install or uninstall on unproven state, and
+  the after-uninstall case reports `result=after_query_failure`, never cleanup success.
+- **Demonstrated against the old code:** the pre-fix functions returned `absent` for a complete
+  absence payload plus nonzero transport, `present` for a complete presence payload, and `absent`
+  for a malformed `package:` line; the fixed functions return `query_failure` for all three.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` reports **1338 ok, 0 not ok, all passed** (the 1294 baseline
+  plus 44 parser/fixture/static checks); `sh scripts/nothingui-weather-guard.sh` passes;
+  `sh scripts/nothingui-weather-guard-test.sh` reports **34 ok, 0 not ok**;
+  `sh scripts/emulator-smoke-drawer-test.sh` reports **38 ok, 0 not ok**;
+  `sh scripts/verify-play-build-test.sh` reports **13 ok, 0 not ok**; `sh -n` is clean on both
+  edited scripts and `git diff --check` is clean.
+- **Missing evidence / not claimed:** no Android CI for `e689cc6`, no APK, no emulator, no
+  `am instrument`, no forecast and no native Weather execution. The 301 units / 187 Weather tests
+  are the parent's CI310 facts, not rerun here. This run is shell-only and does not claim native
+  runtime behavior.
+
+## done (previous run — compile-only native test-APK preflight on `24d8f98`, PASSED)
 
 - **Actual AGP/Kotlin build, not a stub:** set `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64`
   (OpenJDK 21.0.13) and `ANDROID_HOME=/usr/local/lib/android/sdk` (platform `android-37.2`,
