@@ -5,8 +5,11 @@
 set -eu
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 LIB="$SCRIPT_DIR/emulator-smoke-lib.sh"
 SMOKE="$SCRIPT_DIR/emulator-smoke.sh"
+PROD_STRINGS="$ROOT_DIR/lawnchair/res/values/strings.xml"
+PROD_WEATHER_PROVIDER="$ROOT_DIR/lawnchair/src/app/dotwel/widgets/DotWelWeatherWidgetProvider.kt"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -58,6 +61,14 @@ assert_false() {
     else
         pass "$name"
     fi
+}
+
+# Resolve one exact <string name="...">value</string> from the shipped values
+# resource. The Weather fixtures and helper constants are checked against this,
+# so a production copy change cannot silently drift from the runtime gate.
+prod_string() {
+    sed -n "s/.*<string name=\"$1\"[^>]*>\(.*\)<\/string>.*/\1/p" "$PROD_STRINGS" |
+        head -n 1
 }
 
 # --- dumpsys foreground fixtures -------------------------------------------
@@ -1101,7 +1112,7 @@ cat > "$weather_home_ref_xml" <<'EOF'
 </hierarchy>
 EOF
 weather_home_placed_xml="$TMP_DIR/weather-home-placed.xml"
-cat > "$weather_home_placed_xml" <<'EOF'
+cat > "$weather_home_placed_xml" <<EOF
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
   <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
@@ -1109,9 +1120,11 @@ cat > "$weather_home_placed_xml" <<'EOF'
       <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,328][524,738]" />
       <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[556,328][1042,738]" />
       <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/appwidget" class="app.lawnchair.LawnchairAppWidgetHostView" content-desc="DotWel Launcher" bounds="[38,770][524,1170]">
-        <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" class="android.widget.TextView" bounds="[60,790][300,850]" />
-        <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" class="android.widget.TextView" bounds="[60,860][420,900]" />
-        <node index="2" text="Provider not connected" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" class="android.widget.TextView" bounds="[60,910][420,950]" />
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION" class="android.widget.FrameLayout" bounds="[42,774][520,1166]">
+          <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" class="android.widget.TextView" bounds="[60,790][300,850]" />
+          <node index="1" text="$WEATHER_WIDGET_NOT_CONNECTED_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" class="android.widget.TextView" bounds="[60,860][420,900]" />
+          <node index="2" text="$WEATHER_WIDGET_NOT_CONNECTED_ASOF" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" class="android.widget.TextView" bounds="[60,910][420,950]" />
+        </node>
       </node>
     </node>
   </node>
@@ -1204,11 +1217,12 @@ assert_true 'adjacent Weather bounds do not count as overlap' \
     home_widget_bounds_clear_of "$weather_home_ref_xml" '38 738 524 1138'
 
 weather_off_xml="$TMP_DIR/weather-off.xml"
-cat > "$weather_off_xml" <<'EOF'
+cat > "$weather_off_xml" <<EOF
 <hierarchy rotation="0">
-  <node index="0" text="Weather off · tap to set up" content-desc="Weather off · tap to set up" clickable="true" bounds="[0,0][500,200]">
-    <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
-    <node index="1" text="Weather off · tap to set up" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION" clickable="true" bounds="[0,0][500,200]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
   </node>
 </hierarchy>
 EOF
@@ -1220,40 +1234,202 @@ assert_eq 'the truthful not-connected Weather copy is accepted' \
     "$(weather_widget_text_is_truthful "$weather_home_placed_xml")"
 
 weather_forecast_xml="$TMP_DIR/weather-forecast.xml"
-cat > "$weather_forecast_xml" <<'EOF'
+cat > "$weather_forecast_xml" <<EOF
 <hierarchy rotation="0">
-  <node index="0" text="12°C" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
-  <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
-  <node index="2" text="Provider not connected" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION" bounds="[0,0][500,240]">
+    <node index="0" text="12°C" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_NOT_CONNECTED_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="$WEATHER_WIDGET_NOT_CONNECTED_ASOF" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
 </hierarchy>
 EOF
 assert_eq 'a synthetic Weather temperature is rejected' \
     '' \
     "$(weather_widget_text_is_truthful "$weather_forecast_xml")"
 
-weather_off_stale_xml="$TMP_DIR/weather-off-stale.xml"
-cat > "$weather_off_stale_xml" <<'EOF'
+weather_off_forecast_number_xml="$TMP_DIR/weather-off-forecast-number.xml"
+cat > "$weather_off_forecast_number_xml" <<EOF
 <hierarchy rotation="0">
-  <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
-  <node index="1" text="Weather off · tap to set up" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
-  <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION" bounds="[0,0][500,200]">
+    <node index="0" text="12°C" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an off root description with a forecast number is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_off_forecast_number_xml")"
+
+weather_off_stale_xml="$TMP_DIR/weather-off-stale.xml"
+cat > "$weather_off_stale_xml" <<EOF
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION" bounds="[0,0][500,240]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
 </hierarchy>
 EOF
 assert_eq 'an off Weather tile with a fake update timestamp is rejected' \
     '' \
     "$(weather_widget_text_is_truthful "$weather_off_stale_xml")"
 
-weather_not_connected_reason_xml="$TMP_DIR/weather-not-connected-reason.xml"
-cat > "$weather_not_connected_reason_xml" <<'EOF'
+weather_off_contradictory_asof_xml="$TMP_DIR/weather-off-contradictory-asof.xml"
+cat > "$weather_off_contradictory_asof_xml" <<EOF
 <hierarchy rotation="0">
-  <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
-  <node index="1" text="No forecast yet" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
-  <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION" bounds="[0,0][500,240]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="$WEATHER_WIDGET_NOT_CONNECTED_ASOF" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an off tile with a not-connected as-of line is rejected as contradictory' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_off_contradictory_asof_xml")"
+
+weather_not_connected_reason_xml="$TMP_DIR/weather-not-connected-reason.xml"
+cat > "$weather_not_connected_reason_xml" <<EOF
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION" bounds="[0,0][500,240]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_NOT_CONNECTED_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="Updated 4:10" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
 </hierarchy>
 EOF
 assert_eq 'a not-connected Weather tile with an update timestamp is rejected' \
     '' \
     "$(weather_widget_text_is_truthful "$weather_not_connected_reason_xml")"
+
+weather_off_missing_description_xml="$TMP_DIR/weather-off-missing-description.xml"
+cat > "$weather_off_missing_description_xml" <<EOF
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" bounds="[0,0][500,200]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an off tile without a root content description is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_off_missing_description_xml")"
+
+weather_off_wrong_description_xml="$TMP_DIR/weather-off-wrong-description.xml"
+cat > "$weather_off_wrong_description_xml" <<EOF
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION" bounds="[0,0][500,200]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_OFF_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an off tile with the not-connected root description is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_off_wrong_description_xml")"
+
+weather_not_connected_missing_description_xml="$TMP_DIR/weather-not-connected-missing-description.xml"
+cat > "$weather_not_connected_missing_description_xml" <<EOF
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" bounds="[0,0][500,240]">
+    <node index="0" text="$WEATHER_WIDGET_VALUE_UNKNOWN" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="$WEATHER_WIDGET_NOT_CONNECTED_DETAIL" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="$WEATHER_WIDGET_NOT_CONNECTED_ASOF" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a not-connected tile without a root content description is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_not_connected_missing_description_xml")"
+
+weather_loading_xml="$TMP_DIR/weather-loading.xml"
+cat > "$weather_loading_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="Updating weather" bounds="[0,0][500,200]">
+    <node index="0" text="…" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="Updating weather" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a loading Weather tile is not accepted as off or not connected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_loading_xml")"
+
+weather_unavailable_xml="$TMP_DIR/weather-unavailable.xml"
+cat > "$weather_unavailable_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="Weather unavailable" bounds="[0,0][500,240]">
+    <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="Weather unavailable" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="Retry later" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an unavailable Weather tile is not accepted as off or not connected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_unavailable_xml")"
+
+weather_unknown_state_xml="$TMP_DIR/weather-unknown-state.xml"
+cat > "$weather_unknown_state_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_root" content-desc="--" bounds="[0,0][500,200]">
+    <node index="0" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_value" bounds="[40,40][200,120]" />
+    <node index="1" text="--" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_detail" bounds="[40,120][480,180]" />
+    <node index="2" text="" resource-id="com.launchernos.dotwellabs.debug:id/nothingui_weather_asof" bounds="[40,180][480,220]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'an unknown Weather state is rejected' \
+    '' \
+    "$(weather_widget_text_is_truthful "$weather_unknown_state_xml")"
+
+# The fixtures above are only valid evidence if they match the shipped copy and
+# the provider's resource-to-field mapping. Read the real strings resource and
+# provider, and fail loudly on any future copy drift instead of silently
+# accepting a stale fixture.
+assert_eq 'the off short detail matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_state_off_short)" \
+    "$WEATHER_WIDGET_OFF_DETAIL"
+assert_eq 'the off root content description matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_state_off)" \
+    "$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION"
+assert_eq 'the not-connected short detail matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_state_not_connected_short)" \
+    "$WEATHER_WIDGET_NOT_CONNECTED_DETAIL"
+assert_eq 'the not-connected as-of copy matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_state_not_connected)" \
+    "$WEATHER_WIDGET_NOT_CONNECTED_ASOF"
+assert_eq 'the not-connected root content description matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_state_not_connected_content_description)" \
+    "$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION"
+assert_eq 'the unknown Weather value matches the shipped strings resource' \
+    "$(prod_string nothingui_weather_value_unknown)" \
+    "$WEATHER_WIDGET_VALUE_UNKNOWN"
+assert_true 'the provider maps the off detail to the short visible label' \
+    grep -Fq 'detail = context.getString(R.string.nothingui_weather_state_off_short),' \
+    "$PROD_WEATHER_PROVIDER"
+assert_true 'the provider maps the off root description to the full setup copy' \
+    grep -Fq 'contentDescription = context.getString(R.string.nothingui_weather_state_off),' \
+    "$PROD_WEATHER_PROVIDER"
+assert_true 'the provider maps the not-connected detail to the short visible label' \
+    grep -Fq 'detail = context.getString(R.string.nothingui_weather_state_not_connected_short),' \
+    "$PROD_WEATHER_PROVIDER"
+assert_true 'the provider maps the not-connected as-of line to the shipped copy' \
+    grep -Fq 'asOf = context.getString(R.string.nothingui_weather_state_not_connected),' \
+    "$PROD_WEATHER_PROVIDER"
+assert_true 'the provider maps the not-connected root description to the full accessibility copy' \
+    grep -Fq 'R.string.nothingui_weather_state_not_connected_content_description,' \
+    "$PROD_WEATHER_PROVIDER"
+assert_false 'the provider does not map the off detail to the long setup copy' \
+    grep -Fq 'detail = context.getString(R.string.nothingui_weather_state_off),' \
+    "$PROD_WEATHER_PROVIDER"
+assert_false 'the provider does not map the not-connected detail to the long copy' \
+    grep -Fq 'detail = context.getString(R.string.nothingui_weather_state_not_connected),' \
+    "$PROD_WEATHER_PROVIDER"
 
 # CI147 regression: the pre-widget HOME already exposes the two own widgets.
 # After the third-party Calendar is added, both own hosts remain and the new
@@ -3935,7 +4111,6 @@ assert_eq 'a degenerate list has no safe scroll gesture' \
 
 # Source wiring: the Play-gated bottom clip lives in the drawer recycler, keeps
 # clipToPadding=false for top overflow, and reuses the existing home gate.
-ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 RECYCLER="$ROOT_DIR/src/com/android/launcher3/allapps/AllAppsRecyclerView.java"
 CLIP="$ROOT_DIR/lawnchair/src/app/nothingui/drawer/AllAppsBottomClip.kt"
 RV_LAYOUT="$ROOT_DIR/res/layout/all_apps_rv_layout.xml"

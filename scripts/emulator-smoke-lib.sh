@@ -2152,26 +2152,43 @@ weather_settings_screen_identity() (
     return 0
 )
 
+# Exact current DotWel Weather production copy. The smoke test cross-checks
+# every value here against lawnchair/res/values/strings.xml and the provider's
+# resource mapping, so a future copy change fails loudly instead of letting the
+# runtime gate drift from the shipped tile.
+WEATHER_WIDGET_VALUE_UNKNOWN='--'
+WEATHER_WIDGET_OFF_DETAIL='Off'
+WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION='Weather off · tap to set up'
+WEATHER_WIDGET_NOT_CONNECTED_DETAIL='Not connected'
+WEATHER_WIDGET_NOT_CONNECTED_ASOF='No forecast yet'
+WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION='No forecast yet. The weather provider is not connected. Tap to open weather settings.'
+
 # Print "off" or "not_connected" only when the captured hierarchy exposes the
-# exact truthful DotWel Weather copy and no forecast value. The value must be
-# "--"; Off must have no as-of line and NotConnected must say the provider is not
-# connected. A temperature, an "Updated"/"As of" timestamp or any other detail
-# fails closed, so a synthetic or stale forecast can never satisfy the evidence.
+# exact truthful DotWel Weather copy and no forecast value. The visible value
+# must be "--", the short detail must be exactly "Off" or "Not connected", and
+# the root content description must be the matching full accessibility copy.
+# Off must have no as-of line; NotConnected must show the exact "No forecast
+# yet" as-of line. A temperature, a Loading/Unavailable state, a timestamp, a
+# contradictory or missing root description, or any other detail fails closed,
+# so a synthetic or stale forecast can never satisfy the evidence.
 weather_widget_text_is_truthful() (
     xml=$1
     [ -s "$xml" ] || return 1
     value=$(ui_node_attribute "$xml" nothingui_weather_value text)
     detail=$(ui_node_attribute "$xml" nothingui_weather_detail text)
     asof=$(ui_node_attribute "$xml" nothingui_weather_asof text)
-    [ "$value" = "--" ] || return 1
+    description=$(ui_node_attribute "$xml" nothingui_weather_root content-desc)
+    [ "$value" = "$WEATHER_WIDGET_VALUE_UNKNOWN" ] || return 1
     case "$detail" in
-        'Weather off · tap to set up')
+        "$WEATHER_WIDGET_OFF_DETAIL")
             [ -z "$asof" ] || return 1
+            [ "$description" = "$WEATHER_WIDGET_OFF_CONTENT_DESCRIPTION" ] || return 1
             printf 'off\n'
             return 0
             ;;
-        'No forecast yet')
-            [ "$asof" = 'Provider not connected' ] || return 1
+        "$WEATHER_WIDGET_NOT_CONNECTED_DETAIL")
+            [ "$asof" = "$WEATHER_WIDGET_NOT_CONNECTED_ASOF" ] || return 1
+            [ "$description" = "$WEATHER_WIDGET_NOT_CONNECTED_CONTENT_DESCRIPTION" ] || return 1
             printf 'not_connected\n'
             return 0
             ;;
