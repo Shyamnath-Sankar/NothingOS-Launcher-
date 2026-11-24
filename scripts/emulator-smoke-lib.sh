@@ -2195,6 +2195,16 @@ WEATHER_PRIVACY_NOTICE_DEBUG_OFF='This debug build has network requests disabled
 WEATHER_PRIVACY_NOTICE_DEVICE_IP='the IP address of this device'
 WEATHER_PRIVACY_NOTICE_RELEASE_SHARED='are shared with MET Norway'
 
+# Exact action copy used only to tie a post-action screen capture to the real
+# enabled/disabled result. The smoke test cross-checks these prefixes against
+# the shipped runtime strings, so the gate cannot drift into a short or invented
+# fragment. The enabled control names are the real production labels.
+WEATHER_ACTION_ENABLED_SAVED='Weather setup saved.'
+WEATHER_ACTION_ENABLED_RELEASE='MET Norway'
+WEATHER_ACTION_DISABLED_SAVED='Weather disabled.'
+WEATHER_ACTION_DISABLE_CONTROL='Disable and clear location'
+WEATHER_ACTION_ENABLE_CONTROL='Save and enable'
+
 # Stage 1 of the Weather destination proof. Succeed only when the hierarchy is
 # the real WeatherPreferences privacy-notice view for the requested build mode:
 # the unique privacy heading and the unique Terms link, the Weather title, and
@@ -2272,6 +2282,123 @@ weather_settings_screen_provenance() (
     [ "$location_xml" != "$latitude_xml" ] || return 1
     weather_settings_notice_identity "$notice_xml" "$mode" || return 1
     weather_settings_fields_identity "$location_xml" "$latitude_xml" || return 1
+    return 0
+)
+
+# Succeed only when the unique control for $2 is genuinely actionable in $1:
+# exactly one clickable owner with a real rectangle and an enabled state. A
+# clipped, duplicate, disabled or missing control fails closed. Visibility
+# against the measured viewport is still enforced by the orchestrator that
+# captured the hierarchy, because this pure helper has no device viewport.
+weather_action_control_is_actionable() (
+    xml=${1:-}
+    label=${2:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$label" ] || return 1
+    bounds=$(ui_unique_clickable_label_bounds "$xml" "$label")
+    [ -n "$bounds" ] || return 1
+    [ "$(ui_unique_label_enabled "$xml" "$label")" = true ] || return 1
+    set -- $bounds
+    [ "$#" -eq 4 ] || return 1
+    case "$1$2$3$4" in
+        *[!0-9]*) return 1 ;;
+    esac
+    [ "$3" -gt "$1" ] || return 1
+    [ "$4" -gt "$2" ] || return 1
+    return 0
+)
+
+# Post-enable identity. The real success line and the Disable control commonly
+# sit below the long privacy notice, so they are absent from the top-of-screen
+# capture and only exist in the measured post-action reveal. Require the unique
+# actionable Disable control and the exact saved line (plus the build-mode
+# disclosure that line carries) in that measured hierarchy. The top-of-screen
+# snapshot is never accepted as this proof.
+weather_enabled_action_identity() (
+    xml=${1:-}
+    mode=${2:-debug}
+    [ -s "$xml" ] || return 1
+    weather_action_control_is_actionable "$xml" "$WEATHER_ACTION_DISABLE_CONTROL" ||
+        return 1
+    ui_label_contains "$xml" "$WEATHER_ACTION_ENABLED_SAVED" || return 1
+    case "$mode" in
+        debug)
+            ui_label_contains "$xml" "$WEATHER_PRIVACY_NOTICE_DEBUG_OFF" || return 1
+            ;;
+        release)
+            ui_label_contains "$xml" "$WEATHER_ACTION_ENABLED_RELEASE" || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    return 0
+)
+
+# Post-disable identity. The disabled reveal must expose the disabled success
+# line and the unique Save and enable control. That control is intentionally
+# disabled without fresh consent, so actionability (enabled=true) is not
+# required here; uniqueness and the real control label are.
+weather_disabled_action_identity() (
+    xml=${1:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$(ui_unique_label_bounds "$xml" "$WEATHER_ACTION_ENABLE_CONTROL")" ] ||
+        return 1
+    ui_label_contains "$xml" "$WEATHER_ACTION_DISABLED_SAVED" || return 1
+    return 0
+)
+
+# Succeed only when the persisted consent is the exact enabled schema with a
+# non-empty saved label and numeric-looking coordinates. Missing, malformed or
+# disabled records fail closed, so a post-action screen capture cannot be paired
+# with an unrelated store state.
+weather_consent_enabled_with_location() (
+    consent=${1:-}
+    [ -n "$consent" ] || return 1
+    printf '%s\n' "$consent" |
+        grep -Eq '^enabled\|[0-9]+\|[^|]+\|[-0-9.]+\|[-0-9.]+$'
+)
+
+# Strict post-action provenance for the real WeatherPreferences. The measured
+# message hierarchy must be a distinct capture from the initial notice capture,
+# the exact PreferenceActivity must still be resumed, the notice must remain the
+# mode-correct Weather destination, and the action identity plus matching
+# durable store must agree. This is the same-screen source used by the enabled
+# and disabled assertions; a PRE-scroll top-of-screen XML, a foreign screen, a
+# stale/other store or one artifact reused as its own proof fails closed.
+weather_action_screen_provenance() (
+    kind=${1:-}
+    message_xml=${2:-}
+    notice_xml=${3:-}
+    activities_dump=${4:-}
+    pkg=${5:-}
+    cls=${6:-}
+    mode=${7:-debug}
+    consent=${8:-}
+    [ -s "$message_xml" ] || return 1
+    [ -s "$notice_xml" ] || return 1
+    [ -s "$activities_dump" ] || return 1
+    [ "$message_xml" != "$notice_xml" ] || return 1
+    [ -n "$pkg" ] || return 1
+    [ -n "$cls" ] || return 1
+    foreground_is_component "$activities_dump" "$pkg" "$cls" || return 1
+    weather_settings_notice_identity "$notice_xml" "$mode" || return 1
+    case "$kind" in
+        enable)
+            weather_enabled_action_identity "$message_xml" "$mode" || return 1
+            weather_consent_enabled_with_location "$consent" || return 1
+            ;;
+        disable)
+            weather_disabled_action_identity "$message_xml" || return 1
+            case "$consent" in
+                disabled\|*) ;;
+                *) return 1 ;;
+            esac
+            ;;
+        *)
+            return 1
+            ;;
+    esac
     return 0
 )
 

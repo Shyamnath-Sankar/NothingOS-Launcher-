@@ -2631,6 +2631,9 @@ capture_weather_settings() {
         fail "the real debug Weather screen did not show its setup-only network-off copy"
     grep -Fq "the IP address of this device" "$_weather_screen_notice_xml" ||
         fail "the real Weather screen did not disclose the device-IP transmission"
+    grep -Fq 'no coordinates or device IP address are sent' \
+        "$_weather_screen_notice_xml" ||
+        fail "the real debug Weather screen did not disclose that nothing is sent"
     _cws_consent=$(_weather_capture_consent before)
     case "$_cws_consent" in
         missing | disabled\|*) ;;
@@ -2839,14 +2842,22 @@ capture_weather_settings() {
     esac
     printf '%s\n' "$_cws_consent" | grep -Fq '|Emulator test|60.0000|10.0000' ||
         fail "the stored weather location is not the synthetic Emulator test location"
-    grep -Fq 'Disable and clear location' "$ARTIFACTS/weather-enabled.xml" ||
-        fail "the enabled Weather screen exposes no Disable control"
-    grep -Fq 'Emulator test' "$ARTIFACTS/weather-enabled.xml" ||
-        fail "the enabled Weather screen does not show the saved label"
-    grep -Fq 'This debug build has network requests disabled' "$ARTIFACTS/weather-enabled.xml" ||
-        fail "the enabled debug Weather screen did not show its network-off status"
-    grep -Fq 'no coordinates or device IP address are sent' "$ARTIFACTS/weather-enabled.xml" ||
-        fail "the enabled debug Weather screen did not disclose that nothing is sent"
+    # The long privacy notice pushes the saved line and the Disable control below
+    # the fold, so the top-of-screen snapshot is not evidence for them. The poll
+    # above retained the measured hierarchy that actually revealed both. Pair
+    # that same-screen capture with the retained mode-correct notice, the exact
+    # still-resumed Preferences activity and the matching enabled store instead
+    # of grepping the pre-scroll XML.
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/weather-enabled-action-activities.txt" 2>&1 ||
+        fail "could not capture the resumed activity for the enabled Weather action"
+    if ! weather_action_screen_provenance enable "$_cws_enabled_message" \
+        "$_weather_screen_notice_xml" \
+        "$ARTIFACTS/weather-enabled-action-activities.txt" \
+        "$PKG" "$PREFERENCES_ACTIVITY" "$WEATHER_RUNTIME_NOTICE_MODE" \
+        "$_cws_consent"; then
+        fail "the measured enabled Weather action did not come from the exact resumed Preferences with the matching enabled store, a unique actionable Disable control, the saved line and the mode-correct disclosure"
+    fi
     adb_cmd shell run-as "$PKG" cat shared_prefs/com.android.launcher3.prefs.xml \
         > "$ARTIFACTS/weather-backed-up-prefs.xml" 2>/dev/null || true
     adb_cmd shell run-as "$PKG" cat files/datastore/preferences.preferences_pb \
@@ -2917,13 +2928,24 @@ capture_weather_settings() {
         disabled\|*) ;;
         *) fail "the disabled weather opt-in was not stored, found '$_cws_consent'" ;;
     esac
+    # Same stale-top-of-screen hazard as enable: prove the measured disable
+    # reveal, the exact resumed Preferences and the matching disabled store
+    # instead of grepping the pre-scroll snapshot.
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/weather-disabled-action-activities.txt" 2>&1 ||
+        fail "could not capture the resumed activity for the disabled Weather action"
+    if ! weather_action_screen_provenance disable "$_cws_disabled_message" \
+        "$_weather_screen_notice_xml" \
+        "$ARTIFACTS/weather-disabled-action-activities.txt" \
+        "$PKG" "$PREFERENCES_ACTIVITY" "$WEATHER_RUNTIME_NOTICE_MODE" \
+        "$_cws_consent"; then
+        fail "the measured disabled Weather action did not come from the exact resumed Preferences with the matching disabled store, the unique Save and enable control, the disabled line and the mode-correct notice"
+    fi
     if _weather_cache_exists "$_cws_cache_rel" cache-after-disable; then
         fail "Disable did not clear the location's weather cache file"
     fi
     adb_cmd shell run-as "$PKG" ls -l "$WEATHER_CACHE_REL" \
         > "$ARTIFACTS/weather-cache-after-disable.txt" 2>&1 || true
-    grep -Fq 'Save and enable' "$ARTIFACTS/weather-disabled.xml" ||
-        fail "the disabled Weather screen exposes no Save and enable control"
     _weather_back_to_home_screen disabled-back
 
     # 8. Disable survives restart; the final state stays disabled.

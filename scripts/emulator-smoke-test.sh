@@ -5619,6 +5619,184 @@ assert_eq 'the CI250 success message is absent from the unscrolled hierarchy' \
     '' \
     "$(ui_unique_label_bounds "$weather_enabled_top_xml" 'Weather setup saved. This debug build has network requests disabled, so no forecast is requested.')"
 
+# Realistic CI300 shape: the long privacy notice leaves the top-of-screen
+# snapshot without the saved line or a tappable Disable control. The measured
+# post-action reveal on the SAME screen contains exactly one actionable Disable
+# control and the shipped saved line. Post-action provenance must accept that
+# measured reveal and reject the stale pre-scroll snapshot.
+weather_enabled_scrolled_xml="$TMP_DIR/weather-enabled-scrolled.xml"
+{
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">'
+    printf '%s\n' '    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">'
+    printf '%s\n' '      <node index="0" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,900][996,1020]" />'
+    printf '      <node index="1" class="android.widget.TextView" text="%s" bounds="[84,1040][996,1200]" />\n' \
+        "$(prod_string dotwel_weather_message_enabled_debug)"
+    printf '%s\n' '    </node>'
+    printf '%s\n' '  </node>'
+    printf '%s\n' '</hierarchy>'
+} > "$weather_enabled_scrolled_xml"
+
+weather_disabled_scrolled_xml="$TMP_DIR/weather-disabled-scrolled.xml"
+{
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">'
+    printf '%s\n' '    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">'
+    printf '%s\n' '      <node index="0" class="android.widget.Button" text="Save and enable" clickable="true" enabled="false" bounds="[84,900][996,1020]" />'
+    printf '      <node index="1" class="android.widget.TextView" text="%s" bounds="[84,1040][996,1200]" />\n' \
+        "$(prod_string dotwel_weather_message_disabled)"
+    printf '%s\n' '    </node>'
+    printf '%s\n' '  </node>'
+    printf '%s\n' '</hierarchy>'
+} > "$weather_disabled_scrolled_xml"
+
+weather_enabled_status_only_xml="$TMP_DIR/weather-enabled-status-only.xml"
+{
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.TextView" text="Weather setup is enabled for Emulator test (60.0000, 10.0000). This debug build has network requests disabled, so no coordinates or device IP address are sent and no forecast is requested." bounds="[84,800][996,1000]" />'
+    printf %s\n '</hierarchy>'
+} > "$weather_enabled_status_only_xml"
+
+weather_enabled_no_control_xml="$TMP_DIR/weather-enabled-no-control.xml"
+{
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '  <node index="0" class="android.widget.TextView" text="%s" bounds="[84,900][996,1060]" />\n' \
+        "$(prod_string dotwel_weather_message_enabled_debug)"
+    printf '%s\n' '</hierarchy>'
+} > "$weather_enabled_no_control_xml"
+
+weather_enabled_duplicate_control_xml="$TMP_DIR/weather-enabled-duplicate-control.xml"
+{
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,700][996,820]" />'
+    printf '%s\n' '  <node index="1" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="true" bounds="[84,840][996,960]" />'
+    printf '  <node index="2" class="android.widget.TextView" text="%s" bounds="[84,980][996,1140]" />\n' \
+        "$(prod_string dotwel_weather_message_enabled_debug)"
+    printf '%s\n' '</hierarchy>'
+} > "$weather_enabled_duplicate_control_xml"
+
+weather_enabled_disabled_control_xml="$TMP_DIR/weather-enabled-disabled-control.xml"
+{
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.Button" text="Disable and clear location" clickable="true" enabled="false" bounds="[84,700][996,820]" />'
+    printf '  <node index="1" class="android.widget.TextView" text="%s" bounds="[84,840][996,1000]" />\n' \
+        "$(prod_string dotwel_weather_message_enabled_debug)"
+    printf '%s\n' '</hierarchy>'
+} > "$weather_enabled_disabled_control_xml"
+
+weather_action_activities="$TMP_DIR/weather-action-activities-preferences.txt"
+printf '%s\n' '  mResumedActivity: ActivityRecord{9f3a1b u0 com.launchernos.dotwellabs.debug/app.lawnchair.ui.preferences.PreferenceActivity t42}' \
+    > "$weather_action_activities"
+weather_action_activities_wrong="$TMP_DIR/weather-action-activities-launcher.txt"
+printf '%s\n' '  mResumedActivity: ActivityRecord{9f3a1c u0 com.launchernos.dotwellabs.debug/app.lawnchair.LawnchairLauncher t42}' \
+    > "$weather_action_activities_wrong"
+
+weather_enabled_consent='enabled|4|Emulator test|60.0000|10.0000'
+weather_disabled_consent='disabled|5'
+weather_enabled_consent_no_label='enabled|4||60.0000|10.0000'
+
+assert_true 'the measured long-notice enabled reveal exposes the actionable Disable and shipped saved line' \
+    weather_enabled_action_identity "$weather_enabled_scrolled_xml" debug
+assert_false 'the stale pre-scroll notice snapshot is not the enabled action identity' \
+    weather_enabled_action_identity "$weather_notice_297_xml" debug
+assert_false 'the stale status-only snapshot without the saved line is not the enabled action identity' \
+    weather_enabled_action_identity "$weather_enabled_top_xml" debug
+assert_false 'the status-only enabled shape without the saved line is not the enabled action identity' \
+    weather_enabled_action_identity "$weather_enabled_status_only_xml" debug
+assert_false 'a measured enabled reveal without the Disable control fails closed' \
+    weather_enabled_action_identity "$weather_enabled_no_control_xml" debug
+assert_false 'a duplicate Disable control is not a unique actionable identity' \
+    weather_enabled_action_identity "$weather_enabled_duplicate_control_xml" debug
+assert_false 'a disabled Disable control is not actionable' \
+    weather_enabled_action_identity "$weather_enabled_disabled_control_xml" debug
+assert_false 'the enabled action identity rejects the other build-mode copy' \
+    weather_enabled_action_identity "$weather_enabled_scrolled_xml" release
+
+assert_true 'the long-notice initial capture plus the measured enabled reveal proves the same screen action' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+assert_false 'post-action provenance rejects the pre-scroll snapshot as the measured reveal' \
+    weather_action_screen_provenance enable "$weather_enabled_top_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+assert_false 'post-action provenance rejects a wrong resumed activity' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities_wrong" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+assert_false 'post-action provenance rejects a mismatched package/activity pair' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.LawnchairLauncher \
+    debug "$weather_enabled_consent"
+assert_false 'post-action provenance rejects a disabled store for an enabled action' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_disabled_consent"
+assert_false 'post-action provenance rejects an enabled store with no saved label' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent_no_label"
+assert_false 'post-action provenance rejects a missing store record' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug ''
+assert_false 'post-action provenance rejects one artifact reused as its own proof' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_enabled_scrolled_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+assert_false 'post-action provenance rejects the wrong build-mode notice' \
+    weather_action_screen_provenance enable "$weather_enabled_scrolled_xml" \
+    "$weather_wrongmode_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+
+assert_true 'the measured long-notice disable reveal exposes the unique Save and enable control and shipped disabled line' \
+    weather_disabled_action_identity "$weather_disabled_scrolled_xml"
+assert_false 'a disable reveal without the Save and enable control fails closed' \
+    weather_disabled_action_identity "$weather_enabled_scrolled_xml"
+assert_true 'the long-notice initial capture plus the measured disable reveal proves the same screen action' \
+    weather_action_screen_provenance disable "$weather_disabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_disabled_consent"
+assert_false 'post-action provenance rejects a still-enabled store for a disable action' \
+    weather_action_screen_provenance disable "$weather_disabled_scrolled_xml" \
+    "$weather_notice_297_xml" "$weather_action_activities" \
+    com.launchernos.dotwellabs.debug app.lawnchair.ui.preferences.PreferenceActivity \
+    debug "$weather_enabled_consent"
+
+# The pure action constants must stay tied to the shipped runtime values so a
+# copy change fails here instead of drifting the post-action identity.
+assert_eq 'the enabled action saved line is the shipped debug message prefix' \
+    "$WEATHER_ACTION_ENABLED_SAVED" \
+    'Weather setup saved.'
+assert_eq 'the disabled action saved line is the shipped disabled message prefix' \
+    "$WEATHER_ACTION_DISABLED_SAVED" \
+    'Weather disabled.'
+assert_eq 'the Disable control constant is the shipped label' \
+    "$WEATHER_ACTION_DISABLE_CONTROL" "$(prod_string dotwel_weather_disable)"
+assert_eq 'the Save and enable control constant is the shipped label' \
+    "$WEATHER_ACTION_ENABLE_CONTROL" "$(prod_string dotwel_weather_enable)"
+prod_string_contains dotwel_weather_message_enabled_debug \
+    "$WEATHER_ACTION_ENABLED_SAVED" \
+    'the shipped enabled message begins with the action saved line'
+prod_string_contains dotwel_weather_message_disabled \
+    "$WEATHER_ACTION_DISABLED_SAVED" \
+    'the shipped disabled message begins with the action saved line'
+prod_string_contains dotwel_weather_message_enabled_debug \
+    "$WEATHER_PRIVACY_NOTICE_DEBUG_OFF" \
+    'the shipped enabled debug message carries the network-off disclosure'
+
 # Execute the actual post-action poll with stubbed device calls. A durable
 # enabled record alone must not pass while the success line is unreachable; it
 # must pass only after the measured reveal exposes the line and the real action
@@ -5977,6 +6155,35 @@ assert_true 'the action poll retains a failure XML and PNG' \
     grep -Fq 'weather-$_wpas_tag-failure.png' "$weather_body"
 assert_false 'the weather gate never greps the success message from an unscrolled XML' \
     grep -Eq "grep -Fq 'Weather (setup saved|disabled)\\." "$weather_body"
+assert_true 'the enabled post-action proof reads the measured poll reveal' \
+    grep -Fq '_cws_enabled_message=$_weather_action_message' "$weather_body"
+assert_true 'the enabled post-action provenance uses the measured reveal and retained notice' \
+    grep -Fq 'weather_action_screen_provenance enable "$_cws_enabled_message"' \
+    "$weather_body"
+assert_true 'the enabled post-action provenance re-proves the exact resumed Preferences' \
+    grep -Fq 'weather-enabled-action-activities.txt' "$weather_body"
+assert_true 'the enabled post-action provenance requires the mode and matching store' \
+    grep -Fq '"$WEATHER_RUNTIME_NOTICE_MODE" \' "$weather_body" &&
+    grep -Fq '"$_cws_consent"; then' "$weather_body"
+assert_false 'the enabled gate never greps the offscreen Disable from the pre-scroll snapshot' \
+    grep -Fq "'Disable and clear location' \"\$ARTIFACTS/weather-enabled.xml\"" \
+    "$weather_body"
+assert_false 'the enabled gate never greps the saved label from the pre-scroll snapshot' \
+    grep -Fq "'Emulator test' \"\$ARTIFACTS/weather-enabled.xml\"" "$weather_body"
+assert_true 'the enabled gate still retains the pre-scroll audit capture unchanged' \
+    grep -Fq '_weather_snapshot enabled' "$weather_body"
+assert_true 'the disabled post-action proof reads the measured poll reveal' \
+    grep -Fq '_cws_disabled_message=$_weather_action_message' "$weather_body"
+assert_true 'the disabled post-action provenance uses the measured reveal and retained notice' \
+    grep -Fq 'weather_action_screen_provenance disable "$_cws_disabled_message"' \
+    "$weather_body"
+assert_true 'the disabled post-action provenance re-proves the exact resumed Preferences' \
+    grep -Fq 'weather-disabled-action-activities.txt' "$weather_body"
+assert_false 'the disabled gate never greps Save and enable from the pre-scroll snapshot' \
+    grep -Fq "grep -Fq 'Save and enable' \"\$ARTIFACTS/weather-disabled.xml\"" \
+    "$weather_body"
+assert_true 'the disabled gate still retains the pre-scroll audit capture unchanged' \
+    grep -Fq '_weather_snapshot disabled' "$weather_body"
 assert_true 'the valid longitude keeps a focused capture before blur' \
     grep -Fq 'weather-valid-longitude-focused.png' "$weather_body"
 assert_true 'the focused capture is asserted to report Longitude focused' \
