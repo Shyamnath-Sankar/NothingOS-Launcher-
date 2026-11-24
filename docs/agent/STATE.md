@@ -3,28 +3,78 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — awk single-quote repair on `41362cc`, shell-only,
-  PENDING ACTUAL CI.** The state 121 checkpoint (commit `41362cc`) was **not valid**: its "workflow
-  green" did not prove the source was parseable. The real `scripts/emulator-smoke.sh` had unescaped
-  apostrophes inside the single-quoted `weather_harness_pm_list_state` awk program, so an independent
-  `sh -n scripts/emulator-smoke.sh` failed at line 5577 and the real fixture stopped after 1234 ok
-  with a `weather-presence-functions.sh` syntax error. The comments now use neutral wording
-  (`equals sign`, `platform framework package`) with no backslash escaping and **no logic change**.
-  No Android build, app source, Kotlin, workflow, manifest, permission, applicationId, build type,
-  dependency, network policy, merge, release or signing change.
+- current_phase: **home-widget-composition-v1-new — native harness storage fix on `969f8a8`,
+  harness-only, PENDING ACTUAL CI.** CI 31845396672666 failed after all visual gates and the test-APK
+  build: the six native cases executed and all failed **before transport** because the harness wrote
+  below the test APK's `no_backup` directory, which is not writable when instrumentation runs under
+  the target uid. The harness now uses the **target** application context (keeping the exact
+  `<target>.test` identity check), verifies `Process.myUid() == target.applicationInfo.uid`, and uses
+  a canonical `dotwel-weather-harness-test/run-*` subtree separate from production
+  `dotwel-weather-private`. A real write/read/delete probe runs before any case and reports one
+  actionable `storage-preflight` failure. Cleanup deletes only this run's unique directory. Actual
+  `assembleLawnWithQuickstepPlayDebugAndroidTest` succeeded locally (BUILD SUCCESSFUL in 8m17s, 0
+  compiler errors). No emulator and no CI were triggered. No production source, manifest, network
+  policy, workflow, applicationId, build type, dependency or release/signing change.
 - branch: `agent/home-widget-composition-v1-new`
-- head: **`11c9571`** (awk single-quote fix); this STATE update follows.
+- head: **`969f8a8`** (harness storage fix); this STATE and evidence update follows.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI run for this shell-only commit.** Parent-recorded facts: CI310 passed with **301 unit
-  tests and 187 Weather tests**; **0 native instrumentation cases executed** here. State 121
-  (`41362cc`) was never validated as a green source tree; do not treat its checkpoint as proof.
-- next: parent decides whether to dispatch actual Android CI on `11c9571`. Release, hosting, merge,
-  signing and any new build type stay paused.
-- blockers: no emulator, no `am instrument`, no device runtime and no Android CI rerun here by
-  instruction. The executed fixtures prove the shell parser/orchestrator, not Android runtime,
-  forecast or native instrumentation, which remain unproven.
+- ci: **No CI run for this commit by instruction.** Parent-recorded truth for absent CI 318 is six
+  native cases failed before transport on `/data/user/0/com.launchernos.dotwellabs.debug.test/no_backup`,
+  not a forecast failure. Local compile and fixtures are real; native runtime is still unproven.
+- next: parent dispatches actual Android CI on `969f8a8` to rerun the emulator gates and the six
+  native cases. Release, hosting, merge, signing and any new build type stay paused.
+- blockers: no emulator, no `am instrument` and no device runtime here. The compile proves the
+  Kotlin/test-APK contract; it does not prove the six cases now pass on device.
 
-## done (this run — awk single-quote repair on `41362cc`, shell-only, PENDING ACTUAL CI)
+## done (this run — native harness storage fix on `969f8a8`, harness-only, PENDING ACTUAL CI)
+
+- **Root cause confirmed, not guessed:** `WeatherRuntimeInstrumentation` passed its own test-APK
+  `context` to `WeatherRuntimeHarness.run`. The instrumentation process runs under the target
+  application uid, so `context.noBackupFilesDir` resolved to
+  `/data/user/0/com.launchernos.dotwellabs.debug.test/no_backup`, which the target uid cannot write.
+  Logcat's `ContextImpl failed ensure` and the "owner consent could not persist" detail both trace to
+  this one storage-ownership error. The six cases failed before any network/transport assertion.
+- **Runner correction:** the isolated identity check is retained
+  (`harnessContext.packageName == "${target.packageName}.test"`), but the harness now receives the
+  **target** context. A new fail-closed guard requires
+  `Process.myUid() == target.applicationInfo.uid` and reports the process/target uids and package.
+- **Harness storage:** `openStorage` verifies the process uid, canonicalizes the target app's
+  `noBackupFilesDir`, contains `dotwel-weather-harness-test` under it, rejects any overlap with
+  `dotwel-weather-private`, checks both `mkdirs`, and uses a unique `run-<millis>-<pid>` directory.
+- **Preflight before cases:** a real write/read/delete probe of `storage-probe.txt` runs before the
+  six cases. Failure returns exactly one `storage-preflight` case with the actionable storage cause,
+  so a future storage fault cannot masquerade as six network failures.
+- **Safe cleanup:** only the unique run directory is deleted recursively. The shared harness root is
+  removed only when this run created it (`!rootExisted`) and it is empty; pre-existing content is
+  never deleted. A cleanup fault is surfaced as a `storage-cleanup` failure.
+- **Unchanged contract:** the fake application interceptor still never calls `chain.proceed` (no
+  socket, no MET, no permission); the six named cases and the synthetic `owner-lifecycle-seam` are
+  unchanged; production consent/cache/throttle and all app source/policy are untouched.
+- **Fixtures updated, 1352 baseline + 9:** `sh scripts/emulator-smoke-test.sh` reports **1361 ok,
+  0 not ok, all passed**. New assertions pin target-context storage, the process-uid check, canonical
+  containment, the separate harness/production names, the write/read/delete probe, the single
+  actionable preflight failure, unique-run cleanup, and the absence of `WeatherRuntimeHarness.run(harnessContext)`
+  or `WeatherPrivateStorage` in the harness.
+- **Actual compile executed (required by this task):** with
+  `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64` (OpenJDK 21.0.13) and
+  `ANDROID_HOME=/usr/local/lib/android/sdk` (build-tools 37.0.0), `timeout 900 ./gradlew
+  assembleLawnWithQuickstepPlayDebugAndroidTest --stacktrace` → **BUILD SUCCESSFUL in 8m17s, 660
+  tasks (497 executed, 163 cached), 0 compiler errors**. Test APK
+  `com.launchernos.dotwellabs.debug.test`, runner
+  `app.nothingui.weather.harness.WeatherRuntimeInstrumentation`, targetPackage
+  `com.launchernos.dotwellabs.debug`, SHA-256
+  `14500ea774043c1ec068596faa8687b5bbbc1d7977ded10e571dbd331ce3ed0e`. Evidence:
+  `docs/agent/evidence/2026-11-24-harness-storage-fix/`.
+- **Other executed checks:** `sh scripts/nothingui-weather-guard.sh` ok;
+  `sh scripts/nothingui-weather-guard-test.sh` all passed;
+  `sh scripts/emulator-smoke-drawer-test.sh` all passed; `sh -n` clean on the edited script;
+  `git diff --check` clean.
+- **Missing evidence / not claimed:** no emulator, no `am instrument`, no six-case device result, no
+  forecast pixel and no actual CI for `969f8a8`. The previous shell cleanup proof (preinstall
+  absence, final present uninstall success, after absence, trap absence) is untouched and not
+  regressed.
+
+## done (previous run — awk single-quote repair on `41362cc`, shell-only, PENDING ACTUAL CI)
 
 - **Root cause confirmed, not guessed:** `weather_harness_pm_list_state` is an awk program opened
   with a shell single quote (`awk -v pkg=... '`). Its new/edited comments contained apostrophes:

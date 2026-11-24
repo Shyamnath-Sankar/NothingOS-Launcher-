@@ -1,0 +1,11 @@
+> Task :compileLawnWithQuickstepPlayDebugAndroidTestAidl NO-SOURCE
+> Task :packageLawnWithQuickstepPlayDebugAndroidTestResources
+> Task :compileLawnWithQuickstepPlayDebugAndroidTestNavigationResources FROM-CACHE
+> Task :compileLawnWithQuickstepPlayDebugAndroidTestKotlin
+> Task :compileLawnWithQuickstepPlayDebugAndroidTestJavaWithJavac
+> Task :dexBuilderLawnWithQuickstepPlayDebugAndroidTest
+> Task :mergeProjectDexLawnWithQuickstepPlayDebugAndroidTest
+> Task :packageLawnWithQuickstepPlayDebugAndroidTest
+> Task :assembleLawnWithQuickstepPlayDebugAndroidTest
+BUILD SUCCESSFUL in 8m 17s
+660 actionable tasks: 497 executed, 163 from cache

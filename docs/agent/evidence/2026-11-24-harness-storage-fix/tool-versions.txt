@@ -1,0 +1,4 @@
+JDK: openjdk version "21.0.13" 2026-10-20 LTS
+Android SDK: /usr/local/lib/android/sdk
+Android Asset Packaging Tool, v0.2-15087165
+Android Asset Packaging Tool (aapt) 2.20-15087165
