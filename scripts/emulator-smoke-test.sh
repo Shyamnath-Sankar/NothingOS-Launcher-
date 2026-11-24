@@ -6699,6 +6699,17 @@ assert_false 'the runner constant is never a slash-separated class' \
 assert_true 'the Gradle test-APK build is bounded to 15 minutes' \
     grep -Fq 'run_with_timeout 900 ./gradlew assembleLawnWithQuickstepPlayDebugAndroidTest' \
     "$weather_runtime_harness_body"
+assert_true 'the harness dispatches manifest dumps through the aapt compat helper' \
+    grep -Fq 'aapt_dump_xmltree "$AAPT" "$_wrh_apk" AndroidManifest.xml' \
+    "$weather_runtime_harness_body"
+assert_false 'the harness never uses aapt2 positional xmltree syntax' \
+    grep -Fq '"$AAPT" dump xmltree "$_wrh_apk" AndroidManifest.xml' \
+    "$weather_runtime_harness_body"
+assert_true 'the aapt compat helper selects aapt2 --file syntax' \
+    grep -Fq 'aapt2 | aapt2.exe) "$_adx_tool" dump xmltree "$_adx_apk" --file "$_adx_file"' \
+    "$SMOKE"
+assert_true 'the aapt compat helper keeps legacy positional syntax' \
+    grep -Fq '*) "$_adx_tool" dump xmltree "$_adx_apk" "$_adx_file"' "$SMOKE"
 assert_true 'the cleanup retains its uninstall log' \
     grep -Fq 'weather-harness-cleanup.txt' "$weather_runtime_harness_body"
 assert_true 'the cleanup verifies the test package is absent' \
@@ -6772,8 +6783,34 @@ fi
 if [ "$2" = "badging" ]; then
     printf "package: name='%s'\n" "$FIXTURE_TEST_PKG"
 fi
+if [ "$2" = "xmltree" ]; then
+    case " $* " in
+        *" --file AndroidManifest.xml "*) ;;
+        *)
+            printf 'missing required flag --file\n' >&2
+            exit 1
+            ;;
+    esac
+fi
 exit 0
 AAPT_STUB
+
+    cat > "$_wrf_dir/bin/aapt" <<'AAPT_V1_STUB'
+#!/bin/sh
+printf 'aapt|%s\n' "$*" >> "$FIXTURE_ORDER"
+if [ "${FIXTURE_AAPT_FAIL:-0}" = "1" ]; then
+    exit 1
+fi
+if [ "$2" = "badging" ]; then
+    printf "package: name='%s'\n" "$FIXTURE_TEST_PKG"
+fi
+if [ "$2" = "xmltree" ]; then
+    case " $* " in
+        *" --file "*) printf 'unknown option --file\n' >&2; exit 1 ;;
+    esac
+fi
+exit 0
+AAPT_V1_STUB
 
     cat > "$_wrf_dir/bin/adb" <<'ADB_STUB'
 #!/bin/sh
@@ -6830,7 +6867,8 @@ if [ "$1" = "shell" ] && [ "$2" = "am" ] && [ "$3" = "instrument" ]; then
 fi
 exit 0
 ADB_STUB
-    chmod +x "$_wrf_dir/root/gradlew" "$_wrf_dir/bin/aapt2" "$_wrf_dir/bin/adb"
+    chmod +x "$_wrf_dir/root/gradlew" "$_wrf_dir/bin/aapt2" "$_wrf_dir/bin/aapt" \
+        "$_wrf_dir/bin/adb"
 
     _weather_runtime_fixture_exit=0
     (
@@ -6842,6 +6880,7 @@ ADB_STUB
         FIXTURE_UNINSTALL_FAIL=0
         FIXTURE_AAPT_FAIL=0
         FIXTURE_MISSING_CASE=
+        FIXTURE_AAPT_TOOL=aapt2
         case "$_wrf_scenario" in
             build-fail) FIXTURE_BUILD_FAIL=1 ;;
             install-fail) FIXTURE_INSTALL_FAIL=1 ;;
@@ -6850,9 +6889,11 @@ ADB_STUB
             missing-case) FIXTURE_MISSING_CASE=cancel-late-response-dropped ;;
             uninstall-fail) FIXTURE_UNINSTALL_FAIL=1 ;;
             aapt-fail) FIXTURE_AAPT_FAIL=1 ;;
+            aapt-v1) FIXTURE_AAPT_TOOL=aapt ;;
         esac
         export FIXTURE_BUILD_FAIL FIXTURE_INSTALL_FAIL FIXTURE_TIMEOUT FIXTURE_CRASH
         export FIXTURE_UNINSTALL_FAIL FIXTURE_AAPT_FAIL FIXTURE_MISSING_CASE
+        export FIXTURE_AAPT_TOOL
         export PATH="$_wrf_dir/bin:$PATH"
         export FIXTURE_ORDER="$_wrf_order"
         export FIXTURE_INSTALLED="$_wrf_installed"
@@ -6864,7 +6905,7 @@ ADB_STUB
         . "$SMOKE" >/dev/null 2>&1
         ROOT="$_wrf_dir/root"
         SERIAL="fixture-serial"
-        AAPT="$_wrf_dir/bin/aapt2"
+        AAPT="$_wrf_dir/bin/$FIXTURE_AAPT_TOOL"
         adb_cmd() {
             printf 'adb|%s\n' "$*" >> "$FIXTURE_ORDER"
             "$_wrf_dir/bin/adb" "$@"
@@ -6924,13 +6965,30 @@ assert_true 'the retained evidence records the real SHA-256 of the test APK' \
     grep -Fxq "sha256=$_wrf_expected_sha" "$_wrf_success_evidence"
 assert_true 'the retained evidence includes the AAPT badging dump' \
     grep -Fq 'aapt|dump badging ' "$_wrf_success_order"
-assert_true 'the retained evidence includes the AAPT manifest dump' \
-    grep -Fq 'aapt|dump xmltree ' "$_wrf_success_order"
+assert_true 'the aapt2 evidence uses the required --file manifest syntax' \
+    grep -Fxq "aapt|dump xmltree $_wrf_success_apk --file AndroidManifest.xml" \
+    "$_wrf_success_order"
+if "$TMP_DIR/weather-runtime-success/bin/aapt2" dump xmltree "$_wrf_success_apk" \
+    AndroidManifest.xml >/dev/null 2>&1; then
+    fail 'the executed aapt2 stub rejects the old positional xmltree syntax'
+else
+    pass 'the executed aapt2 stub rejects the old positional xmltree syntax'
+fi
 assert_true 'the normal run verifies the package is absent after cleanup' \
     grep -Fxq 'package_after=' \
     "$TMP_DIR/weather-runtime-success/artifacts/weather-harness-cleanup.txt"
 assert_false 'the normal run leaves no test package installed' \
     test -f "$TMP_DIR/weather-runtime-success/installed"
+
+weather_runtime_fixture_run aapt-v1
+assert_eq 'the executed harness orchestration succeeds with legacy aapt' '0' \
+    "$_weather_runtime_fixture_exit"
+_wrf_v1_order="$TMP_DIR/weather-runtime-aapt-v1/order.txt"
+_wrf_v1_apk="$TMP_DIR/weather-runtime-aapt-v1/root/build/outputs/apk/androidTest/debug/fixture-androidTest.apk"
+assert_true 'legacy aapt receives the positional manifest name' \
+    grep -Fxq "aapt|dump xmltree $_wrf_v1_apk AndroidManifest.xml" "$_wrf_v1_order"
+assert_false 'legacy aapt is never given the aapt2 --file flag' \
+    grep -Fq ' --file ' "$_wrf_v1_order"
 
 weather_runtime_fixture_run build-fail
 assert_false 'a failed Gradle test-APK build stays red' \

@@ -5639,7 +5639,8 @@ run_weather_runtime_harness() {
         printf 'runner=%s\n' "$WEATHER_HARNESS_COMPONENT"
         printf 'sha256=%s\n' "$_wrh_sha"
         "$AAPT" dump badging "$_wrh_apk" 2>&1 || _wrh_aapt_badging=$?
-        "$AAPT" dump xmltree "$_wrh_apk" AndroidManifest.xml 2>&1 || _wrh_aapt_manifest=$?
+        aapt_dump_xmltree "$AAPT" "$_wrh_apk" AndroidManifest.xml 2>&1 ||
+            _wrh_aapt_manifest=$?
     } > "$_wrh_evidence" 2>&1
     if [ "$_wrh_aapt_badging" -ne 0 ] || [ "$_wrh_aapt_manifest" -ne 0 ]; then
         fail "could not read the weather runtime test APK manifest; see $_wrh_evidence"
@@ -5696,6 +5697,19 @@ find_aapt() (
     done
     return 1
 )
+
+# aapt2 requires `--file <name>` before its file arguments; legacy aapt only
+# accepts the compiled XML name positionally. Keep both working because
+# find_aapt prefers aapt2 but falls back to aapt on older SDK images.
+aapt_dump_xmltree() {
+    _adx_tool=$1
+    _adx_apk=$2
+    _adx_file=$3
+    case "$(basename -- "$_adx_tool")" in
+        aapt2 | aapt2.exe) "$_adx_tool" dump xmltree "$_adx_apk" --file "$_adx_file" ;;
+        *) "$_adx_tool" dump xmltree "$_adx_apk" "$_adx_file" ;;
+    esac
+}
 
 # The mock-adb regression sources this file to exercise the real
 # open_app_drawer orchestration without touching a device. All function
