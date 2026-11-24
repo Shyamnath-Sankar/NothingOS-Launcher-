@@ -1747,6 +1747,61 @@ ui_label_present() (
         '
 )
 
+# Succeed when at least one node's exact text/content-description contains the
+# literal substring $2. The full Weather privacy sentence is one long node, so
+# a notice proof must not require a node equal to a short fragment. Empty input
+# or an empty needle fails closed.
+ui_label_contains() (
+    xml=${1:-}
+    needle=${2:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$needle" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk -v needle="$needle" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (index(attr($0, "text"), needle) > 0 ||
+                    index(attr($0, "content-desc"), needle) > 0) found = 1
+            }
+            END { exit found ? 0 : 1 }
+        '
+)
+
+# Succeed only when no node's text/content-description contains the literal
+# substring $2. Used to reject the other build mode's privacy notice. Missing
+# input or an empty needle fails closed because absence cannot be proven.
+ui_label_lacks() (
+    xml=${1:-}
+    needle=${2:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$needle" ] || return 1
+    tr '>' '\n' < "$xml" |
+        awk -v needle="$needle" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (index(attr($0, "text"), needle) > 0 ||
+                    index(attr($0, "content-desc"), needle) > 0) found = 1
+            }
+            END { exit found ? 1 : 0 }
+        '
+)
+
 # Associate a Compose OutlinedTextField (exposed as android.widget.EditText)
 # with its stable label instead of its position among the currently visible
 # EditText nodes. The label may be the field's own text/content-description, a
@@ -2133,22 +2188,90 @@ weather_consent_state() (
     esac
 )
 
-# Succeed only when the hierarchy is the real WeatherPreferences destination:
-# the unique privacy heading and the unique Terms link must be present, together
-# with a Location label and a Latitude field. A Save/Disable control, a Longitude
-# field or any controls below the fold are deliberately NOT required, because
-# those legitimately sit outside the initial viewport. The heading and field
-# labels are checked for presence rather than uniqueness: one label can be
-# exposed both as a Text node and as a field semantic, and the Weather heading
-# can legitimately appear in both the top app bar and the group.
-weather_settings_screen_identity() (
+# Exact copy that distinguishes the two build-mode privacy notices. The smoke
+# gate only runs the Play debug APK, but the predicates are mode-parameterized so
+# a release run cannot accidentally accept the debug notice (or the reverse).
+WEATHER_PRIVACY_NOTICE_DEBUG_OFF='This debug build has network requests disabled'
+WEATHER_PRIVACY_NOTICE_DEVICE_IP='the IP address of this device'
+WEATHER_PRIVACY_NOTICE_RELEASE_SHARED='are shared with MET Norway'
+
+# Stage 1 of the Weather destination proof. Succeed only when the hierarchy is
+# the real WeatherPreferences privacy-notice view for the requested build mode:
+# the unique privacy heading and the unique Terms link, the Weather title, and
+# the mode-correct notice text. A title-only screen, a different notice, the
+# other build mode's notice or a screen without the heading/Terms fails closed.
+# This stage deliberately does NOT require any field, because the real fields
+# legitimately sit below the fold and are absent from the composed hierarchy
+# until the measured scroll in stage 2.
+weather_settings_notice_identity() (
     xml=${1:-}
+    mode=${2:-debug}
     [ -s "$xml" ] || return 1
     [ -n "$(ui_unique_label_bounds "$xml" 'Before you enable')" ] || return 1
     [ -n "$(ui_unique_label_bounds "$xml" 'Terms of Service')" ] || return 1
-    ui_label_present "$xml" 'Location label' || return 1
-    ui_label_present "$xml" 'Latitude' || return 1
     ui_label_present "$xml" 'Weather' || return 1
+    case "$mode" in
+        debug)
+            ui_label_contains "$xml" "$WEATHER_PRIVACY_NOTICE_DEBUG_OFF" || return 1
+            ui_label_contains "$xml" "$WEATHER_PRIVACY_NOTICE_DEVICE_IP" || return 1
+            ui_label_lacks "$xml" "$WEATHER_PRIVACY_NOTICE_RELEASE_SHARED" || return 1
+            ;;
+        release)
+            ui_label_contains "$xml" "$WEATHER_PRIVACY_NOTICE_RELEASE_SHARED" || return 1
+            ui_label_contains "$xml" "$WEATHER_PRIVACY_NOTICE_DEVICE_IP" || return 1
+            ui_label_lacks "$xml" "$WEATHER_PRIVACY_NOTICE_DEBUG_OFF" || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    return 0
+)
+
+# Stage 2 leaf: the hierarchy exposes exactly one labelled field for $2. This
+# uses the stable label association, never the field's document index, so a
+# clipped or scrolled field is still identified by its label. The caller must
+# still prove visibility with the measured scroll/field helpers.
+weather_settings_field_identity() (
+    xml=${1:-}
+    label=${2:-}
+    [ -s "$xml" ] || return 1
+    [ -n "$label" ] || return 1
+    [ -n "$(ui_labelled_edit_text_bounds "$xml" "$label")" ] || return 1
+    return 0
+)
+
+# Stage 2 of the Weather destination proof. The Location label and Latitude
+# fields may not share one viewport after a measured scroll, so each is proven
+# in its own measured field capture. Either missing or ambiguous field fails.
+weather_settings_fields_identity() (
+    location_xml=${1:-}
+    latitude_xml=${2:-}
+    weather_settings_field_identity "$location_xml" 'Location label' || return 1
+    weather_settings_field_identity "$latitude_xml" 'Latitude' || return 1
+    return 0
+)
+
+# Strict two-artifact confirmation for the complete Weather destination. It
+# requires a distinct initial privacy-notice capture (stage 1) and the measured
+# Location label plus Latitude field captures (stage 2) under the same mode. A
+# title-only hierarchy, another notice, a different screen, a missing field or
+# the same artifact reused as its own proof fails closed. The orchestrator also
+# proves the exact resumed Preferences activity for both stages; this pure helper
+# combines only the hierarchy provenance so it can be unit-tested offline.
+weather_settings_screen_provenance() (
+    notice_xml=${1:-}
+    location_xml=${2:-}
+    latitude_xml=${3:-}
+    mode=${4:-debug}
+    [ -s "$notice_xml" ] || return 1
+    [ -s "$location_xml" ] || return 1
+    [ -s "$latitude_xml" ] || return 1
+    [ "$notice_xml" != "$location_xml" ] || return 1
+    [ "$notice_xml" != "$latitude_xml" ] || return 1
+    [ "$location_xml" != "$latitude_xml" ] || return 1
+    weather_settings_notice_identity "$notice_xml" "$mode" || return 1
+    weather_settings_fields_identity "$location_xml" "$latitude_xml" || return 1
     return 0
 )
 

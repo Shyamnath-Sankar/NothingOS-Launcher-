@@ -1884,6 +1884,9 @@ read_wm_size() (
 
 WEATHER_ENABLED_MESSAGE='Weather setup saved. This debug build has network requests disabled, so no forecast is requested.'
 WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
+# The smoke gate only installs the Play debug APK, so the real Weather screen
+# must show the debug setup-only notice, never the release transmission notice.
+WEATHER_RUNTIME_NOTICE_MODE=debug
 
 _weather_snapshot() {
     _ws_tag=$1
@@ -2331,23 +2334,107 @@ _weather_set_checkbox() {
         fail "the weather consent checkbox is '$_wsc_checked', expected '$_wsc_desired'"
 }
 
-_weather_wait_screen() {
-    _wws_tag=$1
-    _wws_attempt=1
-    _weather_screen_xml=
-    while [ "$_wws_attempt" -le 10 ]; do
-        _wws_xml="$ARTIFACTS/weather-$_wws_tag-screen-$_wws_attempt.xml"
-        capture_screenshot_to "weather-$_wws_tag-screen-$_wws_attempt.png"
-        if capture_ui_xml "weather-$_wws_tag-screen-$_wws_attempt.xml" &&
-            weather_settings_screen_identity "$_wws_xml"; then
-            _weather_screen_xml=$_wws_xml
-            return 0
+# Measure the navigation-bar safe edge once so the existing bounded
+# _weather_measure_* helpers can reason about the real viewport even when this
+# is the first Weather screen of the run.
+_weather_ensure_nav_top() {
+    case "${_cws_nav_top:-}" in
+        '' | *[!0-9]*)
+            adb_cmd shell dumpsys window \
+                > "$ARTIFACTS/weather-navigation-window.txt" 2>&1 || return 1
+            _cws_nav_bounds=$(ui_navigation_bar_bounds \
+                "$ARTIFACTS/weather-navigation-window.txt") || return 1
+            [ -n "$_cws_nav_bounds" ] || return 1
+            set -- $_cws_nav_bounds
+            _cws_nav_top=$2
+            ;;
+    esac
+    return 0
+}
+
+# Two-stage proof of the real WeatherPreferences destination. Stage 1 requires
+# the exact resumed Preferences activity and the mode-correct privacy-notice
+# hierarchy (unique heading and Terms, Weather title, debug/release notice) and
+# retains the initial notice XML/PNG. Stage 2 then uses only the existing
+# measured field helpers to scroll the same screen to the real Location label
+# and Latitude fields, re-proves the exact resumed activity, and retains the
+# post-scroll fields XML/PNG. A title-only screen, another notice, a different
+# activity, a missing field or an unscrolled/foreign hierarchy fails closed.
+_weather_confirm_settings_screen() {
+    _wcss_tag=$1
+    _wcss_mode=${2:-$WEATHER_RUNTIME_NOTICE_MODE}
+    _weather_ensure_nav_top ||
+        fail "could not measure the navigation bar for the weather screen ($_wcss_tag)"
+    _wcss_attempt=1
+    _wcss_notice_xml=
+    _wcss_notice_png=
+    while [ "$_wcss_attempt" -le 10 ]; do
+        _wcss_png="weather-$_wcss_tag-screen-$_wcss_attempt.png"
+        _wcss_xml="$ARTIFACTS/weather-$_wcss_tag-screen-$_wcss_attempt.xml"
+        _wcss_act="$ARTIFACTS/weather-$_wcss_tag-screen-$_wcss_attempt-activities.txt"
+        capture_screenshot_to "$_wcss_png"
+        adb_cmd shell dumpsys activity activities > "$_wcss_act" 2>&1 || true
+        if foreground_is_component "$_wcss_act" "$PKG" "$PREFERENCES_ACTIVITY" &&
+            capture_ui_xml "weather-$_wcss_tag-screen-$_wcss_attempt.xml" &&
+            weather_settings_notice_identity "$_wcss_xml" "$_wcss_mode"; then
+            _wcss_notice_xml=$_wcss_xml
+            _wcss_notice_png=$_wcss_png
+            break
         fi
-        _wws_attempt=$((_wws_attempt + 1))
+        _wcss_attempt=$((_wcss_attempt + 1))
         sleep 1
     done
-    capture_screenshot_to "weather-$_wws_tag-screen-failure.png"
-    return 1
+    if [ -z "$_wcss_notice_xml" ]; then
+        capture_screenshot_to "weather-$_wcss_tag-screen-failure.png"
+        return 1
+    fi
+    cp "$_wcss_notice_xml" "$ARTIFACTS/weather-$_wcss_tag-screen-notice.xml"
+    cp "$ARTIFACTS/$_wcss_notice_png" \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-notice.png"
+    cp "$_wcss_act" \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-notice-activities.txt"
+    [ -s "$ARTIFACTS/weather-$_wcss_tag-screen-notice.png" ] || return 1
+
+    _weather_measure_field 'Location label' \
+        "$_wcss_tag-screen-location" 6 || return 1
+    cp "$_weather_visible_xml" \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-fields-location.xml"
+    _weather_measure_field 'Latitude' \
+        "$_wcss_tag-screen-latitude" 6 || return 1
+    _wcss_fields_xml=$_weather_visible_xml
+    cp "$_wcss_fields_xml" "$ARTIFACTS/weather-$_wcss_tag-screen-fields.xml"
+    capture_screenshot_to "weather-$_wcss_tag-screen-fields.png"
+    [ -s "$ARTIFACTS/weather-$_wcss_tag-screen-fields.png" ] || return 1
+    adb_cmd shell dumpsys activity activities \
+        > "$ARTIFACTS/weather-$_wcss_tag-screen-fields-activities.txt" 2>&1 ||
+        return 1
+    foreground_is_component \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-fields-activities.txt" \
+        "$PKG" "$PREFERENCES_ACTIVITY" || return 1
+    weather_settings_screen_provenance \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-notice.xml" \
+        "$ARTIFACTS/weather-$_wcss_tag-screen-fields-location.xml" \
+        "$_wcss_fields_xml" "$_wcss_mode" || return 1
+    _weather_screen_notice_xml="$ARTIFACTS/weather-$_wcss_tag-screen-notice.xml"
+    _weather_screen_notice_png="$ARTIFACTS/weather-$_wcss_tag-screen-notice.png"
+    _weather_screen_fields_xml="$_wcss_fields_xml"
+    _weather_screen_fields_png="$ARTIFACTS/weather-$_wcss_tag-screen-fields.png"
+    _weather_screen_xml=$_wcss_fields_xml
+    printf 'mode=%s notice=%s fields=%s\n' \
+        "$_wcss_mode" "$_weather_screen_notice_xml" "$_weather_screen_fields_xml" \
+        > "$ARTIFACTS/weather-$_wcss_tag-screen-proof.txt"
+    return 0
+}
+
+_weather_wait_screen() {
+    _wws_tag=$1
+    _weather_screen_xml=
+    if ! _weather_confirm_settings_screen "$_wws_tag" \
+        "$WEATHER_RUNTIME_NOTICE_MODE"; then
+        capture_screenshot_to "weather-$_wws_tag-screen-failure.png"
+        return 1
+    fi
+    return 0
 }
 
 _weather_enter_from_home_screen() {
@@ -2533,13 +2620,16 @@ capture_weather_settings() {
         fail "run-as did not report an app uid for the weather evidence"
 
     # 1. Fresh screen: off, empty and Enable disabled; storage absent/disabled.
+    # The two-stage identity scrolled the same screen to the fields, so the
+    # privacy copy is asserted on the retained initial notice XML and not on a
+    # post-scroll hierarchy where the title/notice may be offscreen.
     _weather_open_weather fresh
     _weather_snapshot fresh
-    grep -Fq 'Before you enable' "$ARTIFACTS/weather-fresh.xml" ||
+    grep -Fq 'Before you enable' "$_weather_screen_notice_xml" ||
         fail "the real Weather screen did not show its privacy notice"
-    grep -Fq 'This debug build has network requests disabled' "$ARTIFACTS/weather-fresh.xml" ||
+    grep -Fq 'This debug build has network requests disabled' "$_weather_screen_notice_xml" ||
         fail "the real debug Weather screen did not show its setup-only network-off copy"
-    grep -Fq "the IP address of this device" "$ARTIFACTS/weather-fresh.xml" ||
+    grep -Fq "the IP address of this device" "$_weather_screen_notice_xml" ||
         fail "the real Weather screen did not disclose the device-IP transmission"
     _cws_consent=$(_weather_capture_consent before)
     case "$_cws_consent" in
@@ -3874,29 +3964,13 @@ capture_weather_widget() {
     # destination, not just any launcher settings screen.
     tap_center_of_bounds "$_cww_placed_bounds" ||
         fail "could not tap the measured Weather widget"
-    _cww_prefs=0
-    _cww_tap_poll=1
-    while [ "$_cww_tap_poll" -le 10 ]; do
-        sleep 1
-        adb_cmd shell dumpsys activity activities \
-            > "$ARTIFACTS/weather-widget-tap-activities-$_cww_tap_poll.txt" \
-            2>&1 || true
-        _cww_tap_act="$ARTIFACTS/weather-widget-tap-activities-$_cww_tap_poll.txt"
-        if foreground_is_component "$_cww_tap_act" \
-            "$PKG" "$PREFERENCES_ACTIVITY" &&
-            capture_ui_xml "weather-widget-tap-$_cww_tap_poll.xml" &&
-            weather_settings_screen_identity \
-                "$ARTIFACTS/weather-widget-tap-$_cww_tap_poll.xml"; then
-            cp "$_cww_tap_act" "$ARTIFACTS/weather-widget-tap-activities.txt"
-            cp "$ARTIFACTS/weather-widget-tap-$_cww_tap_poll.xml" \
-                "$ARTIFACTS/weather-widget-tap.xml"
-            _cww_prefs=1
-            break
-        fi
-        _cww_tap_poll=$((_cww_tap_poll + 1))
-    done
-    [ "$_cww_prefs" -eq 1 ] ||
+    _weather_confirm_settings_screen weather-widget-tap \
+        "$WEATHER_RUNTIME_NOTICE_MODE" ||
         fail "tapping the Weather widget did not open the exact real WeatherPreferences destination"
+    cp "$ARTIFACTS/weather-widget-tap-screen-notice-activities.txt" \
+        "$ARTIFACTS/weather-widget-tap-activities.txt"
+    cp "$ARTIFACTS/weather-widget-tap-screen-notice.xml" \
+        "$ARTIFACTS/weather-widget-tap.xml"
     capture_screenshot_to weather-widget-tap.png
     [ -s "$ARTIFACTS/weather-widget-tap.png" ] ||
         fail "WeatherPreferences screenshot capture failed"

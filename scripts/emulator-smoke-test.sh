@@ -5322,10 +5322,130 @@ printf '%s\n' '{"version":1,"enabled":true,"generation":4,"label":null,"latitude
 assert_eq 'an enabled record without a stored location fails closed' \
     'malformed' "$(weather_consent_state "$weather_null_enabled_json")"
 
-# The real first Weather screen shows the privacy notice and the upper fields,
-# but Save/Enable and often Longitude sit below the fold. Screen identity must
-# not demand an offscreen control, and a clipped field must still be associated
-# with its stable label rather than its visible position.
+# The real CI297 first Weather screen exposed only the privacy notice and the
+# Terms/Source/License links. The Location label and Latitude fields sat below
+# the fold and were absent from the composed hierarchy even across 10 identical
+# captures, so the old single-snapshot identity that demanded the notice and
+# fields at once could never pass. Provenance is now proven in two stages: the
+# initial mode-correct notice, then a real measured scroll to each field on the
+# same screen. The notice text is the shipped runtime value, so this fixture
+# cannot drift into a short or invented notice.
+weather_notice_297_xml="$TMP_DIR/weather-notice-297.xml"
+{
+    printf '%s\n' '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    printf '%s\n' '<hierarchy rotation="0">'
+    printf '%s\n' '  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">'
+    printf '%s\n' '    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">'
+    printf '%s\n' '      <node index="0" class="android.widget.TextView" text="Weather" bounds="[84,140][300,200]" />'
+    printf '%s\n' '      <node index="1" class="android.widget.TextView" text="Before you enable" bounds="[84,260][996,320]" />'
+    printf '      <node index="2" class="android.widget.TextView" text="%s" bounds="[84,340][996,1180]" />\n' \
+        "$debug_privacy"
+    printf '%s\n' '      <node index="3" class="android.widget.TextView" text="Terms of Service" clickable="true" bounds="[84,1220][420,1280]" />'
+    printf '%s\n' '      <node index="4" class="android.widget.TextView" text="Source" clickable="true" bounds="[440,1220][700,1280]" />'
+    printf '%s\n' '      <node index="5" class="android.widget.TextView" text="License" clickable="true" bounds="[720,1220][996,1280]" />'
+    printf '%s\n' '    </node>'
+    printf '%s\n' '  </node>'
+    printf '%s\n' '</hierarchy>'
+} > "$weather_notice_297_xml"
+
+# Post-measured-scroll captures of that same screen. The privacy title is now
+# offscreen, but each real labelled field is exposed in its own capture.
+weather_location_field_xml="$TMP_DIR/weather-fields-location.xml"
+cat > "$weather_location_field_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.widget.EditText" text="" content-desc="Location label" clickable="true" enabled="true" bounds="[126,600][954,740]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_latitude_field_xml="$TMP_DIR/weather-fields-latitude.xml"
+cat > "$weather_latitude_field_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" package="com.launchernos.dotwellabs.debug" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.widget.ScrollView" package="com.launchernos.dotwellabs.debug" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.widget.EditText" text="" content-desc="Latitude" clickable="true" enabled="true" bounds="[126,800][954,940]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+
+assert_true 'the actual CI297 long-notice initial screen is the mode-correct Weather privacy identity' \
+    weather_settings_notice_identity "$weather_notice_297_xml" debug
+assert_false 'the initial notice screen is not the complete Weather destination by itself' \
+    weather_settings_fields_identity "$weather_notice_297_xml" "$weather_notice_297_xml"
+assert_false 'the post-scroll fields shape is not the privacy-notice identity' \
+    weather_settings_notice_identity "$weather_location_field_xml" debug
+assert_true 'the post-scroll Location label field satisfies the field identity' \
+    weather_settings_field_identity "$weather_location_field_xml" 'Location label'
+assert_true 'the post-scroll Latitude field satisfies the field identity' \
+    weather_settings_field_identity "$weather_latitude_field_xml" 'Latitude'
+assert_true 'two-stage provenance accepts the real notice plus both measured-scroll fields' \
+    weather_settings_screen_provenance "$weather_notice_297_xml" \
+    "$weather_location_field_xml" "$weather_latitude_field_xml" debug
+assert_false 'provenance rejects a privacy notice with no measured Location field' \
+    weather_settings_screen_provenance "$weather_notice_297_xml" \
+    "$weather_notice_297_xml" "$weather_latitude_field_xml" debug
+assert_false 'provenance rejects a measured Location field with no Latitude field' \
+    weather_settings_screen_provenance "$weather_notice_297_xml" \
+    "$weather_location_field_xml" "$weather_notice_297_xml" debug
+assert_false 'provenance rejects one artifact reused as its own proof' \
+    weather_settings_screen_provenance "$weather_notice_297_xml" \
+    "$weather_notice_297_xml" "$weather_notice_297_xml" debug
+
+weather_wrongmode_xml="$TMP_DIR/weather-wrongmode.xml"
+cat > "$weather_wrongmode_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.TextView" text="Weather" bounds="[84,140][300,200]" />
+  <node index="1" class="android.widget.TextView" text="Before you enable" bounds="[84,260][996,320]" />
+  <node index="2" class="android.widget.TextView" text="When an enabled forecast is requested, those selected coordinates and the IP address of this device are shared with MET Norway (met.no) only while the Home screen is visible and unlocked." bounds="[84,340][996,980]" />
+  <node index="3" class="android.widget.TextView" text="Terms of Service" clickable="true" bounds="[84,1020][420,1080]" />
+</hierarchy>
+EOF
+assert_false 'the release notice is rejected for the debug runtime mode' \
+    weather_settings_notice_identity "$weather_wrongmode_xml" debug
+assert_true 'the release notice is accepted only for the release mode' \
+    weather_settings_notice_identity "$weather_wrongmode_xml" release
+assert_false 'a fake/wrong-mode notice cannot complete the debug provenance' \
+    weather_settings_screen_provenance "$weather_wrongmode_xml" \
+    "$weather_location_field_xml" "$weather_latitude_field_xml" debug
+
+weather_title_only_xml="$TMP_DIR/weather-title-only.xml"
+cat > "$weather_title_only_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.TextView" text="Weather" bounds="[84,140][300,200]" />
+</hierarchy>
+EOF
+assert_false 'a Weather title alone is not the privacy identity' \
+    weather_settings_notice_identity "$weather_title_only_xml" debug
+
+weather_wrongscreen_xml="$TMP_DIR/weather-wrongscreen.xml"
+cat > "$weather_wrongscreen_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.TextView" text="Customize launcher" bounds="[84,140][700,200]" />
+  <node index="1" class="android.widget.TextView" text="Icon size and home screen" clickable="true" bounds="[84,260][996,320]" />
+  <node index="2" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[126,400][954,540]" />
+</hierarchy>
+EOF
+assert_false 'a different settings screen is not the Weather privacy identity' \
+    weather_settings_notice_identity "$weather_wrongscreen_xml" debug
+assert_false 'a different settings screen cannot satisfy the measured field identity' \
+    weather_settings_field_identity "$weather_wrongscreen_xml" 'Location label'
+
+weather_noprivacy_xml="$TMP_DIR/weather-noprivacy.xml"
+cat > "$weather_noprivacy_xml" <<'EOF'
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[126,1826][954,1966]" />
+</hierarchy>
+EOF
+assert_false 'a hierarchy without the unique privacy heading is not the Weather destination' \
+    weather_settings_notice_identity "$weather_noprivacy_xml" debug
+
+# A clipped field must still be associated with its stable label rather than its
+# visible position, even before the measured scroll reaches it.
 weather_initial_xml="$TMP_DIR/weather-initial.xml"
 cat > "$weather_initial_xml" <<'EOF'
 <?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
@@ -5346,22 +5466,13 @@ cat > "$weather_initial_xml" <<'EOF'
   </node>
 </hierarchy>
 EOF
-assert_true 'the initial Weather privacy screen is identified without the offscreen Save control' \
-    weather_settings_screen_identity "$weather_initial_xml"
+assert_true 'the clipped Location label is associated by its label' \
+    weather_settings_field_identity "$weather_initial_xml" 'Location label'
 assert_eq 'the clipped Latitude field is associated by its label' \
     '126 1826 954 1966' \
     "$(ui_labelled_edit_text_bounds "$weather_initial_xml" 'Latitude')"
 assert_eq 'the initially empty Latitude field reports an empty draft' \
     '' "$(ui_labelled_edit_text_text "$weather_initial_xml" 'Latitude')"
-
-weather_noprivacy_xml="$TMP_DIR/weather-noprivacy.xml"
-cat > "$weather_noprivacy_xml" <<'EOF'
-<hierarchy rotation="0">
-  <node index="0" class="android.widget.EditText" text="" content-desc="Latitude" bounds="[126,1826][954,1966]" />
-</hierarchy>
-EOF
-assert_false 'a hierarchy without the unique privacy heading is not the Weather destination' \
-    weather_settings_screen_identity "$weather_noprivacy_xml"
 
 weather_descendant_xml="$TMP_DIR/weather-descendant.xml"
 cat > "$weather_descendant_xml" <<'EOF'
@@ -5775,6 +5886,11 @@ assert_true 'the weather widget gate captures a PNG after every expansion' \
     grep -Fq 'weather-widget-expand-$_cww_expand.png' "$weather_widget_body"
 assert_true 'the weather widget gate captures a PNG after every reveal scroll' \
     grep -Fq 'weather-widget-scroll-$_cww_scroll.png' "$weather_widget_body"
+assert_true 'the weather widget tap uses the same two-stage destination confirmation' \
+    grep -Fq '_weather_confirm_settings_screen weather-widget-tap' \
+    "$weather_widget_body"
+assert_false 'the weather widget tap no longer uses the single-snapshot identity' \
+    grep -Fq 'weather_settings_screen_identity' "$weather_widget_body"
 
 # --- static regression on the weather runtime gate --------------------------
 
@@ -5793,10 +5909,40 @@ assert_true 'the weather gate measures all three real EditText fields by label' 
     grep -Fq "_weather_measure_field 'Longitude'" "$weather_body"
 assert_false 'the weather gate never keys fields by their visible document index' \
     grep -Fq '_weather_measure_edit_text' "$weather_body"
-assert_true 'the weather gate identifies the real Weather destination without the offscreen button' \
+assert_true 'the weather gate uses the two-stage destination confirmation' \
+    grep -Fq '_weather_confirm_settings_screen' "$weather_body"
+assert_false 'the weather gate no longer uses the single-snapshot identity' \
     grep -Fq 'weather_settings_screen_identity' "$weather_body"
+assert_true 'stage one proves the exact resumed Preferences activity' \
+    grep -Fq 'foreground_is_component "$_wcss_act" "$PKG" "$PREFERENCES_ACTIVITY"' \
+    "$weather_body"
+assert_true 'stage one requires the mode-correct privacy-notice identity' \
+    grep -Fq 'weather_settings_notice_identity "$_wcss_xml" "$_wcss_mode"' \
+    "$weather_body"
+assert_true 'stage one retains the initial notice XML' \
+    grep -Fq 'weather-$_wcss_tag-screen-notice.xml' "$weather_body"
+assert_true 'stage one retains the initial notice PNG' \
+    grep -Fq 'weather-$_wcss_tag-screen-notice.png' "$weather_body"
+assert_true 'stage two measures the real Location label field' \
+    grep -Fq "_weather_measure_field 'Location label'" "$weather_body"
+assert_true 'stage two measures the real Latitude field' \
+    grep -Fq "_weather_measure_field 'Latitude'" "$weather_body"
+assert_true 'stage two retains the post-scroll fields XML' \
+    grep -Fq 'weather-$_wcss_tag-screen-fields.xml' "$weather_body"
+assert_true 'stage two retains the post-scroll fields PNG' \
+    grep -Fq 'weather-$_wcss_tag-screen-fields.png' "$weather_body"
+assert_true 'stage two re-proves the exact resumed activity after scrolling' \
+    grep -Fq 'weather-$_wcss_tag-screen-fields-activities.txt' "$weather_body"
+assert_true 'the combined provenance requires the notice and both fields' \
+    grep -Fq 'weather_settings_screen_provenance' "$weather_body"
+assert_true 'the fresh privacy copy is read from the retained initial notice XML' \
+    grep -Fq 'grep -Fq '"'"'Before you enable'"'"' "$_weather_screen_notice_xml"' \
+    "$weather_body"
+assert_false 'the fresh privacy copy is not read from a post-scroll hierarchy' \
+    grep -Fq 'grep -Fq '"'"'Before you enable'"'"' "$ARTIFACTS/weather-fresh.xml"' \
+    "$weather_body"
 assert_true 'the weather gate retains an immediate PNG for every screen probe' \
-    grep -Fq 'weather-$_wws_tag-screen-$_wws_attempt.png' "$weather_body"
+    grep -Fq 'weather-$_wcss_tag-screen-$_wcss_attempt.png' "$weather_body"
 assert_true 'the weather gate retains a timeout/failure PNG' \
     grep -Fq 'weather-$_wws_tag-screen-failure.png' "$weather_body"
 assert_true 'the weather gate scrolls from the measured target direction' \
