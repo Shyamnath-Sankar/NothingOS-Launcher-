@@ -3,33 +3,80 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI269 HOME readiness correction — diagnosis/fix committed as `9ecfa82` on the
-  `dacff49` checkpoint, PENDING ACTUAL CI. The runtime failed before any Weather placement: after
-  `capture_grid_settings` returned HOME, `verify_nothing_home` could not see the clock. This run
-  makes that confirmation a bounded state-based poll (15 attempts) with a fresh XML and PNG plus the
-  resumed activity, HOME-role / default-home and appwidget state per attempt, while still requiring
-  the actual clock/date text and all three original widget children. No app source, manifest, SDK,
-  applicationId, workflow or dependency changed.** Production Weather network stays OFF, the final
-  consent stays disabled, and the tile remains original render-only.
+- current_phase: **CI272 placed-widget identity correction — diagnosis/fix committed as `f6f0475` on the
+  `f6d6da8` checkpoint, PENDING ACTUAL CI.** CI272 run45294228258 attempt2 ended in 20m28. The strict
+  new HOME readiness passed in the first attempt with the actual clock/date, all three original widget
+  children and the launcher foreground. The later existing `capture_widgets_picker` selected the Clock
+  provider header, but the selected widget caption was `Analog clock`. Every real placed host in
+  `widgets-home-placed-attempt-15.xml` and the placement-page XML is a `LauncherAppWidgetHostView`
+  content-desc `Analog clock`, bounds `38,107,524,517`, inside the workspace around a real deskclock
+  analog child. The old `home_widget_bounds` and page searches expected the provider title `Clock`,
+  rejected the real host and failed. This run keeps the provider header only for picker selection and
+  uses the selected widget caption for host identity, bind consent, persistence and every page check;
+  the actual bound provider/component/new launcher-owned AppWidget ID proof is unchanged. Only the
+  shell harness and its executed fixtures changed. No app source, manifest, SDK, dependency,
+  applicationId or workflow changed.** Production Weather network stays OFF, the final consent stays
+  disabled, the Weather gate was **NOT REACHED** with no Weather artifacts, and the existing 104
+  readiness passed here but does not make this run all-green. Attempt 1's startup SystemUI ANR overlay
+  was environmental; no app-code fix was made for it.
 - branch: `agent/home-widget-composition-v1-new`
-- head: `9ecfa82` (this readiness fix); checkpoint `dacff49` (previous worker run 103 stalled but
-  saved this checkpoint); earlier `f7158e5` placement helpers and `b0bb658` weather render work.
-  The STATE commit follows this list.
+- head: `f6f0475` (this identity fix); previous `f6d6da8` state record, `9ecfa82` CI269 readiness fix,
+  then `dacff49` checkpoint, `f7158e5` placement helpers and `b0bb658` weather render work. The STATE
+  commit follows this list.
 - pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **CI45289110969 (CI269) compiled the widget (`widget102`) and passed 287 unit tests and 176
-  weather tests, but the runtime failed BEFORE Weather placement.** `verify_nothing_home` after
-  `capture_grid_settings` could not see the clock: the final `home.xml` held the `MON23NOV` date,
-  battery and device hosts but no clock host/text, the earlier `home.png` was stale, and logcat
-  showed repeated `PendingAppWidgetHostView` reinflation near the final return. The Weather gate
-  was **never reached** and produced no weather-widget artifacts; this is **not** a Weather tile
-  failure or success. CI263's full-green audit remains historical for an earlier commit.
-- next: parent dispatches actual API 37 CI on `9ecfa82`; only a green runtime may prove the clock
-  readiness. Native optional Weather placement/tap/restart/conditional-resize evidence is still
-  pending actual CI. Then **repository activation** (wire the real MET repository behind the owner's
-  injected `WeatherLoadWork`, keeping the widget render-only), then **targeted lifecycle
-  instrumentation**, then the **backup/SAF broader audit**. Release, hosting and merge stay paused.
-  PrivateSpace, settings round-trip, non-Play, large-screen, backup/restore and performance audits
-  stay open. Do not claim a forecast is connected or that the Weather tile has runtime evidence.
+- ci: **CI272 run45294228258 attempt2 ended in 20m28.** The strict new HOME readiness passed in the
+  first attempt, but `capture_widgets_picker` then expected the Clock provider title as the HOME host
+  label; the real selected widget was the Analog clock caption at `38,107,524,517`. The Weather gate
+  was **not reached** and produced no weather-widget artifacts, so it is neither failed nor passed.
+  Attempt 1's startup SystemUI ANR overlay was environmental. The existing 104 readiness passed in
+  this run, but there is no all-green claim and no CI result for `f6f0475` yet.
+- next: parent dispatches actual API 37 CI on `f6f0475`; only that runtime can prove the caption
+  identity unblocks the third-party placement/persistence path. Native optional Weather
+  placement/tap/restart/conditional-resize evidence is still pending actual CI. Then **repository
+  activation** (wire the real MET repository behind the owner's injected `WeatherLoadWork`, keeping
+  the widget render-only), then **targeted lifecycle instrumentation**, then the **backup/SAF broader
+  audit**. Release, hosting and merge stay paused. PrivateSpace, settings round-trip, non-Play,
+  large-screen, backup/restore and performance audits stay open. Do not claim a forecast is connected
+  or that the Weather tile has runtime evidence.
+
+## done (this run — CI272 placed-widget caption identity correction, PENDING ACTUAL CI)
+
+- **Exact CI272 attempt2 finding, not a Weather failure:** run45294228258 attempt2 ended in 20m28.
+  The strict new HOME readiness passed on its first attempt (actual clock/date, all three original
+  widget children, exact launcher foreground). `capture_widgets_picker` then selected the Clock
+  provider header and the Analog clock preview caption, but
+  `home_widget_bounds`/`search_home_pages_for_widget` were given the provider title `Clock` as the
+  expected host label. The real `LauncherAppWidgetHostView` in `widgets-home-placed-attempt-15.xml`
+  and every placement-page XML has content-desc `Analog clock` at bounds `38,107,524,517` with a real
+  deskclock analog child inside the workspace, so every host/page check rejected it. The Weather gate
+  was **NOT REACHED** and has no Weather artifact; this is not a Weather tile failure or success.
+- **Identity split, no waiver:** the provider header/app title `Clock` remains only the picker
+  selection and evidence label. The selected preview WidgetCell caption `Analog clock` is now the
+  expected identity for the initial new-host detection, bind consent (already correct), placed-page
+  geometry safety, initial page discovery, post-Settings survival page search and the final exact
+  bounds re-check. Provider-title uses for those host/page identities were removed. The actual bound
+  provider/component and new launcher-owned AppWidget ID proof (`appwidget_new_providers` with
+  `$PKG`), workspace/header/dock geometry, unchanged-existing-host suppression, preview/pending
+  rejection and exact-bounds preservation are unchanged; nothing was weakened to any-host or
+  bounds-only identity.
+- **Targeted executed fixtures:** a real Clock header plus selected `Analog clock` caption accepts
+  the exact new CI272 host at `38,107,524,517`; the header `Clock`, sibling `Digital clock`, a wrong
+  provider caption, an already-present host and a picker-preview host all fail closed. Static
+  regressions require the caption for new-host identity, placed-page safety, initial discovery,
+  survival discovery and the final re-check, and forbid the provider title in those paths.
+- **No prohibited change:** no Gradle/Android build, emulator, workflow, dependency, permission,
+  manifest, SDK, applicationId, signing, API/provider, HOME layout/theme/wallpaper, private-widget,
+  merge, release or hosting change. No direct bind, reset, reseed, database/preference write or
+  workspace item move/removal was added. Attempt 1's startup SystemUI ANR overlay was environmental
+  and no app-code fix was made for it.
+- **Verification actually run (shell only; no Gradle, Android build or emulator):**
+  `sh scripts/emulator-smoke-test.sh` reports **949 ok, 0 not ok, all passed** (the 935 CI269 baseline
+  plus 14 new caption/fixture checks); `sh scripts/emulator-smoke-drawer-test.sh` all passed;
+  `sh -n` is clean on all three edited scripts; `git diff --check` is clean.
+- **Missing evidence / not claimed:** no actual CI runtime, screenshot or device proof for
+  `f6f0475`. The fixtures prove the helper/static control flow and fail-closed identity checks, not
+  that the real CI272 page now completes. Weather placement/tap/restart/resize evidence remains
+  pending actual CI, and no forecast is connected.
 
 ## done (this run — CI269 HOME readiness correction, PENDING ACTUAL CI)
 
