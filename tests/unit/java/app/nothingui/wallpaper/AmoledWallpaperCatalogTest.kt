@@ -25,12 +25,15 @@ import org.junit.Test
 class AmoledWallpaperCatalogTest {
 
     @Test
-    fun offersExactlyTheTwoOfflineChoices() {
-        assertEquals(2, AmoledWallpaperCatalog.entries.size)
+    fun offersTheCuratedOfflineChoices() {
+        assertEquals(5, AmoledWallpaperCatalog.entries.size)
         assertEquals(
             listOf(
                 AmoledWallpaperCatalog.PITCH_BLACK_ID,
                 AmoledWallpaperCatalog.WIREFRAME_TORUS_ID,
+                AmoledWallpaperCatalog.DOT_FIELD_ID,
+                AmoledWallpaperCatalog.HORIZON_LINE_ID,
+                AmoledWallpaperCatalog.GLYPH_RING_ID,
             ),
             AmoledWallpaperCatalog.entries.map { it.id },
         )
@@ -41,11 +44,20 @@ class AmoledWallpaperCatalogTest {
         AmoledWallpaperCatalog.entries.forEach { wallpaper ->
             assertTrue(wallpaper.titleRes != 0)
             assertTrue(wallpaper.creditRes != 0)
-            assertTrue(wallpaper.drawableRes != 0)
             assertTrue(wallpaper.sourceUrl.startsWith("https://"))
             assertTrue(wallpaper.licenseUrl.startsWith("https://"))
             assertTrue(wallpaper.widthPx > 0)
             assertTrue(wallpaper.heightPx > 0)
+            when (wallpaper.kind) {
+                AmoledWallpaperKind.PROCEDURAL -> {
+                    assertEquals(0, wallpaper.drawableRes)
+                    assertNotNull("${wallpaper.id} needs a procedural spec", wallpaper.spec)
+                }
+                AmoledWallpaperKind.PNG, AmoledWallpaperKind.VECTOR -> {
+                    assertTrue("${wallpaper.id} needs a bundled drawable", wallpaper.drawableRes != 0)
+                    assertNull("${wallpaper.id} must not carry a procedural spec", wallpaper.spec)
+                }
+            }
         }
     }
 
@@ -70,9 +82,31 @@ class AmoledWallpaperCatalogTest {
     }
 
     @Test
-    fun choicesUseDistinctBundledDrawablesAndKinds() {
+    fun proceduralChoicesAreOriginalAndShareTheApacheLicence() {
+        listOf(
+            AmoledWallpaperCatalog.dotField,
+            AmoledWallpaperCatalog.horizonLine,
+            AmoledWallpaperCatalog.glyphRing,
+        ).forEach { wallpaper ->
+            assertEquals(AmoledWallpaperKind.PROCEDURAL, wallpaper.kind)
+            assertEquals(AmoledWallpaperCatalog.PROJECT_SOURCE, wallpaper.sourceUrl)
+            assertEquals(AmoledWallpaperCatalog.APACHE_2_0_LICENSE, wallpaper.licenseUrl)
+            assertEquals(
+                com.android.launcher3.R.string.dotwel_wallpaper_procedural_credit,
+                wallpaper.creditRes,
+            )
+            assertNull(wallpaper.changeNoticeRes)
+        }
+    }
+
+    @Test
+    fun choicesUseDistinctBundledDrawablesAndDistinctProceduralMotifs() {
         val entries = AmoledWallpaperCatalog.entries
-        assertEquals(entries.size, entries.map { it.drawableRes }.distinct().size)
+        assertEquals(entries.size, entries.map { it.id }.distinct().size)
+        val bundled = entries.filter { it.kind != AmoledWallpaperKind.PROCEDURAL }
+        assertEquals(bundled.size, bundled.map { it.drawableRes }.distinct().size)
+        val procedural = entries.filter { it.kind == AmoledWallpaperKind.PROCEDURAL }
+        assertEquals(procedural.size, procedural.mapNotNull { it.spec?.pattern }.distinct().size)
         assertEquals(AmoledWallpaperKind.PNG, AmoledWallpaperCatalog.pitchBlack.kind)
         assertEquals(AmoledWallpaperKind.VECTOR, AmoledWallpaperCatalog.wireframeTorus.kind)
         assertEquals(1080, AmoledWallpaperCatalog.pitchBlack.widthPx)
@@ -84,6 +118,7 @@ class AmoledWallpaperCatalogTest {
     @Test
     fun lookupIsExactAndTheTecdropRenameNoticeStaysVisible() {
         assertNotNull(AmoledWallpaperCatalog.byId(AmoledWallpaperCatalog.PITCH_BLACK_ID))
+        assertNotNull(AmoledWallpaperCatalog.byId(AmoledWallpaperCatalog.DOT_FIELD_ID))
         assertNull(AmoledWallpaperCatalog.byId("pitch-black"))
         assertNull(AmoledWallpaperCatalog.byId(""))
         assertTrue(AmoledWallpaperCatalog.pitchBlack.changeNoticeRes != 0)

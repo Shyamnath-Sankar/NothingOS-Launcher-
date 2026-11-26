@@ -68,3 +68,39 @@ fill/stroke attributes. Concatenating those `pathData` values in document
 order reproduces the original source path byte-for-byte, so geometry,
 drawing order and appearance are unchanged. The source guard rejects any
 `pathData` attribute of 16,000 bytes or more.
+
+## Procedural true-black wallpapers (no external asset)
+
+These three wallpapers are drawn from code at apply time. There is no raster
+or SVG file to fetch, scrape or license, so no third-party artwork is bundled
+for them. They are original work of this project and are covered by the
+repository's Apache License 2.0.
+
+| Id | Title | Motif | Palette |
+| --- | --- | --- | --- |
+| `dot_field` | Dot Field | uniform dot grid | true black + `#3A3A3A` dots |
+| `horizon_line` | Horizon Line | dot grid + one thin line + one accent dot | true black + `#6E6E6E` line + `#D7261E` accent |
+| `glyph_ring` | Glyph Ring | dot grid + one thin ring + one centre dot | true black + `#D7261E` ring + `#6E6E6E` dot |
+
+Implementation:
+
+- `lawnchair/src/app/nothingui/wallpaper/NothingWallpaperArt.kt` holds the
+  pure, Android-free spec, palette ARGB values, the portrait phone size
+  catalog and the deterministic geometry.
+- `lawnchair/src/app/nothingui/wallpaper/NothingWallpaperRenderer.kt` draws
+  the same geometry to an ARGB bitmap for both the in-app preview and the
+  `WallpaperManager.setBitmap` call.
+- The background is always `#000000` (true black) so an AMOLED panel keeps
+  those pixels off. Dots and lines use the app greys; the single glyph/line
+  accent uses the app accent red.
+
+The curated sizes are `1080x1920` (16:9), `1080x2160` (18:9),
+`1080x2340` (19.5:9), `1080x2400` (20:9), `1440x3120` and `1440x3200`.
+`NothingWallpaperSizes.bestFor` normalizes the real display to portrait,
+picks the closest aspect ratio, and prefers the smallest size that still
+covers the display. The geometry is derived from the chosen size, so the
+same spec is correct on every phone aspect ratio.
+
+The gallery previews are rendered from the same renderer at a small
+`270x540` bitmap and scaled with `ContentScale.Crop`. Nothing is downloaded,
+and no storage or media permission is added.

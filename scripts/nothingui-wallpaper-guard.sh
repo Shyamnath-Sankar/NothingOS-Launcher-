@@ -1,6 +1,7 @@
 #!/bin/sh
 # Static guard for the offline AMOLED wallpaper gallery:
-# - exactly the two committed catalogue choices with distinct offline resources;
+# - exactly the five curated catalogue choices: two openly licensed assets and
+#   three original procedural wallpapers drawn from code on true black;
 # - the original Tecdrop PNG keeps its published SHA-256 and rename-only notice;
 # - the Torus source/recolored SVG hashes and colour mapping are documented;
 # - the vector keeps the 1080x2340 viewport, literal stroke widths and no fill;
@@ -42,12 +43,15 @@ LIVE_META="$ROOT/play/res/xml/dotwel_dot_field_wallpaper.xml"
 LIVE_THUMB="$ROOT/play/res/drawable/dotwel_live_wallpaper_thumbnail.xml"
 PLAY_MANIFEST="$ROOT/play/AndroidManifest.xml"
 LIVE_TEST="$ROOT/tests/unit/java/app/nothingui/wallpaper/DotFieldWallpaperPolicyTest.kt"
+ART="$ROOT/lawnchair/src/app/nothingui/wallpaper/NothingWallpaperArt.kt"
+RENDERER="$ROOT/lawnchair/src/app/nothingui/wallpaper/NothingWallpaperRenderer.kt"
+ART_TEST="$ROOT/tests/unit/java/app/nothingui/wallpaper/NothingWallpaperArtTest.kt"
 
 for file in "$CATALOG" "$TARGET" "$APPLIER" "$UI" "$DASHBOARD" "$HOME_PREFS" \
     "$ROUTES" "$NAV" "$PNG" "$VECTOR" "$SOURCE_SVG" "$RECOLORED_SVG" \
     "$PROVENANCE" "$BY_LICENSE" "$ZERO_LICENSE" "$SMOKE" "$SMOKE_LIB" \
     "$LIVE_SERVICE" "$LIVE_POLICY" "$LIVE_META" "$LIVE_THUMB" "$PLAY_MANIFEST" \
-    "$LIVE_TEST"; do
+    "$LIVE_TEST" "$ART" "$RENDERER" "$ART_TEST"; do
     [ -f "$file" ] || fail "missing $file"
 done
 
@@ -194,22 +198,82 @@ grep -Fq 'renamed' "$PROVENANCE" || fail "the rename-only change notice is not d
 
 grep -Fq 'PITCH_BLACK_ID = "pitch_black"' "$CATALOG" || fail "Pitch Black id changed"
 grep -Fq 'WIREFRAME_TORUS_ID = "wireframe_torus"' "$CATALOG" || fail "Torus id changed"
+grep -Fq 'DOT_FIELD_ID = "dot_field"' "$CATALOG" || fail "Dot Field id changed"
+grep -Fq 'HORIZON_LINE_ID = "horizon_line"' "$CATALOG" || fail "Horizon Line id changed"
+grep -Fq 'GLYPH_RING_ID = "glyph_ring"' "$CATALOG" || fail "Glyph Ring id changed"
 grep -Fq 'R.drawable.dotwel_wallpaper_pitch_black' "$CATALOG" ||
     fail "Pitch Black does not use the bundled drawable"
 grep -Fq 'R.drawable.dotwel_wallpaper_wireframe_torus' "$CATALOG" ||
     fail "Torus does not use the bundled vector"
-[ "$(grep -c 'AmoledWallpaperKind\.' "$CATALOG")" -ge 2 ] ||
-    fail "the two wallpaper kinds are not declared"
-grep -Fq 'listOf(pitchBlack, wireframeTorus)' "$CATALOG" ||
-    fail "the catalogue is not exactly the two offline choices"
+[ "$(grep -c 'AmoledWallpaperKind\.' "$CATALOG")" -ge 3 ] ||
+    fail "the three wallpaper kinds are not declared"
+tr -d ' \n\t' < "$CATALOG" |
+    grep -Fq 'listOf(pitchBlack,wireframeTorus,dotField,horizonLine,glyphRing,' ||
+    fail "the catalogue is not exactly the five curated offline choices"
 grep -Fq 'CC_BY_4_0_LICENSE = "https://creativecommons.org/licenses/by/4.0/"' "$CATALOG" ||
     fail "the CC BY 4.0 licence URL is missing"
 grep -Fq 'CC0_1_0_LICENSE = "https://creativecommons.org/publicdomain/zero/1.0/"' "$CATALOG" ||
     fail "the CC0 1.0 licence URL is missing"
+grep -Fq 'APACHE_2_0_LICENSE = "https://www.apache.org/licenses/LICENSE-2.0"' "$CATALOG" ||
+    fail "the procedural Apache 2.0 licence URL is missing"
 grep -Fq 'licenseUrl = CC_BY_4_0_LICENSE' "$CATALOG" ||
     fail "Pitch Black does not link its CC BY 4.0 licence"
 grep -Fq 'licenseUrl = CC0_1_0_LICENSE' "$CATALOG" ||
     fail "Torus does not link its CC0 1.0 licence"
+
+# --- original procedural wallpapers ---------------------------------------
+#
+# The three new choices are drawn from code. They must stay on true black,
+# use the shared palette and never read a file, provider or network resource.
+
+grep -Fq 'AmoledWallpaperKind.PROCEDURAL' "$CATALOG" ||
+    fail "the catalogue has no procedural wallpaper kind"
+grep -Fq 'NothingWallpaperSpec(pattern = NothingWallpaperPattern.DOT_GRID)' "$CATALOG" ||
+    fail "the Dot Field procedural spec is missing"
+grep -Fq 'NothingWallpaperSpec(pattern = NothingWallpaperPattern.HORIZON)' "$CATALOG" ||
+    fail "the Horizon Line procedural spec is missing"
+grep -Fq 'NothingWallpaperSpec(pattern = NothingWallpaperPattern.GLYPH)' "$CATALOG" ||
+    fail "the Glyph Ring procedural spec is missing"
+grep -Fq 'licenseUrl = APACHE_2_0_LICENSE' "$CATALOG" ||
+    fail "the procedural choices do not link the Apache 2.0 licence"
+grep -Fq 'drawableRes = 0' "$CATALOG" ||
+    fail "a procedural choice must not carry a drawable resource"
+
+grep -Fq 'const val Black: Int = 0xFF000000.toInt()' "$ART" ||
+    fail "the procedural background is not true black"
+grep -Fq 'object NothingWallpaperGeometry' "$ART" ||
+    fail "the procedural geometry is missing"
+grep -Fq 'fun bestFor(displayWidthPx: Int, displayHeightPx: Int): NothingWallpaperSize' "$ART" ||
+    fail "the phone size selector is missing"
+for size in classic16x9 tall18x9 tall19_5x9 tall20x9 qhd19_5x9 qhd20x9; do
+    grep -Fq "val $size = NothingWallpaperSize" "$ART" ||
+        fail "the curated phone size $size is missing"
+done
+if grep -Eq 'INTERNET|HttpURLConnection|OkHttp|java\.net|FileInputStream|openRawResource|content://' \
+    "$ART" "$RENDERER"; then
+    fail "the procedural art must not read a file, provider or network resource"
+fi
+
+grep -Fq 'Bitmap.createBitmap(size.widthPx, size.heightPx, Bitmap.Config.ARGB_8888)' "$RENDERER" ||
+    fail "the procedural renderer does not create the expected bitmap"
+grep -Fq 'NothingWallpaperGeometry.layout(spec, size.widthPx, size.heightPx)' "$RENDERER" ||
+    fail "the procedural renderer does not use the pure geometry"
+grep -Fq 'canvas.drawCircle' "$RENDERER" ||
+    fail "the procedural renderer does not draw the dot field"
+grep -Fq 'NothingWallpaperSizes.bestFor(displayWidth, displayHeight)' "$APPLIER" ||
+    fail "the applier does not pick a curated phone size"
+grep -Fq 'AmoledWallpaperKind.PROCEDURAL -> setProcedural(context, manager, wallpaper)' "$APPLIER" ||
+    fail "the applier has no procedural branch"
+
+for test_case in \
+    'bestForReturnsTheExactCatalogSizeWhenItMatches' \
+    'bestForPicksTheClosestAspectForAnOffCatalogDisplay' \
+    'bestForPrefersTheSmallestCoveringSize' \
+    'geometryIsDeterministicAndFitsTheSurface' \
+    'everyProceduralCatalogChoiceRendersEveryCuratedSize'; do
+    grep -Fq "fun $test_case" "$ART_TEST" ||
+        fail "the procedural art test is missing $test_case"
+done
 
 # --- explicit apply, Home only -------------------------------------------
 

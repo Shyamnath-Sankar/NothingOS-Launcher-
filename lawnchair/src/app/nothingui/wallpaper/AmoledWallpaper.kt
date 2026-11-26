@@ -23,11 +23,13 @@ import com.android.launcher3.R
 enum class AmoledWallpaperKind {
     PNG,
     VECTOR,
+    PROCEDURAL,
 }
 
 /**
- * One offline AMOLED wallpaper offered by the Play gallery. Both files are
- * compiled into the APK; nothing is downloaded at runtime.
+ * One offline AMOLED wallpaper offered by the Play gallery. Raster/vector art
+ * is compiled into the APK; procedural art is drawn from [spec] at apply time.
+ * Nothing is downloaded at runtime.
  */
 data class AmoledWallpaper(
     val id: String,
@@ -40,17 +42,23 @@ data class AmoledWallpaper(
     val kind: AmoledWallpaperKind,
     val widthPx: Int,
     val heightPx: Int,
+    val spec: NothingWallpaperSpec? = null,
 )
 
 object AmoledWallpaperCatalog {
     const val PITCH_BLACK_ID = "pitch_black"
     const val WIREFRAME_TORUS_ID = "wireframe_torus"
+    const val DOT_FIELD_ID = "dot_field"
+    const val HORIZON_LINE_ID = "horizon_line"
+    const val GLYPH_RING_ID = "glyph_ring"
 
     const val PITCH_BLACK_SOURCE = "https://github.com/tecdrop/pitch-black-wallpaper-images"
     const val WIREFRAME_TORUS_SOURCE = "https://walldye.com/torus-wireframe"
+    const val PROJECT_SOURCE = "https://github.com/Shyamnath-Sankar/NothingOS-Launcher-"
 
     const val CC_BY_4_0_LICENSE = "https://creativecommons.org/licenses/by/4.0/"
     const val CC0_1_0_LICENSE = "https://creativecommons.org/publicdomain/zero/1.0/"
+    const val APACHE_2_0_LICENSE = "https://www.apache.org/licenses/LICENSE-2.0"
 
     val pitchBlack = AmoledWallpaper(
         id = PITCH_BLACK_ID,
@@ -78,7 +86,49 @@ object AmoledWallpaperCatalog {
         heightPx = 2340,
     )
 
-    val entries: List<AmoledWallpaper> = listOf(pitchBlack, wireframeTorus)
+    val dotField = procedural(
+        id = DOT_FIELD_ID,
+        titleRes = R.string.dotwel_wallpaper_dot_field,
+        spec = NothingWallpaperSpec(pattern = NothingWallpaperPattern.DOT_GRID),
+    )
+
+    val horizonLine = procedural(
+        id = HORIZON_LINE_ID,
+        titleRes = R.string.dotwel_wallpaper_horizon_line,
+        spec = NothingWallpaperSpec(pattern = NothingWallpaperPattern.HORIZON),
+    )
+
+    val glyphRing = procedural(
+        id = GLYPH_RING_ID,
+        titleRes = R.string.dotwel_wallpaper_glyph_ring,
+        spec = NothingWallpaperSpec(pattern = NothingWallpaperPattern.GLYPH),
+    )
+
+    val entries: List<AmoledWallpaper> = listOf(
+        pitchBlack,
+        wireframeTorus,
+        dotField,
+        horizonLine,
+        glyphRing,
+    )
 
     fun byId(id: String): AmoledWallpaper? = entries.firstOrNull { it.id == id }
+
+    private fun procedural(
+        id: String,
+        @StringRes titleRes: Int,
+        spec: NothingWallpaperSpec,
+    ): AmoledWallpaper = AmoledWallpaper(
+        id = id,
+        titleRes = titleRes,
+        creditRes = R.string.dotwel_wallpaper_procedural_credit,
+        changeNoticeRes = null,
+        sourceUrl = PROJECT_SOURCE,
+        licenseUrl = APACHE_2_0_LICENSE,
+        drawableRes = 0,
+        kind = AmoledWallpaperKind.PROCEDURAL,
+        widthPx = NothingWallpaperSizes.tall20x9.widthPx,
+        heightPx = NothingWallpaperSizes.tall20x9.heightPx,
+        spec = spec,
+    )
 }

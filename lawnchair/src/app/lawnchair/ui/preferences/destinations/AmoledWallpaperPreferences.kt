@@ -51,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
@@ -66,9 +68,15 @@ import app.nothingui.wallpaper.AmoledWallpaper
 import app.nothingui.wallpaper.AmoledWallpaperApplier
 import app.nothingui.wallpaper.AmoledWallpaperApplyResult
 import app.nothingui.wallpaper.AmoledWallpaperCatalog
+import app.nothingui.wallpaper.AmoledWallpaperKind
 import app.nothingui.wallpaper.DotFieldWallpaperService
+import app.nothingui.wallpaper.NothingWallpaperRenderer
+import app.nothingui.wallpaper.NothingWallpaperSizes
+import app.nothingui.wallpaper.NothingWallpaperSpec
 import com.android.launcher3.R
 import kotlinx.coroutines.launch
+
+private const val WALLPAPER_TILES_PER_ROW = 3
 
 @Composable
 fun AmoledWallpaperPreferences(
@@ -98,25 +106,30 @@ fun AmoledWallpaperPreferences(
                     vertical = NothingUiSpacing.Sm,
                 ),
             )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = NothingUiSpacing.Lg),
-                horizontalArrangement = Arrangement.spacedBy(NothingUiSpacing.Md),
-            ) {
-                AmoledWallpaperCatalog.entries.forEach { wallpaper ->
-                    WallpaperTile(
-                        wallpaper = wallpaper,
-                        selected = selectedId == wallpaper.id,
-                        enabled = !applying,
-                        onSelect = {
-                            if (!applying) {
-                                selectedId = wallpaper.id
-                                messageRes = null
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
+            AmoledWallpaperCatalog.entries.chunked(WALLPAPER_TILES_PER_ROW).forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Sm),
+                    horizontalArrangement = Arrangement.spacedBy(NothingUiSpacing.Md),
+                ) {
+                    row.forEach { wallpaper ->
+                        WallpaperTile(
+                            wallpaper = wallpaper,
+                            selected = selectedId == wallpaper.id,
+                            enabled = !applying,
+                            onSelect = {
+                                if (!applying) {
+                                    selectedId = wallpaper.id
+                                    messageRes = null
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(WALLPAPER_TILES_PER_ROW - row.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
             Text(
@@ -332,9 +345,8 @@ private fun WallpaperTile(
                 .fillMaxWidth()
                 .height(180.dp),
         ) {
-            Image(
-                painter = painterResource(wallpaper.drawableRes),
-                contentDescription = stringResource(wallpaper.titleRes),
+            WallpaperArtwork(
+                wallpaper = wallpaper,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(180.dp)
@@ -363,9 +375,8 @@ private fun AmoledWallpaperPreview(
             .padding(horizontal = NothingUiSpacing.Lg, vertical = NothingUiSpacing.Sm),
     ) {
         Row {
-            Image(
-                painter = painterResource(wallpaper.drawableRes),
-                contentDescription = stringResource(wallpaper.titleRes),
+            WallpaperArtwork(
+                wallpaper = wallpaper,
                 modifier = Modifier
                     .width(160.dp)
                     .height(300.dp)
@@ -373,5 +384,42 @@ private fun AmoledWallpaperPreview(
             )
             Spacer(modifier = Modifier.size(NothingUiSpacing.Lg))
         }
+    }
+}
+
+@Composable
+private fun WallpaperArtwork(
+    wallpaper: AmoledWallpaper,
+    modifier: Modifier = Modifier,
+) {
+    val spec = wallpaper.spec
+    if (wallpaper.kind == AmoledWallpaperKind.PROCEDURAL && spec != null) {
+        ProceduralWallpaperArt(spec = spec, modifier = modifier)
+    } else {
+        Image(
+            painter = painterResource(wallpaper.drawableRes),
+            contentDescription = stringResource(wallpaper.titleRes),
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun ProceduralWallpaperArt(
+    spec: NothingWallpaperSpec,
+    modifier: Modifier = Modifier,
+) {
+    val bitmap = remember(spec) {
+        NothingWallpaperRenderer.render(spec, NothingWallpaperSizes.preview)
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier,
+        )
+    } else {
+        Spacer(modifier = modifier)
     }
 }

@@ -20,6 +20,8 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.Build
+import android.view.WindowManager
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +46,7 @@ object AmoledWallpaperApplier {
             val returnedId = when (wallpaper.kind) {
                 AmoledWallpaperKind.PNG -> setPng(context, manager, wallpaper)
                 AmoledWallpaperKind.VECTOR -> setVector(context, manager, wallpaper)
+                AmoledWallpaperKind.PROCEDURAL -> setProcedural(context, manager, wallpaper)
             }
             val currentHomeId = manager.getWallpaperId(AmoledWallpaperTarget.FLAGS)
             if (AmoledWallpaperTarget.accepted(returnedId, currentHomeId)) {
@@ -86,5 +89,34 @@ object AmoledWallpaperApplier {
         } finally {
             bitmap.recycle()
         }
+    }
+
+    private fun setProcedural(
+        context: Context,
+        manager: WallpaperManager,
+        wallpaper: AmoledWallpaper,
+    ): Int {
+        val spec = wallpaper.spec ?: return 0
+        val (displayWidth, displayHeight) = displaySize(context)
+        val size = NothingWallpaperSizes.bestFor(displayWidth, displayHeight)
+        val bitmap = NothingWallpaperRenderer.render(spec, size) ?: return 0
+        try {
+            return manager.setBitmap(bitmap, null, true, AmoledWallpaperTarget.FLAGS)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
+    private fun displaySize(context: Context): Pair<Int, Int> {
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        if (windowManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = windowManager.currentWindowMetrics.bounds
+            if (bounds.width() > 0 && bounds.height() > 0) {
+                return bounds.width() to bounds.height()
+            }
+        }
+        @Suppress("DEPRECATION")
+        val metrics = context.resources.displayMetrics
+        return metrics.widthPixels to metrics.heightPixels
     }
 }
