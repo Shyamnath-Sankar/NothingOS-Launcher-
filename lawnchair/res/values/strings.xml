@@ -650,6 +650,7 @@
     <string name="create_backup_description">Export settings and launcher layout</string>
     <string name="restore_backup_description">Import a previously created backup</string>
     <string name="restore_nova_backup_description">Import layout from a Nova Launcher backup</string>
+    <string name="backup_temporarily_unavailable">Backup is temporarily unavailable in this build</string>
 
     <!--
 
