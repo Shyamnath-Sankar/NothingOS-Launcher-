@@ -6120,7 +6120,7 @@ ARTIFACTS="$ROOT/artifacts"
 mkdir -p "$ARTIFACTS"
 PKG=com.launchersim.debug
 PREFERENCES_ACTIVITY=app.lawnchair.ui.preferences.PreferenceActivity
-WEATHER_RUNTIME_NOTICE_MODE=debug
+WEATHER_RUNTIME_NOTICE_MODE=release
 fail() {
     printf 'weather screen path harness failure: %s\n' "$*" >&2
     exit 1
@@ -6230,14 +6230,16 @@ assert_true 'the enabled poll polls the real enabled state and message' \
     grep -Fq '_weather_poll_action_state enable enabled' "$weather_body"
 assert_true 'the disabled poll polls the real disabled state and message' \
     grep -Fq '_weather_poll_action_state disable disabled' "$weather_body"
-assert_true 'the enabled success message is the shipped debug setup-only confirmation' \
-    grep -Fq "WEATHER_ENABLED_MESSAGE='$(prod_string dotwel_weather_message_enabled_debug)'" "$weather_body"
-assert_true 'the runtime gate asserts the real debug network-off privacy copy' \
-    grep -Fq "This debug build has network requests disabled" "$weather_body"
+assert_true 'the enabled success message is the shipped live transmission confirmation' \
+    grep -Fq "WEATHER_ENABLED_MESSAGE='$(prod_string dotwel_weather_message_enabled_release)'" "$weather_body"
+assert_true 'the runtime gate asserts the real live MET transmission copy' \
+    grep -Fq "are shared with MET Norway" "$weather_body"
 assert_true 'the runtime gate asserts the real device-IP disclosure' \
     grep -Fq "the IP address of this device" "$weather_body"
-assert_true 'the runtime gate asserts the debug enabled status says nothing is sent' \
-    grep -Fq 'no coordinates or device IP address are sent' "$weather_body"
+assert_true 'the enabled persistence restart does not resume HOME' \
+    grep -Fq '_weather_restart reload-enabled settings' "$weather_body"
+assert_true 'the settings-only restart returns before the HOME keyevent' \
+    grep -Fq 'if [ "$_wrs_resume" = settings ]; then' "$weather_body"
 assert_true 'the disabled success message is a shared exact constant' \
     grep -Fq "WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'" "$weather_body"
 assert_true 'the enabled poll reveals the message through measured scrolling' \

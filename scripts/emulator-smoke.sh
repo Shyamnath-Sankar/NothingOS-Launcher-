@@ -1882,11 +1882,12 @@ read_wm_size() (
 # request a location permission, write a preference directly or seed workspace
 # state. A synthetic manual location is typed like a user would type it.
 
-WEATHER_ENABLED_MESSAGE='Weather setup saved. This debug build has network requests disabled, so no forecast is requested.'
+WEATHER_ENABLED_MESSAGE='Weather setup saved. While Home is visible, requests send those selected coordinates and the IP address of this device to MET Norway.'
 WEATHER_DISABLED_MESSAGE='Weather disabled. The location and its cached forecast were cleared; the shared provider throttle was kept.'
-# The smoke gate only installs the Play debug APK, so the real Weather screen
-# must show the debug setup-only notice, never the release transmission notice.
-WEATHER_RUNTIME_NOTICE_MODE=debug
+# The smoke gate installs the Play debug APK, and the runtime now enables the
+# live opt-in path for every build. The smoke therefore uses the release
+# transmission copy and never resumes HOME while consent is enabled.
+WEATHER_RUNTIME_NOTICE_MODE=release
 
 _weather_snapshot() {
     _ws_tag=$1
@@ -2531,12 +2532,23 @@ _weather_back_to_home_screen() {
     fail "Back from Weather did not return to the Home screen preferences ($_wbh_tag)"
 }
 
+# Restart the app for the persistence proofs. The default also resumes HOME
+# after the force-stop. When $2 is "settings", only the process is restarted:
+# the live MET path is enabled for every build now, so resuming HOME while
+# consent is enabled would start a real forecast request. The caller opens
+# Preferences directly, which reloads the persisted store without a HOME
+# session. This settings-only path is the one exception; every other restart
+# runs with consent disabled and still proves the launcher resumes.
 _weather_restart() {
     _wrs_tag=$1
+    _wrs_resume=${2:-home}
     adb_cmd shell am force-stop "$PKG" \
         > "$ARTIFACTS/weather-$_wrs_tag-force-stop.txt" 2>&1 ||
         fail "could not force-stop $PKG for the weather restart ($_wrs_tag)"
     sleep 1
+    if [ "$_wrs_resume" = settings ]; then
+        return 0
+    fi
     adb_cmd shell input keyevent KEYCODE_HOME \
         > "$ARTIFACTS/weather-$_wrs_tag-home.txt" 2>&1 ||
         fail "could not press HOME after the weather force-stop ($_wrs_tag)"
@@ -2635,13 +2647,16 @@ capture_weather_settings() {
     _weather_snapshot fresh
     grep -Fq 'Before you enable' "$_weather_screen_notice_xml" ||
         fail "the real Weather screen did not show its privacy notice"
-    grep -Fq 'This debug build has network requests disabled' "$_weather_screen_notice_xml" ||
-        fail "the real debug Weather screen did not show its setup-only network-off copy"
+    grep -Fq 'are shared with MET Norway' "$_weather_screen_notice_xml" ||
+        fail "the real Weather screen did not show the live MET transmission copy"
     grep -Fq "the IP address of this device" "$_weather_screen_notice_xml" ||
         fail "the real Weather screen did not disclose the device-IP transmission"
-    grep -Fq 'no coordinates or device IP address are sent' \
+    if grep -Fq 'This debug build has network requests disabled' \
         "$_weather_screen_notice_xml" ||
-        fail "the real debug Weather screen did not disclose that nothing is sent"
+        grep -Fq 'no coordinates or device IP address are sent' \
+            "$_weather_screen_notice_xml"; then
+        fail "the real Weather screen still showed the debug network-off copy"
+    fi
     _cws_consent=$(_weather_capture_consent before)
     case "$_cws_consent" in
         missing | disabled\|*) ;;
@@ -2883,7 +2898,9 @@ capture_weather_settings() {
     _weather_back_to_home_screen enabled-back
 
     # 6. Force-stop/reopen reloads the saved location and enabled state.
-    _weather_restart reload-enabled
+    # Restart the process without resuming HOME: the live path would request a
+    # real forecast on an enabled HOME. Preferences reloads the same store.
+    _weather_restart reload-enabled settings
     _weather_open_weather reload-enabled
     _cws_consent=$(_weather_capture_consent reload-enabled)
     case "$_cws_consent" in
@@ -2987,7 +3004,7 @@ capture_weather_settings() {
         disabled\|*) ;;
         *) fail "the weather gate did not finish disabled, found '$_cws_final'" ;;
     esac
-    printf 'Weather settings: the real Home screen Weather settings entry opened the real WeatherPreferences. A fresh store was off and Save and enable was disabled; invalid coordinates and valid coordinates without consent could not enable; a force-stop did not persist the disabled draft; consent plus the synthetic Emulator test location wrote only the app-private no_backup store and did not appear in backed-up prefs; a restart reloaded the label/coordinates/enabled state; Disable removed the seeded synthetic cache file and several restarts kept the disabled state. No provider link was opened, no network/API request was made, no location permission was requested, no workspace item was seeded or cleared, and the final consent is disabled.\n' \
+    printf 'Weather settings: the real Home screen Weather settings entry opened the real WeatherPreferences. A fresh store was off and Save and enable was disabled; invalid coordinates and valid coordinates without consent could not enable; a force-stop did not persist the disabled draft; consent plus the synthetic Emulator test location wrote only the app-private no_backup store and did not appear in backed-up prefs; a process restart followed by Preferences reloaded the label/coordinates/enabled state without resuming HOME; Disable removed the seeded synthetic cache file and several restarts kept the disabled state. No provider link was opened, no network/API request was made, no location permission was requested, no workspace item was seeded or cleared, and the final consent is disabled.\n' \
         > "$ARTIFACTS/weather.txt"
     printf 'Screenshots: weather-fresh.png, weather-invalid.png, weather-valid-unchecked.png, weather-enabled.png, weather-enabled-reopened.png, weather-disabled.png, weather-disabled-reopened.png.\n' \
         >> "$ARTIFACTS/weather.txt"
