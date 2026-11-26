@@ -3,24 +3,53 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **backup kill-switch — create/restore disabled on
-  `agent/disable-backup-create-and-rest`, source-only, PENDING CI.** The Compose backup settings
-  screen, developer Feature Flags export/import entries, CreateBackupScreen, RestoreBackupScreen and
-  the Nova restore action now show "Backup is temporarily unavailable in this build" and expose no
-  create/restore action. `LawnchairBackup.create` and `LawnchairBackup.restore` return
-  `BackupOperationResult.UNAVAILABLE` immediately. Existing backup files, launcher databases, shared
-  preferences, DataStore files and wallpapers are not read, moved, renamed, deleted or modified by
-  this change. No applicationId, SDK, manifest permission, weather, home/widget or `.github` change.
-- branch: `agent/disable-backup-create-and-rest`
-- head: **`41b4df4`** (UI kill-switch); this STATE update follows.
+- current_phase: **live MET weather — debug builds enabled on
+  `agent/enable-live-met-norway-weather`, source/shell-verified, PENDING CI.**
+  `WeatherNetworkMode` now enables the wired opt-in MET path for every build, including debug/test,
+  so the Play debug APK uses the real `MetWeatherRepository`/`OkHttpWeatherTransport`. The settings
+  screen therefore selects the release coordinate/device-IP transmission copy. The emulator smoke
+  still makes no real request: its enabled persistence proof force-stops and reopens Preferences
+  without resuming HOME, and every other HOME resume runs with consent disabled. The instrumentation
+  harness and unit tests still inject fake transports. No backup, `.github`, applicationId, SDK,
+  manifest permission or home/widget change.
+- branch: `agent/enable-live-met-norway-weather`
+- head: **`cfadc48`** (guard update); this STATE/docs update follows.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/disable-backup-create-and-rest
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/enable-live-met-norway-weather
 - ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
-- next: open the PR, let CI build `lawnWithQuickstepPlayDebug`, and spot-check that the backup
-  settings screen shows the unavailable notice with no create/restore action. Rewrite create/restore
-  later; until then keep both disabled.
+- next: open the PR, let CI build `lawnWithQuickstepPlayDebug`, run the Play smoke and confirm the
+  weather settings screen shows the release transmission copy and that the enabled persistence
+  restart never resumes HOME.
 - blockers: no PR could be created from this runner (gh unauthenticated). No device/emulator run, so
-  the Compose notice is source-verified only.
+  the live debug copy and the settings-only restart are source/shell-verified only.
+
+## done (this run — live MET weather enabled on `agent/enable-live-met-norway-weather`, source/shell-only)
+
+- **Production gate:** `WeatherWorkFactory.WeatherNetworkMode.isEnabled` now returns `true` for every
+  build, so `WeatherHomeRuntime` builds the real `MetWeatherRepository` and
+  `OkHttpWeatherTransport` in the Play debug APK. `NoNetworkWeatherWork` remains only as an explicit
+  offline test double.
+- **Copy:** `WeatherSettingsCopy.networkEnabled` follows the same policy, so debug settings now show
+  the release privacy, forecast, status and enabled-message strings. The debug setup-only resources
+  remain in `strings.xml` for the offline seam.
+- **Tests:** `WeatherSettingsCopyTest` now expects the release copy for `debugBuild = true` and pins
+  `WeatherNetworkMode.isEnabled` true for both modes. `WeatherHomeOwnerTest` still covers
+  `NoNetworkWeatherWork`. The instrumentation harness still injects a fake OkHttp interceptor
+  through `WeatherWorkFactory`, so it makes no real call.
+- **Smoke:** `emulator-smoke.sh` uses `WEATHER_RUNTIME_NOTICE_MODE=release` and the exact release
+  enabled message. The enabled persistence proof calls `_weather_restart reload-enabled settings`,
+  which force-stops the process but skips HOME; `_weather_open_weather` then reloads Preferences.
+  Every other HOME resume runs with consent disabled. `emulator-smoke-test.sh` asserts the release
+  copy and the settings-only branch.
+- **Guard:** `nothingui-weather-guard.sh` requires `isEnabled(...) = true` and keeps the offline
+  placeholder; its mutation suite rejects a policy that disables the live path.
+- **Docs:** `docs/agent/emulator-verification.md` and
+  `docs/agent/weather-runtime-proof-plan.md` were updated to the live policy.
+- **Verification actually run:** `sh scripts/emulator-smoke-test.sh` → all checks passed;
+  `sh scripts/nothingui-weather-guard-test.sh` → all passed; `sh -n` on both smoke and guard
+  scripts; `git diff --check` clean. No Gradle, Android build, emulator or CI.
+- **Missing evidence / not claimed:** no APK, no Compose/device run, no CI. The live debug copy and
+  the no-HOME restart are source/shell-verified only.
 
 ## done (this run — backup create/restore disabled on `agent/disable-backup-create-and-rest`, source-only)
 
