@@ -78,8 +78,8 @@ object BackupArchive {
     private const val MAX_MANIFEST_BYTES = 1024L * 1024
     private const val BUFFER_SIZE = 8192
 
-    private val SAFE_NAME = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*$")
-    private val SHA256 = Regex("^[0-9a-f]{64}$")
+    private val safeNamePattern = Regex("^[A-Za-z0-9][A-Za-z0-9._-]*$")
+    private val sha256Pattern = Regex("^[0-9a-f]{64}$")
 
     fun write(output: File, sources: List<ArchiveSource>) {
         val names = sources.map { it.name }
@@ -275,7 +275,7 @@ object BackupArchive {
                 throw BackupArchiveException("Malformed backup manifest line")
             }
             val (sha256, sizeText, name) = parts
-            if (!SHA256.matches(sha256)) {
+            if (!sha256Pattern.matches(sha256)) {
                 throw BackupArchiveException("Malformed backup checksum")
             }
             if (!isSafeName(name) || name == MANIFEST_ENTRY) {
@@ -315,7 +315,7 @@ object BackupArchive {
     private fun isSafeName(name: String): Boolean {
         if (name.isEmpty() || name.length > 128) return false
         if (name.contains('/') || name.contains('\\') || name.contains("..")) return false
-        return SAFE_NAME.matches(name)
+        return safeNamePattern.matches(name)
     }
 
     private fun isInside(parent: File, child: File): Boolean {
@@ -366,8 +366,10 @@ class RestoreTransaction internal constructor(
                 throw BackupArchiveException("Could not create target directory for $name")
             }
             val backup = if (target.exists()) {
-                File(rollbackDir, name).also { it.parentFile?.mkdirs() }
-                    .also { target.copyTo(it, overwrite = true) }
+                val backupFile = File(rollbackDir, name)
+                backupFile.parentFile?.mkdirs()
+                target.copyTo(backupFile, overwrite = true)
+                backupFile
             } else {
                 null
             }
