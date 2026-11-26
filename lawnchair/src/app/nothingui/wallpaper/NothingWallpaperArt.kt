@@ -28,12 +28,12 @@ import kotlin.math.min
  * geometry and renderer stay free of Compose and Android types where possible.
  */
 object NothingWallpaperColors {
-    const val Black: Int = 0xFF000000.toInt()
-    const val Paper: Int = 0xFFF2F2F2.toInt()
-    const val Gray900: Int = 0xFF1A1A1A.toInt()
-    const val Gray700: Int = 0xFF3A3A3A.toInt()
-    const val Gray500: Int = 0xFF6E6E6E.toInt()
-    const val AccentRed: Int = 0xFFD7261E.toInt()
+    const val BLACK: Int = 0xFF000000.toInt()
+    const val PAPER: Int = 0xFFF2F2F2.toInt()
+    const val GRAY_900: Int = 0xFF1A1A1A.toInt()
+    const val GRAY_700: Int = 0xFF3A3A3A.toInt()
+    const val GRAY_500: Int = 0xFF6E6E6E.toInt()
+    const val ACCENT_RED: Int = 0xFFD7261E.toInt()
 }
 
 /**
@@ -58,10 +58,10 @@ enum class NothingWallpaperPattern {
  */
 data class NothingWallpaperSpec(
     val pattern: NothingWallpaperPattern,
-    val backgroundArgb: Int = NothingWallpaperColors.Black,
-    val dotArgb: Int = NothingWallpaperColors.Gray700,
-    val lineArgb: Int = NothingWallpaperColors.Gray500,
-    val accentArgb: Int = NothingWallpaperColors.AccentRed,
+    val backgroundArgb: Int = NothingWallpaperColors.BLACK,
+    val dotArgb: Int = NothingWallpaperColors.GRAY_700,
+    val lineArgb: Int = NothingWallpaperColors.GRAY_500,
+    val accentArgb: Int = NothingWallpaperColors.ACCENT_RED,
     val dotColumnsOnShortSide: Int = 22,
     val dotRadiusFraction: Float = 0.09f,
     val lineFraction: Float = 0.42f,
@@ -223,9 +223,7 @@ object NothingWallpaperGeometry {
         )
     }
 
-    fun dotCenterX(layout: NothingWallpaperLayout, column: Int): Float =
-        layout.offsetX + column * layout.spacingPx
+    fun dotCenterX(layout: NothingWallpaperLayout, column: Int): Float = layout.offsetX + column * layout.spacingPx
 
-    fun dotCenterY(layout: NothingWallpaperLayout, row: Int): Float =
-        layout.offsetY + row * layout.spacingPx
+    fun dotCenterY(layout: NothingWallpaperLayout, row: Int): Float = layout.offsetY + row * layout.spacingPx
 }

@@ -28,12 +28,12 @@ class NothingWallpaperArtTest {
 
     @Test
     fun paletteMatchesTheAppPalette() {
-        assertEquals(NothingUiPalette.Black, Color(NothingWallpaperColors.Black))
-        assertEquals(NothingUiPalette.Paper, Color(NothingWallpaperColors.Paper))
-        assertEquals(NothingUiPalette.Gray900, Color(NothingWallpaperColors.Gray900))
-        assertEquals(NothingUiPalette.Gray700, Color(NothingWallpaperColors.Gray700))
-        assertEquals(NothingUiPalette.Gray500, Color(NothingWallpaperColors.Gray500))
-        assertEquals(NothingUiPalette.AccentRed, Color(NothingWallpaperColors.AccentRed))
+        assertEquals(NothingUiPalette.Black, Color(NothingWallpaperColors.BLACK))
+        assertEquals(NothingUiPalette.Paper, Color(NothingWallpaperColors.PAPER))
+        assertEquals(NothingUiPalette.Gray900, Color(NothingWallpaperColors.GRAY_900))
+        assertEquals(NothingUiPalette.Gray700, Color(NothingWallpaperColors.GRAY_700))
+        assertEquals(NothingUiPalette.Gray500, Color(NothingWallpaperColors.GRAY_500))
+        assertEquals(NothingUiPalette.AccentRed, Color(NothingWallpaperColors.ACCENT_RED))
     }
 
     @Test
@@ -43,7 +43,7 @@ class NothingWallpaperArtTest {
             NothingWallpaperSpec(NothingWallpaperPattern.HORIZON),
             NothingWallpaperSpec(NothingWallpaperPattern.GLYPH),
         ).forEach { spec ->
-            assertEquals(NothingWallpaperColors.Black, spec.backgroundArgb)
+            assertEquals(NothingWallpaperColors.BLACK, spec.backgroundArgb)
             assertTrue(spec.dotArgb != spec.backgroundArgb)
             assertTrue(spec.lineArgb != spec.backgroundArgb)
             assertTrue(spec.accentArgb != spec.backgroundArgb)
