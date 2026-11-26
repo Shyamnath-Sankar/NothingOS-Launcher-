@@ -1,38 +1,29 @@
 package app.lawnchair.backup
 
-import android.annotation.SuppressLint
-import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.core.graphics.drawable.toBitmap
 import app.lawnchair.LawnchairProto.BackupInfo
-import app.lawnchair.util.hasFlag
 import app.lawnchair.util.scaleDownTo
 import app.lawnchair.util.scaleDownToDisplaySize
-import app.lawnchair.wallpaper.WallpaperColorsCompat
-import app.lawnchair.wallpaper.WallpaperManagerCompat
-import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherFiles
 import com.android.launcher3.R
-import com.android.launcher3.model.DeviceGridState
-import com.android.launcher3.model.ModelDbController
-import com.android.launcher3.provider.RestoreDbTask
-import com.google.protobuf.Timestamp
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
-import java.util.zip.ZipOutputStream
 import kotlin.math.max
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
+enum class BackupOperationResult {
+    UNAVAILABLE,
+}
 
 class LawnchairBackup(
     private val context: Context,
@@ -57,34 +48,11 @@ class LawnchairBackup(
         wallpaper = tmpWallpaper?.scaleDownToDisplaySize(context)
     }
 
-    suspend fun restore(selectedContents: Int) {
-        val handlers = mutableMapOf<String, suspend (InputStream) -> Unit>()
-        val contents = selectedContents and info.contents
-        if (contents.hasFlag(INCLUDE_LAYOUT_AND_SETTINGS)) {
-            handlers.putAll(
-                getFiles(context, forRestore = true).mapValues { entry ->
-                    {
-                        val file = entry.value
-                        file.parentFile?.mkdirs()
-                        file.outputStream().use { out -> it.copyTo(out) }
-                    }
-                },
-            )
-        }
-        if (contents.hasFlag(INCLUDE_WALLPAPER)) {
-            handlers[WALLPAPER_FILE_NAME] = {
-                val wallpaperManager = WallpaperManager.getInstance(context)
-                wallpaperManager.setBitmap(BitmapFactory.decodeStream(it))
-            }
-        }
-        context.getDatabasePath(LAUNCHER_DB_FILE_NAME).parentFile?.deleteRecursively()
-        readZip(handlers)
-        // Written after the zip has been extracted: the backed up preferences file is one of
-        // the restored entries, so writing the grid state first would let it be overwritten.
-        DeviceGridState(info.gridState).writeToPrefs(context, true)
-
-        val dbController = ModelDbController(context)
-        RestoreDbTask.performRestore(context, dbController)
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun restore(selectedContents: Int): BackupOperationResult {
+        // Restore is disabled in this build: it can destroy user data on failure. Existing
+        // backup files and launcher data are intentionally left untouched.
+        return BackupOperationResult.UNAVAILABLE
     }
 
     private suspend fun readZip(handlers: Map<String, suspend (InputStream) -> Unit>) {
@@ -106,7 +74,6 @@ class LawnchairBackup(
     }
 
     companion object {
-        private const val BACKUP_VERSION = 1
         private const val PREFS_FILE_NAME = "${LauncherFiles.SHARED_PREFERENCES_KEY}.xml"
         private const val PREFS_DB_FILE_NAME = "preferences"
         private const val PREFS_DATASTORE_FILE_NAME = "preferences.preferences_pb"
@@ -142,52 +109,15 @@ class LawnchairBackup(
             )
         }
 
-        @SuppressLint("MissingPermission")
-        suspend fun create(context: Context, contents: Int, screenshotBitmap: Bitmap, fileUri: Uri) {
-            val idp = LauncherAppState.getIDP(context)
-            val createdAt = Timestamp.newBuilder()
-                .setSeconds(System.currentTimeMillis() / 1000)
-            val colorHints = WallpaperManagerCompat.INSTANCE.get(context).wallpaperColors?.colorHints ?: 0
-            val wallpaperSupportsDarkText = (colorHints and WallpaperColorsCompat.HINT_SUPPORTS_DARK_TEXT) != 0
-            val info = BackupInfo.newBuilder()
-                .setLawnchairVersion(BuildConfig.VERSION_CODE)
-                .setBackupVersion(BACKUP_VERSION)
-                .setCreatedAt(createdAt)
-                .setContents(contents)
-                .setGridState(DeviceGridState(idp).toProtoMessage())
-                .setPreviewWidth(screenshotBitmap.width)
-                .setPreviewHeight(screenshotBitmap.height)
-                .setPreviewDarkText(wallpaperSupportsDarkText)
-                .build()
-
-            val pfd = context.contentResolver.openFileDescriptor(fileUri, "w")!!
-            withContext(Dispatchers.IO) {
-                pfd.use {
-                    ZipOutputStream(FileOutputStream(pfd.fileDescriptor).buffered()).use { out ->
-                        out.putNextEntry(ZipEntry(INFO_FILE_NAME))
-                        info.writeTo(out)
-
-                        if (contents.hasFlag(INCLUDE_WALLPAPER)) {
-                            val wallpaperManager = WallpaperManager.getInstance(context)
-                            val wallpaperBitmap = wallpaperManager.drawable?.toBitmap()
-                            if (wallpaperBitmap != null) {
-                                out.putNextEntry(ZipEntry(WALLPAPER_FILE_NAME))
-                                wallpaperBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                            }
-                        }
-                        if (contents.hasFlag(INCLUDE_LAYOUT_AND_SETTINGS)) {
-                            out.putNextEntry(ZipEntry(SCREENSHOT_FILE_NAME))
-                            screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, out)
-                        }
-
-                        getFiles(context, forRestore = false).entries.forEach {
-                            if (!it.value.exists()) return@forEach
-                            out.putNextEntry(ZipEntry(it.key))
-                            it.value.inputStream().use { input -> input.copyTo(out) }
-                        }
-                    }
-                }
-            }
+        @Suppress("UNUSED_PARAMETER")
+        suspend fun create(
+            context: Context,
+            contents: Int,
+            screenshotBitmap: Bitmap,
+            fileUri: Uri,
+        ): BackupOperationResult {
+            // Backup creation is disabled in this build. No file is opened or written.
+            return BackupOperationResult.UNAVAILABLE
         }
 
         private fun launcherDbFile(context: Context, forRestore: Boolean): File {
