@@ -175,9 +175,9 @@ require_text "$OWNER" 'WeatherHomeConsentPolicy.choose(loaded, lastObservedConse
 # --- Runtime work graph and singleton safety -----------------------------
 
 require_text "$RUNTIME" 'WeatherNetworkMode.isEnabled(BuildConfig.DEBUG)' \
-    'the runtime must select the explicit debug/test network-off mode'
+    'the runtime must select the build-policy network mode'
 require_text "$RUNTIME" 'NoNetworkWeatherWork' \
-    'the debug/test mode must keep the explicit no-network work placeholder'
+    'the offline test double must remain available'
 require_text "$RUNTIME" 'WeatherWorkFactory.create(' \
     'the runtime must build the load work through the pure factory'
 require_text "$RUNTIME" 'OkHttpWeatherTransport(appVersion = BuildConfig.VERSION_NAME)' \
@@ -217,8 +217,8 @@ require_text "$FACTORY" 'throttleStore = throttleStore' \
     'the factory does not pass the persisted throttle store'
 require_text "$FACTORY" 'clock = clock' \
     'the factory does not pass the injected clock'
-require_text "$FACTORY" 'fun isEnabled(debugBuild: Boolean): Boolean = !debugBuild' \
-    'the debug network-off mode must be a pure build-type boundary'
+require_text "$FACTORY" 'fun isEnabled(debugBuild: Boolean): Boolean = true' \
+    'the build policy must enable the live MET path for every build'
 
 require_text "$SESSION_PROVIDER" 'class WeatherRuntimeSessionProvider' \
     'the owner-backed session provider is missing'
@@ -230,11 +230,12 @@ require_text "$SESSION_PROVIDER" 'if (current.isClosed) return WeatherSession.DI
 require_text "$PREFS" 'WeatherHomeRuntime.observeConsent(appContext, state)' \
     'settings must share the same process-wide owner'
 
-# --- Build-mode-aware truthful copy --------------------------------------
-# The debug APK has network off, so its settings copy must not promise a
-# forecast request. Both modes must disclose the release transmission of the
-# selected coordinates and the device IP to MET Norway, keep the label on
-# device, and rule out GPS/background tracking.
+# --- Build-policy truthful copy ------------------------------------------
+# The runtime enables the live path for every build, so the settings copy must
+# select the release transmission wording. The debug setup-only resources stay
+# available for the explicit offline seam. Both modes must disclose the release
+# transmission of the selected coordinates and the device IP to MET Norway,
+# keep the label on device, and rule out GPS/background tracking.
 
 require_text "$COPY" 'object WeatherSettingsCopy' \
     'the build-aware weather copy object is missing'

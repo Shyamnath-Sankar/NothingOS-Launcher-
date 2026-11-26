@@ -113,7 +113,7 @@ expect_fail 'reusing a closed runtime owner is rejected'
 reset_fixture
 sed -i 's/WeatherNetworkMode.isEnabled(BuildConfig.DEBUG)/true/' \
     "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherHomeRuntime.kt"
-expect_fail 'a runtime that enables the live path in debug builds is rejected'
+expect_fail 'a runtime that bypasses the build-policy boundary is rejected'
 
 reset_fixture
 sed -i 's/WeatherRuntimeSessionProvider { synchronized(lock) { instance } }/WeatherRuntimeSessionProvider { null }/' \
@@ -136,9 +136,9 @@ sed -i 's/WeatherPrivateStorage.throttleDirectory(context.noBackupFilesDir)/cont
 expect_fail 'a throttle store outside the no-backup directory is rejected'
 
 reset_fixture
-sed -i 's/fun isEnabled(debugBuild: Boolean): Boolean = !debugBuild/fun isEnabled(debugBuild: Boolean): Boolean = true/' \
+sed -i 's/fun isEnabled(debugBuild: Boolean): Boolean = true/fun isEnabled(debugBuild: Boolean): Boolean = false/' \
     "$FIXTURE/lawnchair/src/app/nothingui/weather/WeatherWorkFactory.kt"
-expect_fail 'a work factory that enables the live path in debug builds is rejected'
+expect_fail 'a work factory that disables the live path is rejected'
 
 reset_fixture
 sed -i 's/val current = owner() ?: return WeatherSession.DISABLED/val current = owner()!!/' \
