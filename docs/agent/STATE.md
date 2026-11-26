@@ -3,28 +3,66 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **backup create/restore safely re-enabled on
-  `agent/rebuild-backup-create-and-rest`, source/JVM-unit-verified, PENDING CI.**
-  `LawnchairBackup.create` now writes an integrity-manifested zip of the launcher DB, shared prefs,
-  datastore and wallpaper without touching the sources. `restore` validates the whole archive and
-  manifest first, extracts into a private staging directory, verifies completeness, then swaps each
-  target through a rollback transaction. Corrupt, truncated or partial archives change nothing on
-  disk. The real Create/Restore/Nova screens and the developer Export/Import rows are restored; the
-  notice is shown only on a genuine failure. No weather, `.github`, applicationId, SDK, manifest
-  permission or home/widget change.
-- branch: `agent/rebuild-backup-create-and-rest`
-- head: **`c82ac52`** (archive-core formatting); this STATE/docs update follows.
+- current_phase: **procedural AMOLED true-black wallpapers added to the Play wallpaper gallery on
+  `agent/add-a-curated-set-of-amoled-fr`, shell/kotlinc-verified, PENDING CI.** Three original
+  wallpapers (Dot Field, Horizon Line, Glyph Ring) are drawn from code on true black with palette
+  greys and a single accent-red line/ring; geometry is resolution-independent and a curated 16:9–20:9
+  portrait size catalog feeds the applier. The existing two openly licensed Tecdrop/Walldye assets
+  remain. No permission, applicationId, SDK, manifest, network or widget change.
+- branch: `agent/add-a-curated-set-of-amoled-fr`
+- head: **`901937a`** (procedural wallpapers); this STATE/docs update follows.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/rebuild-backup-create-and-rest
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/add-a-curated-set-of-amoled-fr
 - ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
-- next: open the PR, let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
-  `testLawnWithQuickstepPlayDebugUnitTest`, then run a device/emulator create → restore round trip
-  and a corrupt-archive restore to confirm the live data is untouched.
+- next: let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
+  `testLawnWithQuickstepPlayDebugUnitTest`; then install on an AMOLED device/emulator and confirm
+  Dot Field / Horizon Line / Glyph Ring preview and apply, plus the existing two assets.
 - blockers: no PR from this runner (gh unauthenticated); no Gradle/APK/emulator/CI run here. The
-  safety properties are proven by 14 JVM unit tests and a stub-compiled `LawnchairBackup`; the
-  Android UI and the real launcher DB finalisation are source-verified only.
+  pure geometry, size selection, catalog and renderer wiring are kotlinc/shell-verified; Compose
+  preview rendering and the real `WallpaperManager.setBitmap` path are source-verified only.
 
-## done (this run — backup create/restore safely re-enabled on `agent/rebuild-backup-create-and-rest`, source/JVM-only)
+## done (this run — procedural AMOLED true-black wallpapers on `agent/add-a-curated-set-of-amoled-fr`, shell/kotlinc-only)
+
+- **Original art, no fetched assets:** new `NothingWallpaperArt.kt` defines the palette ARGB values,
+  three motifs (`DOT_GRID`, `HORIZON`, `GLYPH`), a resolution-independent spec and deterministic
+  geometry. `NothingWallpaperRenderer.kt` draws the same geometry to an ARGB bitmap for both the
+  gallery preview and `WallpaperManager.setBitmap`.
+- **True black + palette:** every background is `#000000`; dots use `#3A3A3A`, the horizon line and
+  glyph centre use `#6E6E6E`, and the single accent line-dot/ring uses `#D7261E`. The unit test pins
+  these to `NothingUiPalette`.
+- **Phone sizes:** `NothingWallpaperSizes` curates `1080x1920`, `1080x2160`, `1080x2340`,
+  `1080x2400`, `1440x3120`, `1440x3200`. `bestFor` normalizes the display to portrait, picks the
+  closest aspect ratio and prefers the smallest covering size; invalid dimensions fall back safely.
+- **Catalog + applier:** `AmoledWallpaperKind.PROCEDURAL` and a `spec` field were added. The three
+  procedural choices sit beside Pitch Black and Wireframe Torus. `AmoledWallpaperApplier` renders
+  the chosen size from `WindowMetrics` (API 30+) or `displayMetrics` and still sets only
+  `FLAG_SYSTEM`, checks support/policy and confirms the returned Home id.
+- **Picker:** `AmoledWallpaperPreferences` now lays the five tiles out in rows of three, and
+  `WallpaperArtwork` renders procedural previews from the shared renderer with `ContentScale.Crop`.
+  The existing apply/Cancel/credit/licence flow is unchanged.
+- **Docs:** `docs/wallpapers/README.md` documents the procedural motifs, palette, sizes and the
+  no-fetch/no-permission policy. `strings.xml` gains the three titles, a shared procedural credit and
+  an updated gallery description.
+- **Guard + tests:** `scripts/nothingui-wallpaper-guard.sh` now requires the five-entry catalog, the
+  three procedural specs, true-black ARGB, the size catalog, the shared renderer and the applier
+  branch, and rejects file/provider/network reads in the procedural sources. New
+  `NothingWallpaperArtTest` covers palette sync, size selection, geometry determinism/bounds and
+  every procedural choice at every size; `AmoledWallpaperCatalogTest` was updated to five entries.
+- **Verification actually run (shell/kotlinc only; no Gradle, Android build, emulator or CI):**
+  `kotlinc` compiled `NothingWallpaperArt.kt` (`rc=0`) and a pure JVM check passed exact/nearest/
+  covering/invalid size selection, deterministic in-bounds geometry for all 6 sizes × 3 motifs, and
+  invalid-spec rejection. `kotlinc` compiled the art + renderer + catalog + target + applier against
+  `android-37.2/android.jar` with minimal R/annotation/coroutines stubs (`rc=0`), and compiled both
+  unit tests with R/Compose/JUnit stubs (`rc=0`). `sh scripts/emulator-smoke-test.sh` reports
+  **1362 ok, 0 not ok**; `sh scripts/verify-play-build-test.sh` all passed;
+  `sh scripts/nothingui-wallpaper-guard.sh` OK; `sh scripts/nothingui-theme-guard.sh` OK;
+  `sh -n` clean on the edited guard; `python3` XML parse of `strings.xml` OK; `git diff --check`
+  clean.
+- **Missing evidence / not claimed:** no APK, no Compose render, no device/emulator apply, no
+  `dumpsys wallpaper` and no actual CI. The bitmap/`WallpaperManager` path and the Compose preview
+  are source/type-verified only; the new procedural tiles were not applied on a device in this run.
+
+## done (previous run — backup create/restore safely re-enabled on `agent/rebuild-backup-create-and-rest`, source/JVM-only)
 
 - **Pure core:** new `lawnchair/src/app/lawnchair/backup/BackupArchive.kt` writes a zip with a
   trailing `manifest.txt` (format header + SHA-256, size and name per entry), validates the manifest
