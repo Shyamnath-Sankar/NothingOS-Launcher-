@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_kwgt_digital3_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/kwgt_digital3_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <!-- Live fallback: the same dot matrix without baked-in time text under
+         three real platform TextClocks. No frozen bitmap time is ever shown. -->
+    <FrameLayout
+        android:id="@+id/kwgt_digital3_live"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/kwgt_digital3_live_bg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter" />
+
+        <TextClock
+            android:id="@+id/kwgt_digital3_hour"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fontFamily="monospace"
+            android:format12Hour="hh"
+            android:format24Hour="hh"
+            android:layout_gravity="top|left"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+
+        <TextClock
+            android:id="@+id/kwgt_digital3_minute"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fontFamily="monospace"
+            android:format12Hour="mm"
+            android:format24Hour="mm"
+            android:layout_gravity="top|left"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+
+        <TextClock
+            android:id="@+id/kwgt_digital3_ampm"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fontFamily="monospace"
+            android:format12Hour="a"
+            android:format24Hour="a"
+            android:layout_gravity="top|left"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_ink_dark"
+            android:textStyle="bold" />
+
+    </FrameLayout>
+
+</FrameLayout>

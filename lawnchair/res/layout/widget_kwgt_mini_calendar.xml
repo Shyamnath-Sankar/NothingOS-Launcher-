@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_kwgt_mini_calendar_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/kwgt_mini_calendar_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/kwgt_mini_calendar_fallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:maxLines="2"
+        android:text="@string/kwgt_mini_calendar_fallback"
+        android:textColor="@color/widget_ink"
+        android:textSize="12sp" />
+
+</FrameLayout>

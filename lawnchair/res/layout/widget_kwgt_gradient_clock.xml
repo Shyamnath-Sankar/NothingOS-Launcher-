@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black">
+
+    <ImageView
+        android:id="@+id/widget_kwgt_gradient_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/kwgt_gradient_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <!-- Live fallback: a static time-free gradient composition under two real
+         platform TextClocks. No frozen bitmap time is ever shown. -->
+    <FrameLayout
+        android:id="@+id/kwgt_gradient_live"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <ImageView
+            android:id="@+id/kwgt_gradient_live_bg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:scaleType="fitCenter" />
+
+        <TextClock
+            android:id="@+id/kwgt_gradient_hour"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:autoSizeMaxTextSize="72sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="2sp"
+            android:autoSizeTextType="uniform"
+            android:fontFamily="monospace"
+            android:format12Hour="hh"
+            android:format24Hour="hh"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:paddingEnd="42dp"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+
+        <TextClock
+            android:id="@+id/kwgt_gradient_minute"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_gravity="end|center_vertical"
+            android:autoSizeMaxTextSize="20sp"
+            android:autoSizeMinTextSize="7sp"
+            android:autoSizeStepGranularity="1sp"
+            android:autoSizeTextType="uniform"
+            android:background="@drawable/bg_kwgt_gradient_minute_chip"
+            android:fontFamily="monospace"
+            android:format12Hour="mm"
+            android:format24Hour="mm"
+            android:gravity="center"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_ink_dark"
+            android:textStyle="bold" />
+
+    </FrameLayout>
+
+</FrameLayout>

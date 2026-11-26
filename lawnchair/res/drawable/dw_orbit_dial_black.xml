@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source Bg circle diameter 277, dark #1B1B1D. -->
+    <path
+        android:fillColor="#FF1B1B1D"
+        android:pathData="M0,138.5 A138.5,138.5 0 1,1 277,138.5 A138.5,138.5 0 1,1 0,138.5 Z" />
+    <!-- Source inner circle diameter 164, active minute global is white in dark mode. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M56.5,138.5 A82,82 0 1,1 220.5,138.5 A82,82 0 1,1 56.5,138.5 Z" />
+    <!-- Source Hour Orbit diameter 205, stroke 0.5, orbits #80FFFFFF. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="0.5"
+        android:pathData="M36,138.5 A102.5,102.5 0 1,1 241,138.5 A102.5,102.5 0 1,1 36,138.5 Z" />
+    <!-- Source Minute Orbit diameter 245, stroke 0.5, orbits #80FFFFFF. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="0.5"
+        android:pathData="M16,138.5 A122.5,122.5 0 1,1 261,138.5 A122.5,122.5 0 1,1 16,138.5 Z" />
+</vector>

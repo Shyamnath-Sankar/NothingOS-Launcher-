@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source hour ShapeModule: CIRCLE diameter h / 2 painted BLACK with a
+         SWEEP gradient to the hr global #D71921 and a 180 degree layer offset.
+         The group rotation reproduces that offset on the Android sweep shader,
+         whose zero direction is 3 o'clock and whose positive direction is
+         clockwise, exactly like the native AnalogClock canvas rotation. -->
+    <group
+        android:pivotX="138.5"
+        android:pivotY="138.5"
+        android:rotation="180">
+        <path android:pathData="M0,138.5 A138.5,138.5 0 1,1 277,138.5 A138.5,138.5 0 1,1 0,138.5 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="sweep"
+                    android:centerX="138.5"
+                    android:centerY="138.5">
+                    <item android:color="#FF000000" android:offset="0" />
+                    <item android:color="#FFD71921" android:offset="1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

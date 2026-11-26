@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_kwgt_datetime2_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/kwgt_datetime2_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <RelativeLayout
+        android:id="@+id/kwgt_datetime2_fallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:id="@+id/kwgt_datetime2_date_stack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_alignParentTop="true"
+            android:orientation="vertical"
+            android:paddingStart="14dp"
+            android:paddingEnd="0dp"
+            android:paddingTop="8dp">
+
+            <TextClock
+                android:id="@+id/kwgt2_weekday"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:format12Hour="EEE"
+                android:format24Hour="EEE"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/widget_ink"
+                android:textSize="14sp" />
+
+            <TextClock
+                android:id="@+id/kwgt2_day"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:format12Hour="d"
+                android:format24Hour="d"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/dot_accent"
+                android:textSize="44sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/kwgt_datetime2_time_stack"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_alignParentBottom="true"
+            android:gravity="end"
+            android:orientation="vertical"
+            android:paddingStart="0dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="8dp">
+
+            <TextClock
+                android:id="@+id/kwgt2_hour"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="serif"
+                android:format12Hour="hh"
+                android:format24Hour="HH"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/widget_ink"
+                android:textSize="24sp" />
+
+            <TextClock
+                android:id="@+id/kwgt2_minute"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:layout_marginEnd="10dp"
+                android:fontFamily="serif"
+                android:format12Hour="mm"
+                android:format24Hour="mm"
+                android:includeFontPadding="false"
+                android:maxLines="1"
+                android:textColor="@color/widget_ink"
+                android:textSize="24sp" />
+        </LinearLayout>
+    </RelativeLayout>
+
+    <FrameLayout
+        android:id="@+id/kwgt2_date_tap"
+        android:layout_width="150dp"
+        android:layout_height="160dp"
+        android:layout_gravity="top|start"
+        android:clickable="true"
+        android:focusable="true" />
+
+    <FrameLayout
+        android:id="@+id/kwgt2_time_tap"
+        android:layout_width="150dp"
+        android:layout_height="130dp"
+        android:layout_gravity="bottom|end"
+        android:clickable="true"
+        android:focusable="true" />
+
+</FrameLayout>

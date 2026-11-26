@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The native android:hand_second drawable is only consumed on API 31+. -->
+    <bool name="kwgt_analog_seconds_available">false</bool>
+</resources>

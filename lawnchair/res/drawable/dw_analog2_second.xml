@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source seconds RECT width 130, height 3, right padding 100, then the
+         active CLOCK_SECOND 90 degree offset. The native full-viewport hand is
+         vertical at zero seconds: x 137..140, centre Y 88.5, extent 23.5..153.5.
+         The platform AnalogClock rotates it around the 138.5 dial centre. -->
+    <path
+        android:fillColor="#FFD71921"
+        android:pathData="M137,23.5 L140,23.5 L140,153.5 L137,153.5 Z" />
+</vector>

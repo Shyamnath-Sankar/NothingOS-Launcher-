@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="8dp">
+
+    <AnalogClock
+        android:id="@+id/kwgt_analog3_clock"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:contentDescription="@string/kwgt_analog3_content_description"
+        android:dial="@drawable/dw_analog3_dial_translucent"
+        android:hand_hour="@drawable/dw_analog3_hour_dark"
+        android:hand_minute="@drawable/dw_analog3_minute_dark" />
+
+</FrameLayout>

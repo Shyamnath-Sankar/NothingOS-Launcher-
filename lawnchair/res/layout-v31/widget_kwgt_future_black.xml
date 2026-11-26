@@ -1,0 +1,53 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent" android:padding="4dp">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+    <ImageView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+    <ImageView android:id="@+id/kwgt_future_bg" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="4" android:contentDescription="@null" android:scaleType="fitXY" android:src="@drawable/dw_future_bg_black" />
+    <ImageView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:orientation="horizontal">
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+      <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <ImageView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <FrameLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_gravity="center">
+            <ImageView android:layout_width="wrap_content" android:layout_height="match_parent" android:adjustViewBounds="true" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+            <AnalogClock android:id="@+id/kwgt_future_hour_clock" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="center" android:contentDescription="@string/kwgt_future_content_description" android:dial="@drawable/dw_future_clear" android:hand_hour="@drawable/dw_future_hour" android:hand_minute="@drawable/dw_future_clear" />
+          </FrameLayout>
+        </FrameLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <TextClock android:id="@+id/kwgt_future_hour_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top|center_horizontal" android:fontFamily="sans-serif" android:format12Hour="hh' hr'" android:format24Hour="hh' hr'" android:gravity="center" android:includeFontPadding="false" android:maxLines="1" android:textColor="#FFFFFFFF" android:textSize="12sp" />
+        </FrameLayout>
+      </LinearLayout>
+    </FrameLayout>
+    <ImageView android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="0.1" android:visibility="invisible" android:src="@drawable/dw_future_clear" />
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+      <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <ImageView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <FrameLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_gravity="center">
+            <ImageView android:layout_width="wrap_content" android:layout_height="match_parent" android:adjustViewBounds="true" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+            <AnalogClock android:id="@+id/kwgt_future_minute_clock" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="center" android:contentDescription="@string/kwgt_future_content_description" android:dial="@drawable/dw_future_clear" android:hand_hour="@drawable/dw_future_clear" android:hand_minute="@drawable/dw_future_minute" />
+          </FrameLayout>
+        </FrameLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <TextClock android:id="@+id/kwgt_future_minute_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top|center_horizontal" android:fontFamily="sans-serif" android:format12Hour="mm' min'" android:format24Hour="mm' min'" android:gravity="center" android:includeFontPadding="false" android:maxLines="1" android:textColor="#FFFFFFFF" android:textSize="12sp" />
+        </FrameLayout>
+      </LinearLayout>
+    </FrameLayout>
+    <ImageView android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="0.1" android:visibility="invisible" android:src="@drawable/dw_future_clear" />
+    <FrameLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1">
+      <LinearLayout android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical">
+        <ImageView android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <FrameLayout android:layout_width="wrap_content" android:layout_height="match_parent" android:layout_gravity="center">
+            <ImageView android:layout_width="wrap_content" android:layout_height="match_parent" android:adjustViewBounds="true" android:src="@drawable/dw_future_clear" android:visibility="invisible" />
+            <AnalogClock android:id="@+id/kwgt_future_second_clock" android:layout_width="match_parent" android:layout_height="match_parent" android:layout_gravity="center" android:contentDescription="@string/kwgt_future_content_description" android:dial="@drawable/dw_future_clear" android:hand_hour="@drawable/dw_future_clear" android:hand_minute="@drawable/dw_future_clear" android:hand_second="@drawable/dw_future_second" />
+          </FrameLayout>
+        </FrameLayout>
+        <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+          <TextClock android:id="@+id/kwgt_future_second_label" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top|center_horizontal" android:fontFamily="sans-serif" android:format12Hour="ss' sec'" android:format24Hour="ss' sec'" android:gravity="center" android:includeFontPadding="false" android:maxLines="1" android:textColor="#FFFFFFFF" android:textSize="12sp" />
+        </FrameLayout>
+      </LinearLayout>
+    </FrameLayout>
+  </LinearLayout>
+</FrameLayout>

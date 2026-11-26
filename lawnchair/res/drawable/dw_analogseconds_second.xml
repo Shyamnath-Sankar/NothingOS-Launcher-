@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source second circle: d=277/23.08, centre at radius (277/1.145)/2 above dial centre.
+         Placing it at 12 o'clock absorbs the source CLOCK_SECOND 90 offset; the native
+         AnalogClock then rotates this full-viewport drawable around the 138.5 centre. -->
+    <path
+        android:fillColor="#FFD71921"
+        android:pathData="M132.4991334488735,17.53930131004367 A6.000866551126517,6.000866551126517 0 1,1 144.5008665511265,17.53930131004367 A6.000866551126517,6.000866551126517 0 1,1 132.4991334488735,17.53930131004367 Z" />
+</vector>

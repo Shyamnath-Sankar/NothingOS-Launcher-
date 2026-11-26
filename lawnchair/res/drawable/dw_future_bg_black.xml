@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="916dp"
+    android:height="361dp"
+    android:viewportWidth="916"
+    android:viewportHeight="361">
+    <!-- Source Bg RECT: width w (host width), height h = host height / 1.5,
+         corners 58 in the 916 x 361 source band. Black style uses #1B1B1D. -->
+    <path
+        android:fillColor="#FF1B1B1D"
+        android:pathData="M58,0 L858,0 A58,58 0 0 1 916,58 L916,303 A58,58 0 0 1 858,361 L58,361 A58,58 0 0 1 0,303 L0,58 A58,58 0 0 1 58,0 Z" />
+</vector>

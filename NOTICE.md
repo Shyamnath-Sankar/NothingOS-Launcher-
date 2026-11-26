@@ -55,6 +55,19 @@ License. The full license text, provenance and the list of changes are in
 Only the self-drawn renderer was adapted; no upstream app, providers, media/ticker services, fonts
 or assets were copied.
 
+## Dotwel widget set
+
+The Dotwel widget set is ported from
+[`Shyamnath-Sankar/Dotwel-Widgets`](https://github.com/Shyamnath-Sankar/Dotwel-Widgets) at commit
+`7167bcdf001b604f1d61a2f07f70825a999eb767`, Copyright (c) 2026 the Dotwel Widgets contributors,
+licensed under the MIT License. The port excludes all weather widgets and does not declare a
+notification-listener service. Full provenance and the MIT license texts are in
+[`docs/ATTRIBUTION.md`](docs/ATTRIBUTION.md),
+[`licenses/third-party/awesomeawidgets-MIT.txt`](licenses/third-party/awesomeawidgets-MIT.txt) and
+[`licenses/third-party/kwgt-widgets-MIT.txt`](licenses/third-party/kwgt-widgets-MIT.txt). The texts
+are also bundled as `lawnchair/res/raw/awesomeawidgets_mit.txt` and
+`lawnchair/res/raw/kwgt_widgets_mit.txt`.
+
 ## Trademarks
 
 NothingUI is an internal codename for this fork; the intended Play display label is **DotWel
