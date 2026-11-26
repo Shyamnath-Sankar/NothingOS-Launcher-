@@ -3,27 +3,58 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **live MET weather — debug builds enabled on
-  `agent/enable-live-met-norway-weather`, source/shell-verified, PENDING CI.**
-  `WeatherNetworkMode` now enables the wired opt-in MET path for every build, including debug/test,
-  so the Play debug APK uses the real `MetWeatherRepository`/`OkHttpWeatherTransport`. The settings
-  screen therefore selects the release coordinate/device-IP transmission copy. The emulator smoke
-  still makes no real request: its enabled persistence proof force-stops and reopens Preferences
-  without resuming HOME, and every other HOME resume runs with consent disabled. The instrumentation
-  harness and unit tests still inject fake transports. No backup, `.github`, applicationId, SDK,
-  manifest permission or home/widget change.
-- branch: `agent/enable-live-met-norway-weather`
-- head: **`cfadc48`** (guard update); this STATE/docs update follows.
+- current_phase: **backup rewrite phase A — create re-enabled in `LawnchairBackup` on
+  `agent/backup-rewrite-phase-a-only-sc`, source/JVM-unit-verified, PENDING CI.**
+  `LawnchairBackup.create` now serializes the existing `BackupInfo` protobuf plus wallpaper,
+  screenshot and the launcher DB/shared-prefs/preferences DB/datastore files into the existing zip
+  format and returns `SUCCESS`/`FAILURE`. `restore` still returns `UNAVAILABLE` and the
+  temporarily-unavailable notice is untouched. The Create Backup screen/UI is intentionally still on
+  the notice; re-enabling it is phase B. No restore, weather, `.github`, applicationId, SDK, manifest
+  permission or home/widget change.
+- branch: `agent/backup-rewrite-phase-a-only-sc`
+- head: **`992d77e`**; this STATE/docs update follows.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/enable-live-met-norway-weather
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/backup-rewrite-phase-a-only-sc
 - ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
-- next: open the PR, let CI build `lawnWithQuickstepPlayDebug`, run the Play smoke and confirm the
-  weather settings screen shows the release transmission copy and that the enabled persistence
-  restart never resumes HOME.
-- blockers: no PR could be created from this runner (gh unauthenticated). No device/emulator run, so
-  the live debug copy and the settings-only restart are source/shell-verified only.
+- next: open the PR, let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
+  `testLawnWithQuickstepPlayDebugUnitTest`; then phase B can re-enable the Create Backup screen and
+  preferences entry while restore stays disabled.
+- blockers: no PR from this runner (gh unauthenticated); no Gradle/APK/emulator/CI run here. The new
+  pure serializer has 7 passing JVM tests and `LawnchairBackup` stub-compiles against android-37.2,
+  protobuf 3.25.5 and coroutines; the Android UI/runtime is source-verified only.
 
-## done (this run — live MET weather enabled on `agent/enable-live-met-norway-weather`, source/shell-only)
+## done (this run — backup rewrite phase A: create re-enabled on `agent/backup-rewrite-phase-a-only-sc`, source/JVM-only)
+
+- **Domain:** `LawnchairBackup.create` builds the existing `BackupInfo` protobuf (version, backup
+  version, timestamp, contents, `DeviceGridState`, preview size, wallpaper dark-text hint) and writes
+  the existing zip format: `info.pb` first, then optional `wallpaper.png`, `screenshot.png`, and the
+  launcher DB/shared-prefs/preferences DB/datastore files that exist. It returns `SUCCESS` on a
+  written archive, `FAILURE` when the destination cannot be opened or an `Exception` occurs. The
+  `BackupOperationResult` enum now has `SUCCESS`, `FAILURE`, `UNAVAILABLE`.
+- **Pure serializer:** new `BackupArchiveWriter.kt` holds the entry names, `buildBackupEntries`
+  (optional wallpaper/screenshot then existing files, missing files skipped) and
+  `BackupArchiveWriter.write` (info first, payloads in order, exact bytes). It has no Android
+  dependency.
+- **Restore untouched:** `LawnchairBackup.restore` still returns `UNAVAILABLE`; no restore file,
+  screen, Nova importer or notice changed. The Create Backup screen/UI is also still the notice; that
+  is deliberately out of scope for phase A.
+- **Tests:** new `tests/unit/java/app/lawnchair/backup/BackupArchiveWriterTest.kt` has 7 JVM tests:
+  info-first exact bytes, payload order/bytes, optional wallpaper/screenshot ordering, skip
+  unrequested wallpaper, skip a missing wallpaper bitmap, skip an unrequested screenshot, and keep
+  existing/skip missing files.
+- **Verification actually run (kotlinc/JUnit only; no Gradle, Android build, emulator or CI):**
+  `kotlinc` compiled `BackupArchiveWriter.kt` + the test with JUnit 4.13.2 and `JUnitCore` reports
+  **OK (7 tests)**. `LawnchairBackup.kt` + `BackupArchiveWriter.kt` stub-compiled with `kotlinc`
+  against `android-37.2/android.jar`, protobuf 3.25.5 and coroutines (`rc=0`). `git diff --check`
+  clean. No full unit suite or APK was run here.
+- **Ruling:** phase A is the `LawnchairBackup` create path only. Re-enabling the Create Backup screen
+  and preferences entry is left for phase B because the task scopes the change to `LawnchairBackup`
+  and says not to touch restore; cost if wrong is one follow-up UI commit.
+- **Missing evidence / not claimed:** no APK, no Compose/device run, no actual `BackupInfo` write on
+  Android, no full `testLawnWithQuickstepPlayDebugUnitTest`, no CI. The create UI remains disabled by
+  design in this phase.
+
+## done (previous run — live MET weather enabled on `agent/enable-live-met-norway-weather`, source/shell-only)
 
 - **Production gate:** `WeatherWorkFactory.WeatherNetworkMode.isEnabled` now returns `true` for every
   build, so `WeatherHomeRuntime` builds the real `MetWeatherRepository` and
