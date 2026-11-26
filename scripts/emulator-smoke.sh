@@ -733,6 +733,100 @@ ui_assert_no_inherited_announcements() (
     return 0
 )
 
+# Locate the settings default-launcher warning by searching the live hierarchy
+# and, when it is composed but clipped or the list is scrolled away, moving the
+# measured settings container in bounded steps. The dashboard is a verticalScroll
+# Column and its layout changed with the restored backup rows, so a fixed
+# first-screen position is not reliable. On success sets
+# _settings_warning_xml/_settings_warning_bounds to a fully visible warning and
+# returns 0; otherwise returns non-zero without tapping anything.
+find_settings_default_launcher_warning() {
+    _fsdw_tag=$1
+    _fsdw_needle=$2
+    _fsdw_max=${3:-6}
+    _fsdw_attempt=0
+    _fsdw_limit=$((_fsdw_max * 2))
+    _fsdw_log="$ARTIFACTS/settings-warning-$_fsdw_tag.txt"
+    : > "$_fsdw_log"
+    _settings_warning_xml=
+    _settings_warning_bounds=
+    while [ "$_fsdw_attempt" -lt "$_fsdw_limit" ]; do
+        _fsdw_attempt=$((_fsdw_attempt + 1))
+        _fsdw_xml="$ARTIFACTS/settings-warning-$_fsdw_tag-$_fsdw_attempt.xml"
+        capture_ui_xml "settings-warning-$_fsdw_tag-$_fsdw_attempt.xml" || return 1
+        _fsdw_scrollable=0
+        _fsdw_viewport=$(ui_scroll_container_bounds "$_fsdw_xml" '') ||
+            _fsdw_viewport=
+        if [ -n "$_fsdw_viewport" ]; then
+            _fsdw_scrollable=1
+        fi
+        if [ -z "$_fsdw_viewport" ]; then
+            _fsdw_viewport=$(ui_known_scroll_container_bounds \
+                "$_fsdw_xml" '' "$PKG") || _fsdw_viewport=
+            if [ -n "$_fsdw_viewport" ]; then
+                _fsdw_scrollable=1
+            fi
+        fi
+        if [ -z "$_fsdw_viewport" ]; then
+            _fsdw_viewport=$(ui_root_bounds "$_fsdw_xml") || _fsdw_viewport=
+        fi
+        _fsdw_raw=
+        _fsdw_bounds=
+        if [ -n "$_fsdw_viewport" ]; then
+            _fsdw_raw=$(ui_label_contains_bounds \
+                "$_fsdw_xml" "$_fsdw_needle") || _fsdw_raw=
+            _fsdw_bounds=$(ui_label_contains_within \
+                "$_fsdw_xml" "$_fsdw_needle" "$_fsdw_viewport") ||
+                _fsdw_bounds=
+        fi
+        printf 'attempt=%s scrollable=%s viewport=%s raw=%s bounds=%s\n' \
+            "$_fsdw_attempt" "$_fsdw_scrollable" "${_fsdw_viewport:-none}" \
+            "${_fsdw_raw:-none}" "${_fsdw_bounds:-none}" >> "$_fsdw_log"
+        if [ -n "$_fsdw_bounds" ]; then
+            _settings_warning_xml=$_fsdw_xml
+            _settings_warning_bounds=$_fsdw_bounds
+            cp "$_fsdw_xml" "$ARTIFACTS/settings-warning-$_fsdw_tag-visible.xml"
+            return 0
+        fi
+        if [ "$_fsdw_scrollable" -eq 0 ]; then
+            sleep 1
+            continue
+        fi
+        _fsdw_dir=$(weather_target_scroll_direction \
+            "$_fsdw_raw" "$_fsdw_viewport") || _fsdw_dir=
+        if [ -z "$_fsdw_dir" ]; then
+            if [ "$_fsdw_attempt" -le "$_fsdw_max" ]; then
+                _fsdw_dir=up
+            else
+                _fsdw_dir=down
+            fi
+        fi
+        set -- $_fsdw_viewport
+        _fsdw_x=$((($1 + $3) / 2))
+        _fsdw_y1=$2
+        _fsdw_y2=$4
+        _fsdw_span=$((_fsdw_y2 - _fsdw_y1))
+        if [ "$_fsdw_span" -lt 200 ]; then
+            sleep 1
+            continue
+        fi
+        if [ "$_fsdw_dir" = up ]; then
+            _fsdw_from=$((_fsdw_y1 + _fsdw_span / 5))
+            _fsdw_to=$((_fsdw_y2 - _fsdw_span / 5))
+        else
+            _fsdw_from=$((_fsdw_y2 - _fsdw_span / 5))
+            _fsdw_to=$((_fsdw_y1 + _fsdw_span / 5))
+        fi
+        printf 'scroll=%s direction=%s from=%s,%s to=%s,%s\n' \
+            "$_fsdw_attempt" "$_fsdw_dir" "$_fsdw_x" "$_fsdw_from" \
+            "$_fsdw_x" "$_fsdw_to" >> "$_fsdw_log"
+        adb_cmd shell input swipe "$_fsdw_x" "$_fsdw_from" \
+            "$_fsdw_x" "$_fsdw_to" 400 >> "$_fsdw_log" 2>&1 || return 1
+        sleep 1
+    done
+    return 1
+}
+
 # Capture the real platform HOME-role consent screen after an explicit tap on
 # the existing settings warning, cancel it, and prove the role holder list did
 # not change. This runs only on the disposable API 37 emulator, before the smoke
@@ -759,18 +853,17 @@ verify_default_home_consent() {
     printf '%s\n' "$_vdhc_launch" | grep -q 'Status: ok' ||
         fail "settings launch for the HOME role consent check did not report Status: ok"
     sleep 2
-    capture_ui_xml role-consent-settings.xml ||
-        fail "could not capture the settings default-launcher warning"
+    if ! find_settings_default_launcher_warning role-consent 'default launcher'; then
+        fail "settings did not expose the default-launcher warning"
+    fi
+    _vdhc_warning=$_settings_warning_bounds
+    [ -n "$_vdhc_warning" ] || fail "could not find the default-launcher warning bounds"
+    cp "$_settings_warning_xml" "$ARTIFACTS/role-consent-settings.xml"
     capture_screenshot_to role-consent-settings.png
     if ! _vdhc_announcement=$(ui_assert_no_inherited_announcements \
         "$ARTIFACTS/role-consent-settings.xml"); then
         fail "Play settings still renders an inherited announcement card: $_vdhc_announcement"
     fi
-    if ! grep -Fq 'default launcher' "$ARTIFACTS/role-consent-settings.xml"; then
-        fail "settings did not expose the default-launcher warning"
-    fi
-    _vdhc_warning=$(ui_bounds_for "$ARTIFACTS/role-consent-settings.xml" 'default launcher')
-    [ -n "$_vdhc_warning" ] || fail "could not find the default-launcher warning bounds"
     tap_center_of_bounds "$_vdhc_warning" ||
         fail "could not tap the default-launcher warning"
     _vdhc_attempt=1

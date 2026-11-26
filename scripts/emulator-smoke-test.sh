@@ -3403,6 +3403,26 @@ assert_true 'the announcement check looks for the important announcement cards' 
     grep -Fq "'important announcement'" "$announcement_body"
 assert_true 'the announcement check is case-insensitive' \
     grep -Fq 'grep -Fqi' "$announcement_body"
+
+warning_finder_body="$TMP_DIR/find_settings_default_launcher_warning.sh"
+sed -n '/^find_settings_default_launcher_warning() {/,/^}/p' "$SMOKE" > "$warning_finder_body"
+assert_true 'the warning finder searches the visible tree by substring' \
+    grep -Fq 'ui_label_contains_bounds' "$warning_finder_body"
+assert_true 'the warning finder requires the warning to be fully visible' \
+    grep -Fq 'ui_label_contains_within' "$warning_finder_body"
+assert_true 'the warning finder measures the settings scroll container' \
+    grep -Fq 'ui_scroll_container_bounds' "$warning_finder_body"
+assert_true 'the warning finder scrolls only a measured scroll container' \
+    grep -Fq 'input swipe "$_fsdw_x" "$_fsdw_from"' "$warning_finder_body"
+assert_true 'the warning finder bounds its attempts' \
+    grep -Fq '_fsdw_limit=$((_fsdw_max * 2))' "$warning_finder_body"
+assert_true 'the consent check uses the bounded warning finder' \
+    grep -Fq 'find_settings_default_launcher_warning role-consent' "$consent_body"
+assert_true 'the consent taps the finder-measured warning bounds' \
+    grep -Fq '_vdhc_warning=$_settings_warning_bounds' "$consent_body"
+assert_false 'the consent check no longer assumes the warning is in the first capture' \
+    grep -Fq "grep -Fq 'default launcher'" "$consent_body"
+
 announcement_check_line=$(grep -n 'ui_assert_no_inherited_announcements' "$consent_body" | sed -n '1s/:.*//p')
 settings_screenshot_line=$(grep -n 'capture_screenshot_to role-consent-settings.png' "$consent_body" | sed -n '1s/:.*//p')
 warning_tap_line=$(grep -n 'tap_center_of_bounds "$_vdhc_warning"' "$consent_body" | sed -n '1s/:.*//p')
@@ -4487,6 +4507,49 @@ cat > "$settings_scroll_limit_view" <<EOF
 EOF
 assert_eq 'an arbitrary non-scrollable view is not a viewport' \
     '' "$(ui_known_scroll_container_bounds "$settings_scroll_limit_view" 1794 "$scroll_pkg")"
+
+# The settings dashboard is a verticalScroll Column whose layout changed with the
+# restored backup rows. Locate the default-launcher warning by its unique
+# substring in the visible tree, and never treat a clipped warning or the
+# default-home active status as tappable evidence.
+settings_warning_xml="$TMP_DIR/settings-warning.xml"
+cat > "$settings_warning_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.widget.FrameLayout" scrollable="false" bounds="[0,0][1080,1920]">
+    <node index="0" class="android.view.View" scrollable="true" bounds="[0,72][1080,1794]">
+      <node index="0" class="android.view.View" clickable="true" bounds="[40,120][1040,220]">
+        <node index="0" text="To access shortcuts and additional features, set DotWel Launcher as your default launcher" class="android.widget.TextView" bounds="[80,140][1000,200]" />
+      </node>
+      <node index="1" text="DotWel Launcher is your default home" class="android.widget.TextView" bounds="[80,300][1000,360]" />
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the settings warning is found by its unique substring' \
+    '80 140 1000 200' \
+    "$(ui_label_contains_bounds "$settings_warning_xml" 'default launcher')"
+assert_eq 'the fully visible settings warning is tappable evidence' \
+    '80 140 1000 200' \
+    "$(ui_label_contains_within "$settings_warning_xml" 'default launcher' '0 72 1080 1794')"
+assert_eq 'a settings warning clipped by the viewport is not tappable evidence' \
+    '' \
+    "$(ui_label_contains_within "$settings_warning_xml" 'default launcher' '0 72 1080 150')"
+settings_warning_active_xml="$TMP_DIR/settings-warning-active.xml"
+cat > "$settings_warning_active_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" class="android.view.View" scrollable="true" bounds="[0,72][1080,1794]">
+    <node index="0" text="DotWel Launcher is your default home" class="android.widget.TextView" bounds="[80,300][1000,360]" />
+  </node>
+</hierarchy>
+EOF
+assert_eq 'the default-home active status is not the default-launcher warning' \
+    '' "$(ui_label_contains_bounds "$settings_warning_active_xml" 'default launcher')"
+assert_eq 'a missing settings warning has no bounds' \
+    '' "$(ui_label_contains_bounds "$settings_warning_xml" 'not present')"
+assert_eq 'an empty viewport cannot prove the warning is tappable' \
+    '' "$(ui_label_contains_within "$settings_warning_xml" 'default launcher' '')"
 
 settings_scroll_limit_no_bounds="$TMP_DIR/settings-scroll-limit-no-bounds.xml"
 cat > "$settings_scroll_limit_no_bounds" <<EOF

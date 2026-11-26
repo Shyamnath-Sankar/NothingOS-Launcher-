@@ -1775,6 +1775,65 @@ ui_label_contains() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of the first node whose exact
+# text/content-description contains the literal substring $2. Used to find a
+# known settings row after a layout change without trusting a fixed position.
+# Missing input, an empty needle or malformed bounds prints nothing.
+ui_label_contains_bounds() (
+    xml=${1:-}
+    needle=${2:-}
+    [ -s "$xml" ] || return 0
+    [ -n "$needle" ] || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v needle="$needle" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 !~ /<node[[:space:]]/) next
+                if (index(attr($0, "text"), needle) == 0 &&
+                    index(attr($0, "content-desc"), needle) == 0) next
+                emit(attr($0, "bounds"))
+                exit
+            }
+        '
+)
+
+# Print the bounds ("x1 y1 x2 y2") of the first node whose exact
+# text/content-description contains the literal substring $2, but only when the
+# whole rectangle sits inside the supplied viewport. The settings dashboard is a
+# Compose verticalScroll Column, so a layout change (for example the restored
+# backup rows) or a restored scroll position can leave the default-launcher
+# warning composed but clipped. Callers use this to scroll instead of trusting a
+# fixed position. Missing input, an empty needle, an empty viewport or a clipped
+# node prints nothing so the caller fails closed.
+ui_label_contains_within() (
+    xml=${1:-}
+    needle=${2:-}
+    viewport=${3:-}
+    [ -n "$viewport" ] || return 0
+    bounds=$(ui_label_contains_bounds "$xml" "$needle") || return 0
+    [ -n "$bounds" ] || return 0
+    ui_bounds_within "$bounds" "$viewport" || return 0
+    printf '%s\n' "$bounds"
+)
+
 # Succeed only when no node's text/content-description contains the literal
 # substring $2. Used to reject the other build mode's privacy notice. Missing
 # input or an empty needle fails closed because absence cannot be proven.
