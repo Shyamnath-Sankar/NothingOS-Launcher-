@@ -11,16 +11,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.edit
-import app.lawnchair.backup.ui.restoreBackupOpener
-import app.lawnchair.ui.preferences.LocalNavController
 import app.lawnchair.ui.preferences.components.controls.ClickablePreference
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayoutLazyColumn
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
-import app.lawnchair.ui.preferences.navigation.CreateBackup
 import com.android.launcher3.LauncherPrefs
+import com.android.launcher3.R
 import com.android.launcher3.util.MSDLPlayerWrapper
 import com.android.launcher3.util.OnboardingPrefs.ALL_APPS_VISITED_COUNT
 import com.android.launcher3.util.OnboardingPrefs.HOME_BOUNCE_COUNT
@@ -80,21 +79,13 @@ fun FeatureFlagsPreference(modifier: Modifier = Modifier) {
 
         preferenceCategory(
             "Workspace grid layout",
-            "To share your current workspace, use Lawnchair's backup and restore system.",
+            "Backup and restore is disabled in this build.",
         )
-        item(key = "open_backup_system") {
-            val navController = LocalNavController.current
-            ClickablePreference(
-                "Export",
-            ) {
-                navController.navigate(CreateBackup)
-            }
-        }
-        item(key = "workspace_import") {
-            val opener = restoreBackupOpener()
-            ClickablePreference(
-                "Import",
-                onClick = opener,
+        item(key = "backup_unavailable") {
+            PreferenceTemplate(
+                title = {
+                    Text(stringResource(R.string.backup_temporarily_unavailable))
+                },
             )
         }
     }
