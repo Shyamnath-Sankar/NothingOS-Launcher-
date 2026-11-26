@@ -1,17 +1,27 @@
 package app.lawnchair.backup
 
+import android.annotation.SuppressLint
+import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.core.graphics.drawable.toBitmap
 import app.lawnchair.LawnchairProto.BackupInfo
+import app.lawnchair.util.hasFlag
 import app.lawnchair.util.scaleDownTo
 import app.lawnchair.util.scaleDownToDisplaySize
+import app.lawnchair.wallpaper.WallpaperColorsCompat
+import app.lawnchair.wallpaper.WallpaperManagerCompat
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherFiles
 import com.android.launcher3.R
+import com.android.launcher3.model.DeviceGridState
+import com.google.protobuf.Timestamp
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -22,6 +32,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 enum class BackupOperationResult {
+    SUCCESS,
+    FAILURE,
     UNAVAILABLE,
 }
 
@@ -74,13 +86,14 @@ class LawnchairBackup(
     }
 
     companion object {
+        private const val BACKUP_VERSION = 1
         private const val PREFS_FILE_NAME = "${LauncherFiles.SHARED_PREFERENCES_KEY}.xml"
         private const val PREFS_DB_FILE_NAME = "preferences"
         private const val PREFS_DATASTORE_FILE_NAME = "preferences.preferences_pb"
 
-        const val INFO_FILE_NAME = "info.pb"
-        const val WALLPAPER_FILE_NAME = "wallpaper.png"
-        const val SCREENSHOT_FILE_NAME = "screenshot.png"
+        const val INFO_FILE_NAME = BACKUP_INFO_ENTRY_NAME
+        const val WALLPAPER_FILE_NAME = BACKUP_WALLPAPER_ENTRY_NAME
+        const val SCREENSHOT_FILE_NAME = BACKUP_SCREENSHOT_ENTRY_NAME
         const val LAUNCHER_DB_FILE_NAME = "launcher.db"
         const val RESTORED_DB_FILE_NAME = "restored.db"
 
@@ -109,15 +122,68 @@ class LawnchairBackup(
             )
         }
 
-        @Suppress("UNUSED_PARAMETER")
+        @SuppressLint("MissingPermission")
         suspend fun create(
             context: Context,
             contents: Int,
             screenshotBitmap: Bitmap,
             fileUri: Uri,
         ): BackupOperationResult {
-            // Backup creation is disabled in this build. No file is opened or written.
-            return BackupOperationResult.UNAVAILABLE
+            val includeLayoutAndSettings = contents.hasFlag(INCLUDE_LAYOUT_AND_SETTINGS)
+            val includeWallpaper = contents.hasFlag(INCLUDE_WALLPAPER)
+            return try {
+                withContext(Dispatchers.IO) {
+                    val idp = LauncherAppState.getIDP(context)
+                    val createdAt = Timestamp.newBuilder()
+                        .setSeconds(System.currentTimeMillis() / 1000)
+                    val colorHints =
+                        WallpaperManagerCompat.INSTANCE.get(context).wallpaperColors?.colorHints ?: 0
+                    val wallpaperSupportsDarkText =
+                        (colorHints and WallpaperColorsCompat.HINT_SUPPORTS_DARK_TEXT) != 0
+                    val info = BackupInfo.newBuilder()
+                        .setLawnchairVersion(BuildConfig.VERSION_CODE)
+                        .setBackupVersion(BACKUP_VERSION)
+                        .setCreatedAt(createdAt)
+                        .setContents(contents)
+                        .setGridState(DeviceGridState(idp).toProtoMessage())
+                        .setPreviewWidth(screenshotBitmap.width)
+                        .setPreviewHeight(screenshotBitmap.height)
+                        .setPreviewDarkText(wallpaperSupportsDarkText)
+                        .build()
+
+                    val wallpaperBitmap = if (includeWallpaper) {
+                        WallpaperManager.getInstance(context).drawable?.toBitmap()
+                    } else {
+                        null
+                    }
+                    val entries = buildBackupEntries(
+                        includeLayoutAndSettings = includeLayoutAndSettings,
+                        includeWallpaper = includeWallpaper,
+                        screenshotWriter = BackupEntryWriter { output ->
+                            screenshotBitmap.compress(Bitmap.CompressFormat.PNG, 85, output)
+                        },
+                        wallpaperWriter = wallpaperBitmap?.let { bitmap ->
+                            BackupEntryWriter { output ->
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                            }
+                        },
+                        files = getFiles(context, forRestore = false),
+                    )
+
+                    val pfd = context.contentResolver.openFileDescriptor(fileUri, "w")
+                        ?: return@withContext BackupOperationResult.FAILURE
+                    pfd.use {
+                        BackupArchiveWriter.write(
+                            FileOutputStream(it.fileDescriptor),
+                            info.toByteArray(),
+                            entries,
+                        )
+                    }
+                    BackupOperationResult.SUCCESS
+                }
+            } catch (_: Exception) {
+                BackupOperationResult.FAILURE
+            }
         }
 
         private fun launcherDbFile(context: Context, forRestore: Boolean): File {
