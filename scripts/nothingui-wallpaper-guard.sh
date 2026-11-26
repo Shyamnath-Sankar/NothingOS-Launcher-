@@ -132,16 +132,25 @@ PY
 #
 # verify-play-build.sh runs this guard after assembly and before the emulator.
 # When the real Play debug APK is present, inspect the packaged Torus resource
-# for AAPT's STRING_TOO_LARGE sentinel in ASCII or UTF-16. Source-only and
-# minimal-fixture checkouts without build output keep working.
+# for AAPT's STRING_TOO_LARGE sentinel in ASCII or UTF-16, and read the
+# compiled NothingWallpaperColors.BLACK constant out of the real classes.dex.
+# The dex check reads the background constant by its source name; it never
+# scans for an arbitrary black pixel, so the non-black dots/lines/accent cannot
+# satisfy or fail it. Source-only and minimal-fixture checkouts without build
+# output keep working.
 APK_DIR="$ROOT/build/outputs/apk/lawnWithQuickstepPlay/debug"
 if [ -d "$APK_DIR" ]; then
-    "$PYTHON" - "$APK_DIR" <<'PY' || fail "the compiled Torus XML contains STRING_TOO_LARGE"
+    "$PYTHON" - "$APK_DIR" "$ART" <<'PY' || fail "the compiled Play APK failed the wallpaper guard"
+import glob
 import os
+import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import zipfile
 
-root = sys.argv[1]
+root, art_path = sys.argv[1], sys.argv[2]
 apks = []
 for base, _, files in os.walk(root):
     for name in files:
@@ -185,6 +194,130 @@ if not found:
     )
     sys.exit(1)
 print(f'nothingui-wallpaper-guard: compiled Torus XML sentinel-free in {len(apks)} APK(s)')
+
+# The source and the compiled artifact must agree on the background constant.
+with open(art_path, encoding='utf-8') as handle:
+    art = handle.read()
+colors = re.search(r'object NothingWallpaperColors \{(.*?)\n\}', art, re.S)
+black = re.search(r'const val (\w+): Int = 0xFF000000\.toInt\(\)', colors.group(1)) if colors else None
+if black is None:
+    print('the source has no 0xFF000000 background constant', file=sys.stderr)
+    sys.exit(1)
+black_name = black.group(1)
+
+
+def find_dexdump():
+    candidates = []
+    found = shutil.which('dexdump')
+    if found:
+        candidates.append(found)
+    for env in ('ANDROID_HOME', 'ANDROID_SDK_ROOT'):
+        sdk = os.environ.get(env)
+        if sdk:
+            candidates.extend(glob.glob(os.path.join(sdk, 'build-tools', '*', 'dexdump')))
+    candidates = [c for c in candidates if os.path.isfile(c) and os.access(c, os.X_OK)]
+    if not candidates:
+        return None
+
+    def version_key(path):
+        version = os.path.basename(os.path.dirname(path))
+        return tuple(int(part) for part in re.findall(r'\d+', version))
+
+    return max(candidates, key=version_key)
+
+
+def compiled_static_fields(dexdump, dex_bytes):
+    with tempfile.NamedTemporaryFile(suffix='.dex', delete=False) as handle:
+        handle.write(dex_bytes)
+        path = handle.name
+    try:
+        result = subprocess.run([dexdump, '-f', path], capture_output=True, text=True)
+    finally:
+        os.unlink(path)
+    if result.returncode != 0:
+        return None
+    marker = "Class descriptor  : 'Lapp/nothingui/wallpaper/NothingWallpaperColors;'"
+    index = result.stdout.find(marker)
+    if index < 0:
+        return {}
+    block = result.stdout[index:]
+    end = block.find('\n  Class descriptor', 1)
+    if end > 0:
+        block = block[:end]
+    fields = {}
+    current = None
+    in_static = False
+    for line in block.splitlines():
+        stripped = line.strip()
+        if stripped.startswith('Static fields'):
+            in_static = True
+            continue
+        if stripped.startswith('Instance fields'):
+            in_static = False
+            continue
+        if not in_static:
+            continue
+        match = re.match(r"name\s*:\s*'([^']+)'", stripped)
+        if match:
+            current = match.group(1)
+            continue
+        match = re.match(r'value\s*:\s*(-?\d+)', stripped)
+        if match and current is not None:
+            fields[current] = int(match.group(1))
+            current = None
+    return fields
+
+
+dexdump = find_dexdump()
+if dexdump is None:
+    print(
+        'nothingui-wallpaper-guard: cannot verify the compiled background: dexdump not found',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+checked = False
+for apk in sorted(apks):
+    try:
+        with zipfile.ZipFile(apk) as archive:
+            for member in archive.namelist():
+                if not (member.startswith('classes') and member.endswith('.dex')):
+                    continue
+                data = archive.read(member)
+                if b'NothingWallpaperColors' not in data:
+                    continue
+                fields = compiled_static_fields(dexdump, data)
+                if fields is None:
+                    print(f'{os.path.basename(apk)}:{member} could not be dumped', file=sys.stderr)
+                    sys.exit(1)
+                if not fields:
+                    continue
+                if black_name not in fields:
+                    print(
+                        f'{os.path.basename(apk)}:{member} has no {black_name} constant',
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                if fields[black_name] != -16777216:
+                    print(
+                        f'{os.path.basename(apk)}:{member} {black_name}='
+                        f'{fields[black_name]}, not 0xFF000000',
+                        file=sys.stderr,
+                    )
+                    sys.exit(1)
+                checked = True
+    except zipfile.BadZipFile:
+        print(f'{apk} is not a readable APK', file=sys.stderr)
+        sys.exit(1)
+if not checked:
+    print(
+        'no APK packages the compiled NothingWallpaperColors background constant',
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print(
+    f'nothingui-wallpaper-guard: compiled background {black_name} is 0xFF000000 '
+    f'in {len(apks)} APK(s)'
+)
 PY
 else
     printf 'nothingui-wallpaper-guard: no %s; skipping compiled sentinel check\n' "$APK_DIR"
@@ -239,8 +372,60 @@ grep -Fq 'licenseUrl = APACHE_2_0_LICENSE' "$CATALOG" ||
 grep -Fq 'drawableRes = 0' "$CATALOG" ||
     fail "a procedural choice must not carry a drawable resource"
 
-grep -Fq 'const val Black: Int = 0xFF000000.toInt()' "$ART" ||
-    fail "the procedural background is not true black"
+# The base/background region must be exactly opaque black. Dots, lines and the
+# accent are separate paints and are deliberately allowed to be non-black, so
+# inspect the background definition and the full-surface fill rather than the
+# whole source (which also contains the non-black accent constants).
+"$PYTHON" - "$ART" "$RENDERER" <<'PY' || fail "the procedural background is not true black"
+import re
+import sys
+
+art_path, renderer_path = sys.argv[1], sys.argv[2]
+with open(art_path, encoding='utf-8') as handle:
+    art = handle.read()
+with open(renderer_path, encoding='utf-8') as handle:
+    renderer = handle.read()
+
+colors = re.search(r'object NothingWallpaperColors \{(.*?)\n\}', art, re.S)
+if colors is None:
+    sys.exit('NothingWallpaperColors is missing')
+black = re.search(r'const val (\w+): Int = 0xFF000000\.toInt\(\)', colors.group(1))
+if black is None:
+    sys.exit('no NothingWallpaperColors constant is exactly 0xFF000000')
+black_name = black.group(1)
+
+spec = re.search(r'data class NothingWallpaperSpec\((.*?)\n\)', art, re.S)
+if spec is None:
+    sys.exit('NothingWallpaperSpec is missing')
+if not re.search(
+    r'val backgroundArgb: Int = NothingWallpaperColors\.' + re.escape(black_name),
+    spec.group(1),
+):
+    sys.exit(
+        'NothingWallpaperSpec.backgroundArgb does not default to '
+        f'NothingWallpaperColors.{black_name}'
+    )
+
+fill = re.search(
+    r'color = spec\.backgroundArgb.*?'
+    r'canvas\.drawRect\(0f, 0f, layout\.widthPx\.toFloat\(\), '
+    r'layout\.heightPx\.toFloat\(\), background\)',
+    renderer,
+    re.S,
+)
+if fill is None:
+    sys.exit('the renderer does not fill the full surface with spec.backgroundArgb')
+first_dot = renderer.find('canvas.drawCircle')
+if first_dot < 0 or fill.start() > first_dot:
+    sys.exit('the background fill must happen before any dot or accent paint')
+for field in ('dotArgb', 'lineArgb', 'accentArgb'):
+    if f'color = spec.{field}' not in renderer:
+        sys.exit(f'the renderer does not use spec.{field} for its accent paints')
+print(
+    f'nothingui-wallpaper-guard: background {black_name} is exactly 0xFF000000; '
+    'dots/lines/accent stay separate paints'
+)
+PY
 grep -Fq 'object NothingWallpaperGeometry' "$ART" ||
     fail "the procedural geometry is missing"
 grep -Fq 'fun bestFor(displayWidthPx: Int, displayHeightPx: Int): NothingWallpaperSize' "$ART" ||
@@ -266,6 +451,7 @@ grep -Fq 'AmoledWallpaperKind.PROCEDURAL -> setProcedural(context, manager, wall
     fail "the applier has no procedural branch"
 
 for test_case in \
+    'backgroundIsExactlyOpaqueBlack' \
     'bestForReturnsTheExactCatalogSizeWhenItMatches' \
     'bestForPicksTheClosestAspectForAnOffCatalogDisplay' \
     'bestForPrefersTheSmallestCoveringSize' \

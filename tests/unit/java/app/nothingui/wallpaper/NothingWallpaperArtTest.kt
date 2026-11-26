@@ -37,6 +37,18 @@ class NothingWallpaperArtTest {
     }
 
     @Test
+    fun backgroundIsExactlyOpaqueBlack() {
+        assertEquals(0xFF000000.toInt(), NothingWallpaperColors.BLACK)
+        listOf(
+            NothingWallpaperSpec(NothingWallpaperPattern.DOT_GRID),
+            NothingWallpaperSpec(NothingWallpaperPattern.HORIZON),
+            NothingWallpaperSpec(NothingWallpaperPattern.GLYPH),
+        ).forEach { spec ->
+            assertEquals(0xFF000000.toInt(), spec.backgroundArgb)
+        }
+    }
+
+    @Test
     fun backgroundsAreTrueBlackAndAccentsStayInThePalette() {
         listOf(
             NothingWallpaperSpec(NothingWallpaperPattern.DOT_GRID),
