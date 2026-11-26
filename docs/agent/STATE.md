@@ -3,25 +3,65 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **procedural AMOLED true-black wallpapers added to the Play wallpaper gallery on
-  `agent/add-a-curated-set-of-amoled-fr`, shell/kotlinc-verified, PENDING CI.** Three original
-  wallpapers (Dot Field, Horizon Line, Glyph Ring) are drawn from code on true black with palette
-  greys and a single accent-red line/ring; geometry is resolution-independent and a curated 16:9–20:9
-  portrait size catalog feeds the applier. The existing two openly licensed Tecdrop/Walldye assets
-  remain. No permission, applicationId, SDK, manifest, network or widget change.
-- branch: `agent/add-a-curated-set-of-amoled-fr`
-- head: **`901937a`** (procedural wallpapers); this STATE/docs update follows.
+- current_phase: **CI#327 emulator smoke default-launcher warning lookup hardened on
+  `agent/fix-the-ci-327-emulator-smoke`, shell-verified, PENDING ACTUAL CI.** The Play settings
+  dashboard is a Compose `verticalScroll` Column whose layout shifted with the restored backup rows,
+  so the smoke no longer assumes the warning is in a fixed first capture. A new bounded finder
+  searches the live hierarchy for the `default launcher` substring, measures the settings scroll
+  container, scrolls it only when needed, requires the warning to be fully visible, and fails closed.
+  No permission, applicationId, SDK, manifest, network, widget or app behavior change.
+- branch: `agent/fix-the-ci-327-emulator-smoke`
+- head: **pending** (this shell/docs fix); the pushed branch is the CI trigger.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/add-a-curated-set-of-amoled-fr
-- ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-the-ci-327-emulator-smoke
+- ci: **not run here** (no Gradle/Android build/emulator by instruction). The pushed branch is the CI
+  trigger; re-run the `API 37 install and home smoke` job on it.
 - next: let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
-  `testLawnWithQuickstepPlayDebugUnitTest`; then install on an AMOLED device/emulator and confirm
-  Dot Field / Horizon Line / Glyph Ring preview and apply, plus the existing two assets.
+  `testLawnWithQuickstepPlayDebugUnitTest`, then the API 37 emulator smoke. Confirm the
+  `role-consent-settings.xml`/`.png` evidence and that `settings-warning-role-consent.txt` shows the
+  warning becoming fully visible.
 - blockers: no PR from this runner (gh unauthenticated); no Gradle/APK/emulator/CI run here. The
-  pure geometry, size selection, catalog and renderer wiring are kotlinc/shell-verified; Compose
-  preview rendering and the real `WallpaperManager.setBitmap` path are source-verified only.
+  finder logic is shell-tested against fixtures; real Compose rendering and uiautomator dumps are
+  source/fixture-verified only.
 
-## done (this run — procedural AMOLED true-black wallpapers on `agent/add-a-curated-set-of-amoled-fr`, shell/kotlinc-only)
+## done (this run — CI#327 default-launcher warning lookup on `agent/fix-the-ci-327-emulator-smoke`, shell-only)
+
+- **CI#327 identity:** run `45877156543`, job `140107026048`, step `API 37 install and home smoke`
+  failed with `settings did not expose the default-launcher warning`. The log/artifact requires auth
+  unavailable in this runner, so the cause is source-derived, not guessed.
+- **Root cause:** `PreferencesDashboard` renders `PreferencesSetDefaultLauncherWarning()` in a
+  `PreferenceLayout` → `PreferenceColumn` Compose `verticalScroll` Column. The old smoke captured
+  `role-consent-settings.xml` once and required `grep -Fq 'default launcher'`, so a delayed compose,
+  a clipped card, or a shifted/restored scroll position false-failed.
+- **Library helpers:** `ui_label_contains_bounds` returns the first node bounds whose
+  text/content-desc contains a literal substring; `ui_label_contains_within` returns those bounds only
+  when the whole rectangle sits inside the supplied viewport. Both fail closed on missing input, empty
+  needle, empty viewport or malformed bounds.
+- **Bounded finder:** `find_settings_default_launcher_warning` recaptures the hierarchy up to
+  `2 × max` times, measures the strict scroll container (then the known settings container, then the
+  root), finds the warning, and only accepts a fully visible rectangle. When clipped/absent it swipes
+  inside the measured viewport in the measured direction, logs every attempt to
+  `settings-warning-<tag>.txt`, and retains `settings-warning-<tag>-visible.xml` on success. It never
+  taps and returns non-zero on exhaustion.
+- **Consent wiring:** `verify_default_home_consent` now calls the finder, copies the found hierarchy to
+  `role-consent-settings.xml`, captures `role-consent-settings.png`, runs the inherited-announcement
+  check, and taps only the finder-measured bounds. The exact fail strings are preserved.
+- **Tests:** 14 new shell assertions (8 static + 6 fixture) pin the finder helpers, the bounded loop,
+  the measured swipe, the consent wiring and the tap-on-finder-bounds behavior; fixtures reject a
+  clipped warning, the default-home active status and an empty viewport.
+- **Docs:** `docs/agent/emulator-verification.md` now describes the bounded search/scroll lookup.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or CI):**
+  `sh scripts/emulator-smoke-test.sh` → **1376 ok, 0 not ok, all passed** (1362 baseline + 14);
+  `sh scripts/emulator-smoke-drawer-test.sh` all passed; `sh scripts/verify-play-build-test.sh` all
+  passed; `sh scripts/nothingui-home-guard-test.sh` all passed;
+  `sh scripts/nothingui-home-role-guard-test.sh` all passed; `sh scripts/nothingui-home-role-guard.sh`
+  OK; `sh scripts/nothingui-wallpaper-guard.sh` OK; `sh scripts/nothingui-theme-guard.sh` OK;
+  `sh -n` clean on all three edited scripts; `git diff --check` clean.
+- **Missing evidence / not claimed:** no CI run for this branch, no APK, no emulator, no uiautomator
+  dump from a device. The finder is fixture/source-verified; the actual Compose hierarchy and the
+  real `RoleManager` consent flow remain unproven until the API 37 lane runs.
+
+## done (previous run — procedural AMOLED true-black wallpapers on `agent/add-a-curated-set-of-amoled-fr`, shell/kotlinc-only)
 
 - **Original art, no fetched assets:** new `NothingWallpaperArt.kt` defines the palette ARGB values,
   three motifs (`DOT_GRID`, `HORIZON`, `GLYPH`), a resolution-independent spec and deterministic

@@ -17,9 +17,12 @@ It fails closed and writes evidence to `build/emulator-smoke/<timestamp>/`:
 - requires an API 37 device and clean-installs only `com.launchernos.dotwellabs.debug`
 - pulls the installed APK and verifies its package plus the installed application and launchable
   activity label are `DotWel Launcher`
-- before granting the role, opens the settings default-launcher warning, taps it, waits for the
-  real platform `RoleManager` HOME consent screen, captures `role-consent-settings.xml`/`.png` and
-  `role-consent.xml`/`.png`, taps Cancel, and verifies the role holder list is unchanged
+- before granting the role, locates the settings default-launcher warning by searching the live
+  hierarchy and scrolling the measured settings container in bounded steps (the dashboard is a
+  verticalScroll Column whose layout can shift), requires the warning to be fully visible, taps it,
+  waits for the real platform `RoleManager` HOME consent screen, captures
+  `role-consent-settings.xml`/`.png` and `role-consent.xml`/`.png`, taps Cancel, and verifies the
+  role holder list is unchanged
 - then grants `android.app.role.HOME` with `cmd role add-role-holder` and verifies the role holder
   and default-home resolution
 - presses HOME, verifies the launcher is resumed, captures a screenshot/logcat/dumpsys, and fails on
