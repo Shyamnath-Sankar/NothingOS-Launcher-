@@ -3,28 +3,46 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#327 emulator smoke default-launcher warning lookup hardened on
-  `agent/fix-the-ci-327-emulator-smoke`, shell-verified, PENDING ACTUAL CI.** The Play settings
-  dashboard is a Compose `verticalScroll` Column whose layout shifted with the restored backup rows,
-  so the smoke no longer assumes the warning is in a fixed first capture. A new bounded finder
-  searches the live hierarchy for the `default launcher` substring, measures the settings scroll
-  container, scrolls it only when needed, requires the warning to be fully visible, and fails closed.
-  No permission, applicationId, SDK, manifest, network, widget or app behavior change.
-- branch: `agent/fix-the-ci-327-emulator-smoke`
-- head: **pending** (this shell/docs fix); the pushed branch is the CI trigger.
-- pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-the-ci-327-emulator-smoke
-- ci: **not run here** (no Gradle/Android build/emulator by instruction). The pushed branch is the CI
-  trigger; re-run the `API 37 install and home smoke` job on it.
-- next: let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
-  `testLawnWithQuickstepPlayDebugUnitTest`, then the API 37 emulator smoke. Confirm the
-  `role-consent-settings.xml`/`.png` evidence and that `settings-warning-role-consent.txt` shows the
-  warning becoming fully visible.
-- blockers: no PR from this runner (gh unauthenticated); no Gradle/APK/emulator/CI run here. The
-  finder logic is shell-tested against fixtures; real Compose rendering and uiautomator dumps are
-  source/fixture-verified only.
+- current_phase: **CI#328 check-style Spotless failures fixed on
+  `agent/fix-the-two-spotlesscheck-fail`, local `./gradlew spotlessCheck` green, PENDING ACTUAL CI.**
+  Two no-behavior changes: `NothingWallpaperColors` const values renamed to `SCREAMING_SNAKE_CASE`
+  (ktlint `property-naming`) and the split `@Composable()` function-type parameters in
+  `LazyColumnPreferenceGroup` put back on one line (ktlint `standard:paren-spacing`, which the
+  formatter could not autocorrect).
+- branch: `agent/fix-the-two-spotlesscheck-fail`
+- head: `5d446c6` (plus this docs commit); branch pushed and tracking `origin`.
+- pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-the-two-spotlesscheck-fail
+- ci: **not run here** (no APK/emulator/CI by instruction). Local
+  `./gradlew spotlessCheck --no-build-cache --no-configuration-cache --rerun-tasks` is
+  **BUILD SUCCESSFUL**. The pushed branch is the CI trigger.
+- next: let CI re-run the `check-style` job (`./gradlew spotlessCheck`) and the rest of CI on this
+  branch.
+- blockers: no PR from this runner (gh unauthenticated); no CI re-run, APK or emulator here.
 
-## done (this run — CI#327 default-launcher warning lookup on `agent/fix-the-ci-327-emulator-smoke`, shell-only)
+## done (this run — CI#328 Spotless fixes on `agent/fix-the-two-spotlesscheck-fail`, Gradle Spotless verified)
+
+- **Failure 1 (property-naming):** `lawnchair/src/app/nothingui/wallpaper/NothingWallpaperArt.kt`
+  `NothingWallpaperColors` used PascalCase `const val` names. Renamed to `BLACK`, `PAPER`,
+  `GRAY_900`, `GRAY_700`, `GRAY_500`, `ACCENT_RED`; updated the spec defaults and
+  `NothingWallpaperArtTest`. ARGB values are unchanged.
+- **Failure 2 (paren-spacing):** `LazyColumnPreferenceGroup.kt` split each `@Composable()`
+  annotation from its function-type parameter. ktlint 1.8.0 `standard:paren-spacing` flagged lines
+  45 and 80 and the formatter could not resolve them ("Format was not able to resolve all
+  violations"). Moved each annotation and type onto the parameter line. Formatting only.
+- **Root cause evidence, not a guess:** the first `./gradlew spotlessApply` failed with the exact
+  property-naming error at `NothingWallpaperArt.kt:L31`. The standalone ktlint 1.8.0 CLI (repo
+  `.editorconfig` + the compose ruleset jar) then reported `standard:paren-spacing` at `45:18` and
+  `80:18` on the original file and **exit 0** on both changed files after the fixes.
+- **Verification actually run:** `./gradlew spotlessApply` → BUILD SUCCESSFUL;
+  `./gradlew spotlessCheck --no-build-cache --no-configuration-cache --rerun-tasks` →
+  **BUILD SUCCESSFUL**, 4 tasks executed; standalone ktlint 1.8.0 on both changed Kotlin files →
+  exit 0; `grep` confirms no PascalCase `NothingWallpaperColors.` references remain. No app
+  build/APK/emulator and no CI run here.
+- **Missing evidence / not claimed:** no CI re-run and no APK. Local Spotless uses the same pinned
+  ktlint 1.8.0 and repo config as CI, but the CI `check-style` job is the final proof.
+
+## done (previous run — CI#327 default-launcher warning lookup on `agent/fix-the-ci-327-emulator-smoke`, shell-only)
 
 - **CI#327 identity:** run `45877156543`, job `140107026048`, step `API 37 install and home smoke`
   failed with `settings did not expose the default-launcher warning`. The log/artifact requires auth
