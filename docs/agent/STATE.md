@@ -3,27 +3,61 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **live MET weather — debug builds enabled on
-  `agent/enable-live-met-norway-weather`, source/shell-verified, PENDING CI.**
-  `WeatherNetworkMode` now enables the wired opt-in MET path for every build, including debug/test,
-  so the Play debug APK uses the real `MetWeatherRepository`/`OkHttpWeatherTransport`. The settings
-  screen therefore selects the release coordinate/device-IP transmission copy. The emulator smoke
-  still makes no real request: its enabled persistence proof force-stops and reopens Preferences
-  without resuming HOME, and every other HOME resume runs with consent disabled. The instrumentation
-  harness and unit tests still inject fake transports. No backup, `.github`, applicationId, SDK,
-  manifest permission or home/widget change.
-- branch: `agent/enable-live-met-norway-weather`
-- head: **`cfadc48`** (guard update); this STATE/docs update follows.
+- current_phase: **backup create/restore safely re-enabled on
+  `agent/rebuild-backup-create-and-rest`, source/JVM-unit-verified, PENDING CI.**
+  `LawnchairBackup.create` now writes an integrity-manifested zip of the launcher DB, shared prefs,
+  datastore and wallpaper without touching the sources. `restore` validates the whole archive and
+  manifest first, extracts into a private staging directory, verifies completeness, then swaps each
+  target through a rollback transaction. Corrupt, truncated or partial archives change nothing on
+  disk. The real Create/Restore/Nova screens and the developer Export/Import rows are restored; the
+  notice is shown only on a genuine failure. No weather, `.github`, applicationId, SDK, manifest
+  permission or home/widget change.
+- branch: `agent/rebuild-backup-create-and-rest`
+- head: **`c82ac52`** (archive-core formatting); this STATE/docs update follows.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/enable-live-met-norway-weather
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/rebuild-backup-create-and-rest
 - ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
-- next: open the PR, let CI build `lawnWithQuickstepPlayDebug`, run the Play smoke and confirm the
-  weather settings screen shows the release transmission copy and that the enabled persistence
-  restart never resumes HOME.
-- blockers: no PR could be created from this runner (gh unauthenticated). No device/emulator run, so
-  the live debug copy and the settings-only restart are source/shell-verified only.
+- next: open the PR, let CI run `spotlessCheck`, `assembleLawnWithQuickstepPlayDebug` and
+  `testLawnWithQuickstepPlayDebugUnitTest`, then run a device/emulator create → restore round trip
+  and a corrupt-archive restore to confirm the live data is untouched.
+- blockers: no PR from this runner (gh unauthenticated); no Gradle/APK/emulator/CI run here. The
+  safety properties are proven by 14 JVM unit tests and a stub-compiled `LawnchairBackup`; the
+  Android UI and the real launcher DB finalisation are source-verified only.
 
-## done (this run — live MET weather enabled on `agent/enable-live-met-norway-weather`, source/shell-only)
+## done (this run — backup create/restore safely re-enabled on `agent/rebuild-backup-create-and-rest`, source/JVM-only)
+
+- **Pure core:** new `lawnchair/src/app/lawnchair/backup/BackupArchive.kt` writes a zip with a
+  trailing `manifest.txt` (format header + SHA-256, size and name per entry), validates the manifest
+  and every payload digest/size before extraction, rejects missing/extra/duplicate/traversal entries
+  and oversized payloads, and extracts into a private staging directory with a second digest check.
+- **Atomic swap with rollback:** `RestoreTransaction` copies each existing target into a private
+  rollback directory, moves the verified staged file into place with an atomic rename, and restores
+  every already-swapped target on any failure. It never calls `deleteRecursively` on a live database
+  or data directory and never deletes/moves user data before the staged replacement is verified.
+- **Android wiring:** `LawnchairBackup.create` builds `info.pb`, wallpaper, screenshot and the
+  launcher DB/shared prefs/preferences DB/datastore into a private temp archive, then copies it to
+  the chosen document; sources are opened read-only. `restore` copies the document to a private temp
+  file, validates, extracts to `noBackupFilesDir`, applies the swap, restores the wallpaper last,
+  writes the grid state and runs the inherited `RestoreDbTask`; the live grid DB files are backed up
+  first and restored on any failure. `BackupOperationResult` is now `Success`/`Failure`/`Unavailable`.
+- **UI:** `BackupAndRestorePreference`, `CreateBackupScreen`, `RestoreBackupScreen` and
+  `RestoreNovaBackupScreen` are restored with the real actions; `FeatureFlagsPreference` Export/
+  Import and `PreferenceNavigation`'s `CreateBackupScreen(viewModel())` are restored. The
+  unavailable notice is rendered only when an operation genuinely fails; the string now says the
+  existing data was not changed.
+- **Tests:** `tests/unit/java/app/lawnchair/backup/BackupArchiveTest.kt` has 14 JVM tests: round
+  trip, source immutability, missing manifest/entry, checksum mismatch, truncation, unexpected entry,
+  path traversal, corrupt/partial archive leaving targets untouched, valid apply, mid-swap rollback,
+  unrelated-file preservation and rollback of newly-created targets.
+- **Verification actually run:** `kotlinc` compiled `BackupArchive.kt` + the test with JUnit 4.13.2;
+  `JUnitCore` reports **OK (14 tests)**. `LawnchairBackup.kt` + `BackupArchive.kt` compiled with
+  `kotlinc` against `android-37.2/android.jar`, the coroutines jar and protobuf 3.25.5 with minimal
+  project stubs (`rc=0`). `git diff --check` clean. No Gradle, Android build, emulator or CI.
+- **Missing evidence / not claimed:** no APK, no Compose/device run, no actual `RestoreDbTask`
+  execution and no CI. Legacy archives without a manifest are intentionally rejected as unsafe;
+  the UI/DB finalisation is source-verified only.
+
+## done (previous run — live MET weather enabled on `agent/enable-live-met-norway-weather`, source/shell-only)
 
 - **Production gate:** `WeatherWorkFactory.WeatherNetworkMode.isEnabled` now returns `true` for every
   build, so `WeatherHomeRuntime` builds the real `MetWeatherRepository` and
