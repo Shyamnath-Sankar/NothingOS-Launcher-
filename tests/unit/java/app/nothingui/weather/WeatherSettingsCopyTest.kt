@@ -18,35 +18,40 @@ package app.nothingui.weather
 
 import com.android.launcher3.R
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WeatherSettingsCopyTest {
 
     @Test
-    fun debugBuildSelectsSetupOnlyCopy() {
+    fun networkModeEnablesTheLivePathForEveryBuild() {
+        assertTrue(WeatherNetworkMode.isEnabled(debugBuild = true))
+        assertTrue(WeatherNetworkMode.isEnabled(debugBuild = false))
+    }
+
+    @Test
+    fun debugBuildAlsoSelectsTransmissionCopy() {
         val networkEnabled = WeatherSettingsCopy.networkEnabled(debugBuild = true)
 
-        assertFalse(networkEnabled)
+        assertTrue(networkEnabled)
         assertEquals(
-            R.string.dotwel_weather_privacy_notice_debug,
+            R.string.dotwel_weather_privacy_notice_release,
             WeatherSettingsCopy.privacyNotice(networkEnabled),
         )
         assertEquals(
-            R.string.dotwel_weather_forecast_notice_debug,
+            R.string.dotwel_weather_forecast_notice_release,
             WeatherSettingsCopy.forecastNotice(networkEnabled),
         )
         assertEquals(
-            R.string.dotwel_weather_settings_description_debug,
+            R.string.dotwel_weather_settings_description_release,
             WeatherSettingsCopy.settingsDescription(networkEnabled),
         )
         assertEquals(
-            R.string.dotwel_weather_enabled_status_debug,
+            R.string.dotwel_weather_enabled_status_release,
             WeatherSettingsCopy.enabledStatus(networkEnabled),
         )
         assertEquals(
-            R.string.dotwel_weather_message_enabled_debug,
+            R.string.dotwel_weather_message_enabled_release,
             WeatherSettingsCopy.enabledMessage(networkEnabled),
         )
     }

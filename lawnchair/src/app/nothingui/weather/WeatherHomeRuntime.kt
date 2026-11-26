@@ -37,10 +37,10 @@ import kotlinx.coroutines.cancel
  *
  * The owner is created with the app-private no-backup consent and cache stores,
  * the persisted throttle store and the wired MET repository behind the
- * injected [WeatherLoadWork] seam. Debug builds are an explicit network-off
- * test mode so the emulator smoke gate's synthetic opt-in cannot reach the live
- * MET endpoint; release builds keep the real transport. No worker, alarm,
- * timer, service or device-location source is constructed.
+ * injected [WeatherLoadWork] seam. The build policy now selects the wired MET
+ * work graph for every build, including debug/test; [NoNetworkWeatherWork]
+ * remains only as an explicit offline test double. No worker, alarm, timer,
+ * service or device-location source is constructed.
  */
 object WeatherHomeRuntime {
     private val lock = Any()

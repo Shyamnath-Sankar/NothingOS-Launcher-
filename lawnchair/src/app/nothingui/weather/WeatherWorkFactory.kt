@@ -50,12 +50,15 @@ object WeatherWorkFactory {
 }
 
 /**
- * The explicit separation between the shipped network path and debug/test
- * installs. The emulator smoke gate enables a synthetic location and returns to
- * HOME; that debug build must never reach the live MET endpoint. Release builds
- * keep the wired network path. This is a build-type boundary, not an exported
- * test hook, and it adds no runtime switch that a caller could flip.
+ * The build-mode policy for the shipped MET path.
+ *
+ * The wired path is enabled for every build, including debug/test, so the
+ * opt-in consent, manual location, OkHttp transport, cache and throttle are
+ * exercised end to end. The debug setup-only string resources and
+ * [NoNetworkWeatherWork] remain available as an explicit offline seam for
+ * tests that inject them; this policy does not select them.
  */
 object WeatherNetworkMode {
-    fun isEnabled(debugBuild: Boolean): Boolean = !debugBuild
+    @Suppress("UNUSED_PARAMETER")
+    fun isEnabled(debugBuild: Boolean): Boolean = true
 }

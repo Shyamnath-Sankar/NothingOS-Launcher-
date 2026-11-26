@@ -20,12 +20,11 @@ import androidx.annotation.StringRes
 import com.android.launcher3.R
 
 /**
- * Build-mode-aware Weather settings copy.
+ * Truthful Weather settings copy.
  *
- * The runtime keeps debug/test builds network-off while release builds perform
- * the real opt-in HOME request. The settings screen therefore cannot use one
- * shared promise: [networkEnabled] selects the debug setup-only wording or the
- * release transmission wording from the same boundary as the runtime. Both
+ * The runtime enables the live opt-in HOME request for every build, so
+ * [networkEnabled] selects the release transmission wording. The debug
+ * setup-only resources remain available for the explicit offline seam. Both
  * variants disclose that the selected coordinates and the device IP address go
  * to MET Norway when real requests are enabled, that the label stays on device,
  * and that no GPS or background tracking is used.

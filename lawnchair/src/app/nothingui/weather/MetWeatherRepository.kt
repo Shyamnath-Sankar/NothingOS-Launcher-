@@ -48,8 +48,9 @@ object RetryAfterParser {
 /**
  * The only weather transport call site. It is built by [WeatherWorkFactory]
  * behind the owner's injected load seam: the explicit opt-in UI, privacy
- * notice and visible HOME lifecycle already gate every call. Debug/test builds
- * select the network-off [NoNetworkWeatherWork] instead of this repository.
+ * notice and visible HOME lifecycle already gate every call. The build policy
+ * selects this repository for every build; the network-off
+ * [NoNetworkWeatherWork] remains an explicit offline test double.
  *
  * The repository is safe to call repeatedly: one in-flight request per
  * instance, a persisted global attempt floor that no location, manual refresh,

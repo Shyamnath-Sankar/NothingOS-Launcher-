@@ -80,8 +80,9 @@ import okhttp3.ResponseBody.Companion.toResponseBody
  * [MetWeatherRepository] behind it and the real [OkHttpWeatherTransport] with
  * a test-only OkHttp interceptor. The interceptor records the exact
  * MET-shaped request and returns a synthetic response, so no socket, no
- * permission, no MET endpoint and no other external traffic is used. The debug
- * launcher runtime is untouched: it still selects `NoNetworkWeatherWork`.
+ * permission, no MET endpoint and no other external traffic is used. The
+ * launcher runtime is not used here: the harness injects its fake transport
+ * through the same `WeatherWorkFactory` seam.
  *
  * Every case writes only below a unique `dotwel-weather-harness-test/run-*`
  * subtree of the target application's own `noBackupFilesDir`, never the test

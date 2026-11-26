@@ -33,7 +33,8 @@ import kotlinx.coroutines.withContext
  *
  * It creates no repository, transport, timer, alarm or worker. The injected
  * [WeatherLoadWork] is the only load seam: the runtime supplies the wired MET
- * work graph in release builds and [NoNetworkWeatherWork] in debug/test builds.
+ * work graph for every build, and [NoNetworkWeatherWork] remains an explicit
+ * offline test double.
  *
  * Every pause, screen-off, user-absent, settings edit/disable and shutdown
  * invalidates the pending read and lets the controller cancel the in-flight
@@ -256,9 +257,10 @@ object WeatherHomeWiring {
 }
 
 /**
- * The explicit network-off load seam used by debug/test builds. It performs no
- * network request and invents no forecast; it reports that no forecast is
- * available, so the emulator smoke gate's synthetic opt-in cannot reach MET.
+ * The explicit network-off load seam retained as an offline test double. It
+ * performs no network request and invents no forecast; it reports that no
+ * forecast is available. The runtime's build policy does not select it; tests
+ * inject it to prove the offline path without reaching MET.
  */
 object NoNetworkWeatherWork : WeatherLoadWork {
     override suspend fun load(session: WeatherSession): WeatherLoadResult = WeatherLoadResult.Unavailable(reason = WeatherFailureReason.CACHE_MISS)
