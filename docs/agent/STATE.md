@@ -3,24 +3,63 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#328 check-style Spotless failures fixed on
-  `agent/fix-the-two-spotlesscheck-fail`, local `./gradlew spotlessCheck` green, PENDING ACTUAL CI.**
-  Two no-behavior changes: `NothingWallpaperColors` const values renamed to `SCREAMING_SNAKE_CASE`
-  (ktlint `property-naming`) and the split `@Composable()` function-type parameters in
-  `LazyColumnPreferenceGroup` put back on one line (ktlint `standard:paren-spacing`, which the
-  formatter could not autocorrect).
-- branch: `agent/fix-the-two-spotlesscheck-fail`
-- head: `5d446c6` (plus this docs commit); branch pushed and tracking `origin`.
+- current_phase: **CI#329 `build-debug-apk` wallpaper-guard true-black fix on
+  `agent/ci-329-build-debug-apk-fails-a`; local guard green, PENDING ACTUAL CI.**
+  The guard no longer hardcodes the pre-ktlint `Black` constant name. It finds the
+  `0xFF000000` background constant by value, requires it to be the `backgroundArgb` default and
+  the full-surface fill (dots/lines/accent stay separate, non-black paints), and, when the real
+  Play APK exists, reads the compiled `NothingWallpaperColors` background constant from
+  `classes.dex` and requires exactly `-16777216`.
+- branch: `agent/ci-329-build-debug-apk-fails-a`
+- head: `d8118a9` (plus this docs commit); branch pushed and tracking `origin`.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-the-two-spotlesscheck-fail
-- ci: **not run here** (no APK/emulator/CI by instruction). Local
-  `./gradlew spotlessCheck --no-build-cache --no-configuration-cache --rerun-tasks` is
-  **BUILD SUCCESSFUL**. The pushed branch is the CI trigger.
-- next: let CI re-run the `check-style` job (`./gradlew spotlessCheck`) and the rest of CI on this
-  branch.
-- blockers: no PR from this runner (gh unauthenticated); no CI re-run, APK or emulator here.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/ci-329-build-debug-apk-fails-a
+- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). Local guard is green; the
+  compiled-dex path was exercised against a `d8`-compiled dex built from the real
+  `NothingWallpaperArt.kt`. The pushed branch is the CI trigger.
+- next: let CI run `build-debug-apk` (`verify-play-build.sh` → wallpaper guard) against the real
+  Gradle-built Play APK; open the PR.
+- blockers: no PR from this runner (gh unauthenticated); no real Gradle-built APK, emulator or CI
+  here.
 
-## done (this run — CI#328 Spotless fixes on `agent/fix-the-two-spotlesscheck-fail`, Gradle Spotless verified)
+## done (this run — CI#329 wallpaper guard true-black reconciliation on `agent/ci-329-build-debug-apk-fails-a`, shell/dex-only)
+
+- **Exact CI#329 cause, not a guess:** `scripts/nothingui-wallpaper-guard.sh` still grepped
+  `const val Black: Int = 0xFF000000.toInt()`. CI#328 renamed that ktlint-invalid constant to
+  `BLACK` (`NothingWallpaperArt.kt:31`), so the grep failed and the guard exited with
+  `the procedural background is not true black` before any APK check.
+- **Background, not accent, is checked:** the source check now finds the `NothingWallpaperColors`
+  constant whose value is exactly `0xFF000000.toInt()` (whatever its name), requires
+  `NothingWallpaperSpec.backgroundArgb` to default to it, and requires the renderer to paint the
+  whole surface with `spec.backgroundArgb` before any `canvas.drawCircle`. `dotArgb`, `lineArgb`
+  and `accentArgb` must stay separate paints, so the non-black dots/lines/accent are explicitly
+  allowed and are never treated as the base. A rename back to `Black` still passes; a non-black
+  background fails.
+- **Strict against the real compiled APK:** when `build/outputs/apk/lawnWithQuickstepPlay/debug`
+  contains APK(s), the guard extracts each `classes*.dex`, finds the compiled
+  `Lapp/nothingui/wallpaper/NothingWallpaperColors;` class with `dexdump -f`, and requires the
+  source-named background field to equal `-16777216` (`0xFF000000`). It locates `dexdump` via
+  `PATH`/`ANDROID_HOME`/`ANDROID_SDK_ROOT` build-tools (highest version) and fails closed when an
+  APK exists but the constant cannot be verified. The existing Torus `STRING_TOO_LARGE` sentinel
+  check is unchanged.
+- **Unit lock:** new `NothingWallpaperArtTest.backgroundIsExactlyOpaqueBlack` asserts
+  `NothingWallpaperColors.BLACK` and all three procedural specs are exactly `0xFF000000`; the
+  guard requires that test to exist.
+- **Verification actually run (shell/dex only; no Gradle, real APK, emulator or CI):**
+  `sh -n scripts/nothingui-wallpaper-guard.sh` clean; `sh scripts/nothingui-wallpaper-guard.sh`
+  OK with no build (skips the APK check); compiled `NothingWallpaperArt.kt` with `kotlinc`, `d8`
+  to `classes.dex`, verified `dexdump` reports `BLACK=-16777216` and `ACCENT_RED=-2677218`;
+  packaged that dex plus the real Torus XML into a synthetic APK and the guard reported
+  `compiled background BLACK is 0xFF000000` and OK; a `BLACK=0xFF000001` dex made the guard exit
+  1 with `BLACK=-16777215, not 0xFF000000`; a `Black`-renamed source copy still passed the
+  source check; `git diff --check` clean.
+- **Missing evidence / not claimed:** no `./gradlew assembleLawnWithQuickstepPlayDebug` (execution
+  rule says the PR triggers CI), no real Gradle-built APK, no emulator and no actual CI. The
+  `verify-play-build-test.sh` suite was started but exceeded the 120 s tool timeout; its fixture
+  roots skip the wallpaper guard, so it is not evidence either way. CI `build-debug-apk` is the
+  final proof that the guard passes on the real APK.
+
+## done (previous run — CI#328 Spotless fixes on `agent/fix-the-two-spotlesscheck-fail`, Gradle Spotless verified)
 
 - **Failure 1 (property-naming):** `lawnchair/src/app/nothingui/wallpaper/NothingWallpaperArt.kt`
   `NothingWallpaperColors` used PascalCase `const val` names. Renamed to `BLACK`, `PAPER`,
