@@ -259,7 +259,7 @@ fun PreferenceNavigation(
 
         composable<CreateBackup>(
             deepLinks = getDeepLink(CreateBackup),
-        ) { CreateBackupScreen() }
+        ) { CreateBackupScreen(viewModel()) }
 
         restoreBackupGraph()
         restoreNovaBackupGraph()

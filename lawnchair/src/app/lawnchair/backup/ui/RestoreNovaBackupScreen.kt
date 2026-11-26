@@ -10,6 +10,9 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -35,6 +39,7 @@ import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
 import app.lawnchair.ui.preferences.components.layout.PreferenceTemplate
 import app.lawnchair.ui.preferences.navigation.RestoreNovaBackup
+import app.lawnchair.util.BackHandler
 import app.lawnchair.util.restartLauncher
 import com.android.launcher3.R
 import java.util.Base64
@@ -69,7 +74,10 @@ internal fun RestoreNovaBackupScreen(
     ) {
         when (val stateValue = state.value) {
             is State.Success -> {
-                RestoreNovaBackupContent(state = stateValue)
+                RestoreNovaBackupContent(
+                    state = stateValue,
+                    onRestore = viewModel::restore,
+                )
             }
 
             is State.Loading -> RestoreNovaBackupLoading()
@@ -82,10 +90,30 @@ internal fun RestoreNovaBackupScreen(
 @Composable
 internal fun ColumnScope.RestoreNovaBackupContent(
     state: State.Success,
+    onRestore: () -> Unit,
 ) {
+    if (state.isRestoring) {
+        BackHandler {}
+    }
+
     BackupInfoGroup(state.info)
 
-    BackupUnavailableNotice()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .padding(horizontal = 16.dp),
+    ) {
+        Button(
+            onClick = onRestore,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxWidth(),
+            enabled = !state.isRestoring,
+        ) {
+            Text(text = stringResource(id = R.string.action_restore))
+        }
+    }
 }
 
 @Composable
