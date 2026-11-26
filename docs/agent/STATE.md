@@ -3,30 +3,52 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — native harness storage fix on `969f8a8`,
-  harness-only, PENDING ACTUAL CI.** CI 31845396672666 failed after all visual gates and the test-APK
-  build: the six native cases executed and all failed **before transport** because the harness wrote
-  below the test APK's `no_backup` directory, which is not writable when instrumentation runs under
-  the target uid. The harness now uses the **target** application context (keeping the exact
-  `<target>.test` identity check), verifies `Process.myUid() == target.applicationInfo.uid`, and uses
-  a canonical `dotwel-weather-harness-test/run-*` subtree separate from production
-  `dotwel-weather-private`. A real write/read/delete probe runs before any case and reports one
-  actionable `storage-preflight` failure. Cleanup deletes only this run's unique directory. Actual
-  `assembleLawnWithQuickstepPlayDebugAndroidTest` succeeded locally (BUILD SUCCESSFUL in 8m17s, 0
-  compiler errors). No emulator and no CI were triggered. No production source, manifest, network
-  policy, workflow, applicationId, build type, dependency or release/signing change.
-- branch: `agent/home-widget-composition-v1-new`
-- head: **`969f8a8`** (harness storage fix); this STATE and evidence update follows.
-- pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI run for this commit by instruction.** Parent-recorded truth for absent CI 318 is six
-  native cases failed before transport on `/data/user/0/com.launchernos.dotwellabs.debug.test/no_backup`,
-  not a forecast failure. Local compile and fixtures are real; native runtime is still unproven.
-- next: parent dispatches actual Android CI on `969f8a8` to rerun the emulator gates and the six
-  native cases. Release, hosting, merge, signing and any new build type stay paused.
-- blockers: no emulator, no `am instrument` and no device runtime here. The compile proves the
-  Kotlin/test-APK contract; it does not prove the six cases now pass on device.
+- current_phase: **backup kill-switch — create/restore disabled on
+  `agent/disable-backup-create-and-rest`, source-only, PENDING CI.** The Compose backup settings
+  screen, developer Feature Flags export/import entries, CreateBackupScreen, RestoreBackupScreen and
+  the Nova restore action now show "Backup is temporarily unavailable in this build" and expose no
+  create/restore action. `LawnchairBackup.create` and `LawnchairBackup.restore` return
+  `BackupOperationResult.UNAVAILABLE` immediately. Existing backup files, launcher databases, shared
+  preferences, DataStore files and wallpapers are not read, moved, renamed, deleted or modified by
+  this change. No applicationId, SDK, manifest permission, weather, home/widget or `.github` change.
+- branch: `agent/disable-backup-create-and-rest`
+- head: **`41b4df4`** (UI kill-switch); this STATE update follows.
+- pr: **not created in this run** (no `gh` auth/token in the runner). Branch is pushed; open a PR at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/disable-backup-create-and-rest
+- ci: **not run here** (no Gradle/Android build by instruction). The pushed branch is the CI trigger.
+- next: open the PR, let CI build `lawnWithQuickstepPlayDebug`, and spot-check that the backup
+  settings screen shows the unavailable notice with no create/restore action. Rewrite create/restore
+  later; until then keep both disabled.
+- blockers: no PR could be created from this runner (gh unauthenticated). No device/emulator run, so
+  the Compose notice is source-verified only.
 
-## done (this run — native harness storage fix on `969f8a8`, harness-only, PENDING ACTUAL CI)
+## done (this run — backup create/restore disabled on `agent/disable-backup-create-and-rest`, source-only)
+
+- **UI layer:** `BackupAndRestorePreference` now renders only `BackupUnavailableNotice`; the create,
+  Lawnchair restore and Nova restore rows are gone. `CreateBackupScreen` and `RestoreBackupScreen`
+  render the same notice and no longer call `LawnchairBackup.create`/`restore`.
+  `RestoreNovaBackupContent` no longer takes an `onRestore` callback and shows the notice instead of
+  a Restore button. The developer `FeatureFlagsPreference` Export/Import rows were replaced with the
+  notice, so the `CreateBackup` navigation and `restoreBackupOpener`/`restoreNovaBackupOpener` have no
+  callers. `restoreBackupOpener` was removed; `restoreNovaBackupOpener` remains defined but uncalled.
+- **Non-UI layer:** `LawnchairBackup.restore` and `LawnchairBackup.create` now return
+  `BackupOperationResult.UNAVAILABLE` immediately; the destructive bodies (database delete/restore,
+  wallpaper set, zip write) were removed. `readInfoAndPreview` is read-only and untouched. No file
+  under the app's data, `shared_prefs`, `datastore`, databases, backup files or wallpapers is touched.
+- **String:** new `backup_temporarily_unavailable` = "Backup is temporarily unavailable in this build".
+- **No tests changed:** no unit test asserted `LawnchairBackup.create`/`restore`; the existing
+  `BackupAndRestoreDBSelectionTest` exercises AOSP `RestoreDbTask`, not these UI entry points.
+- **Verification actually run (source/grep only; no Gradle, Android build, emulator or CI):**
+  `grep -rn "LawnchairBackup\\.create" lawnchair/src` → none; `grep -rn "\\.restore("` in the backup
+  and preferences UI → only `Canvas.restore()` in `Placeholder.kt`; `grep -rn
+  "restoreBackupOpener()\\|restoreNovaBackupOpener()"` → only the Nova definition, no callers;
+  `grep -rn "navigate(CreateBackup)\\|navigate(RestoreBackup"` → none; `LawnchairBackup.kt` shows
+  both entries return `UNAVAILABLE`; `python3` XML parse of `strings.xml` OK; `git diff --check`
+  clean.
+- **Missing evidence / not claimed:** no APK, no Compose UI run, no emulator and no CI. The notice
+  and disabled actions are source-verified only.
+
+## done (previous run — native harness storage fix on `969f8a8`, harness-only, PENDING ACTUAL CI)
 
 - **Root cause confirmed, not guessed:** `WeatherRuntimeInstrumentation` passed its own test-APK
   `context` to `WeatherRuntimeHarness.run`. The instrumentation process runs under the target
