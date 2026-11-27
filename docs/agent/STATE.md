@@ -3,30 +3,36 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **home-widget-composition-v1-new — native harness storage fix on `969f8a8`,
-  harness-only, PENDING ACTUAL CI.** CI 31845396672666 failed after all visual gates and the test-APK
-  build: the six native cases executed and all failed **before transport** because the harness wrote
-  below the test APK's `no_backup` directory, which is not writable when instrumentation runs under
-  the target uid. The harness now uses the **target** application context (keeping the exact
-  `<target>.test` identity check), verifies `Process.myUid() == target.applicationInfo.uid`, and uses
-  a canonical `dotwel-weather-harness-test/run-*` subtree separate from production
-  `dotwel-weather-private`. A real write/read/delete probe runs before any case and reports one
-  actionable `storage-preflight` failure. Cleanup deletes only this run's unique directory. Actual
-  `assembleLawnWithQuickstepPlayDebugAndroidTest` succeeded locally (BUILD SUCCESSFUL in 8m17s, 0
-  compiler errors). No emulator and no CI were triggered. No production source, manifest, network
-  policy, workflow, applicationId, build type, dependency or release/signing change.
-- branch: `agent/home-widget-composition-v1-new`
-- head: **`969f8a8`** (harness storage fix); this STATE and evidence update follows.
-- pr: **#19** — https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/19
-- ci: **No CI run for this commit by instruction.** Parent-recorded truth for absent CI 318 is six
-  native cases failed before transport on `/data/user/0/com.launchernos.dotwellabs.debug.test/no_backup`,
-  not a forecast failure. Local compile and fixtures are real; native runtime is still unproven.
-- next: parent dispatches actual Android CI on `969f8a8` to rerun the emulator gates and the six
-  native cases. Release, hosting, merge, signing and any new build type stay paused.
-- blockers: no emulator, no `am instrument` and no device runtime here. The compile proves the
-  Kotlin/test-APK contract; it does not prove the six cases now pass on device.
+- current_phase: **copy-only artifact checkpoint — Lawnchair 16 Dev (#338) play debug APK added,
+  verified and pushed. DONE.**
+- branch: `agent/copy-only-task-with-no-code-ch`
+- head: **`b8f8d6f`** (APK checkpoint); this STATE update follows.
+- pr: **none** — the task explicitly says no pull request.
+- ci: **No CI run triggered by this task.** No code, manifest, build, dependency or workflow changed.
+- next: none for this task; parent may dispatch the next task.
+- blockers: none for this task.
 
-## done (this run — native harness storage fix on `969f8a8`, harness-only, PENDING ACTUAL CI)
+## done (this run — copy-only Lawnchair 16 Dev (#338) APK checkpoint, verified, PUSHED)
+
+- Downloaded artifact `15191118898` from workflow run `45985053951` with
+  `gh api repos/.../actions/artifacts/15191118898/zip` using the same repo token as git push (read
+  from the git `extraheader`); the zip is 45085202 bytes and was not expired.
+- Extracted exactly one APK: `lawnWithQuickstepPlay/debug/Lawnchair.16.Dev.(#338).play.debug.apk`.
+- Committed a byte-identical copy as `checkpoints/Lawnchair.16.Dev.338.play.debug.apk` in commit
+  `b8f8d6f`. It was force-added because `.gitignore` line 46 ignores `*.apk`, the same as the prior
+  checkpoints.
+- Verified the committed blob: `git cat-file -s` = **53601495** bytes; the committed blob and the
+  working-tree file both SHA-256 to
+  **fc312b2ab06bb17c4b80af903fb48903d349be17b03a2dc3ade99927e4081b00**. `cmp` against the extracted
+  APK reported byte-identical.
+- Pushed `agent/copy-only-task-with-no-code-ch` to origin (`ec4af56..b8f8d6f`). GitHub emitted only
+  the >50 MB advisory warning; the push succeeded.
+- No other file was created, modified or deleted. The pre-existing untracked `w/` harness directory
+  was left untouched and not committed.
+- Not run / not claimed: no Gradle build, no emulator, no CI, no PR. The APK was not rebuilt; it is
+  the published artifact bytes.
+
+## done (previous run — native harness storage fix on `969f8a8`, harness-only, PENDING ACTUAL CI)
 
 - **Root cause confirmed, not guessed:** `WeatherRuntimeInstrumentation` passed its own test-APK
   `context` to `WeatherRuntimeHarness.run`. The instrumentation process runs under the target
