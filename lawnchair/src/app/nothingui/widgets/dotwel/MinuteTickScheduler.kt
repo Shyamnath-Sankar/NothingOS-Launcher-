@@ -47,8 +47,9 @@ object MinuteTickScheduler {
             if (hasExactAccess(context)) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC, triggerAt, pendingIntent)
             } else {
-                // No SCHEDULE_EXACT_ALARM in this build: use a bounded inexact window
-                // so clocks still refresh instead of freezing on the last bitmap.
+                // This build declares no exact-alarm permission: use a bounded
+                // inexact window so clocks still refresh instead of freezing on
+                // the last bitmap.
                 alarmManager.setWindow(AlarmManager.RTC, triggerAt, 60_000L, pendingIntent)
             }
         } catch (_: SecurityException) {
