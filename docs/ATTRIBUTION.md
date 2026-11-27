@@ -2,7 +2,8 @@
 
 Ported from [`Shyamnath-Sankar/Dotwel-Widgets`](https://github.com/Shyamnath-Sankar/Dotwel-Widgets)
 (MIT). The non-weather widget set is pinned to commit
-`7167bcdf001b604f1d61a2f07f70825a999eb767`. The twelve weather providers are
+`7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0), which includes the earlier
+`7167bcdf001b604f1d61a2f07f70825a999eb767` set. The twelve weather providers are
 pinned to the later crash-fixed commit
 `3517608833a184a3f97148ff113ea600a24e6e1b`, which decorates each per-size
 `RemoteViews` before combining them. The original `docs/ATTRIBUTION.md` is
@@ -378,8 +379,22 @@ the app from About & source credits > View MIT license texts.
   `Nothing_Date_Time2`, `Nothing_Digital4`, `Nothing_Digital3`,
   `Nothing_Digital`, and `Nothing_Mini_Calender` are implemented in this
   checkpoint (15 of 40); the rest remain pending or dependency-blocked and are
-  not claimed as imported. All 61 registered providers (49 non-weather plus 12
+  not claimed as imported. All 62 registered providers (50 non-weather plus 12
   weather) are build-verified only and remain runtime-unverified.
+
+### v1.2.0 delta (reference-matched restyle)
+
+Commit `7fc426e93dda173b17df8d65717f5a6fac8479df` adds
+`BluetoothBatteryLevelsWidgetProvider` (`bt_battery_levels_widget_info`,
+`widget_bt_battery_levels.xml`) plus the white-card Bluetooth headphone,
+battery-surface, status-tile and media-card renderers. The provider reads the
+same process-wide Bluetooth broadcast cache as the other Bluetooth widgets and
+declares no new permission. Media widgets use the ported
+`ReferenceMediaCard.kt` / `MediaTouchGeometry.kt` geometry and still render an
+unavailable state without a notification-listener service. The launcher has no
+upstream `MainActivity` widget catalog, so the v1.2.0 app-screen chrome
+(palette, `bg_live_dot`, `bg_preview_card`, Doto heading) is applied to the
+existing About & source credits screen instead of adding a second catalog.
 
 ## Dotwel weather providers (MIT)
 

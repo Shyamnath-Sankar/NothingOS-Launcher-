@@ -3,18 +3,47 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **MET Norway attribution copy fix on `agent/met-norway-attribution-copy-fi`.
-  `dotwel_strings.xml` no longer mentions Open-Meteo; weather copy now names MET Norway (met.no) and
-  no longer claims air-quality/AQI data. Text only; PENDING ACTUAL CI.**
-- branch: `agent/met-norway-attribution-copy-fi`
-- head: `c4e567f` (`fix: attribute weather copy to MET Norway in Dotwel strings`).
-- pr: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/32
-- ci: **not run here** by instruction. `grep -rniE 'open.?meteo' lawnchair/res lawnchair/src` → no
-  matches; XML parse OK; `git diff --check` clean; no Gradle build or emulator.
-- next: let CI build the Play debug APK, review and merge the PR, then continue the v1 plan.
-- blockers: no actual CI here.
+- current_phase: **Dotwel v1.2.0 widget delta resync on
+  `agent/resync-redesigned-dotwel-widge`. Ported the new Bluetooth battery-levels provider, the
+  reference battery/status/Bluetooth/media restyles, and the app-screen chrome. PENDING ACTUAL CI.**
+- branch: `agent/resync-redesigned-dotwel-widge`
+- head: `32af84f` (`feat(ui): apply the Dotwel black chrome to the credits screen`) plus the
+  guard/attribution update that follows.
+- pr: not opened yet.
+- ci: **not run here** by instruction. XML parse OK, `git diff --check` clean; no Gradle/APK/emulator.
+- next: push the guard/attribution update, open the PR to main, let CI build
+  `lawnWithQuickstepPlayDebug`, then run the emulator smoke lane (Weather tile and the new Bluetooth
+  widget) and merge.
+- blockers: no actual CI here; the 62-provider inventory test is only exercised by CI.
 
-## done (this run — MET Norway attribution copy fix, text-only)
+## done (this run — Dotwel v1.2.0 widget delta resync)
+
+- **Source:** upstream `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0), diffed against the
+  previously pinned `7167bcdf001b604f1d61a2f07f70825a999eb767`.
+- **Bluetooth (`c5bfa65`):** added `BluetoothBatteryLevelsWidgetProvider`
+  (`bt_battery_levels_widget_info`, `widget_bt_battery_levels.xml`) and its manifest receiver; no
+  new permission. Restyled `BluetoothHeadphonesWidgets` to the reference white card with per-device
+  battery/charging, safe address/name and the new status strings. Added the provider to both
+  `WidgetUpdater` lists.
+- **Battery (`f3b4d03`):** added `ReferenceBatterySurface.kt`; remapped `KwgtBattery` to
+  `CIRCLE_PROGRESS`, `KwgtBatteryMini` to `SMALL_PROGRESSBAR`, `KwgtBattery2` to `GLOW_PROGRESS`
+  and `IosBattery` to `WITH_DEVICE_ICON`; added `BatteryState.isCharging`.
+- **Status (`a9266f5`):** status tiles now render a centred single-glyph disc with `circleColor`,
+  `glyphColor` and `tileText`; battery keeps only the percentage.
+- **Media (`089ba01`):** ported `ReferenceMediaCard.kt` and `MediaTouchGeometry.kt`; `MediaRenderers`
+  delegates to the card. The launcher's renderer has no weather parameter, so the source
+  `WeatherRenderState` import/parameter was removed. Weather copy stays MET Norway and the Weather
+  label fix is untouched.
+- **App chrome (`32af84f`):** added the reference palette to `dotwel_colors.xml`, black
+  `dotwel_themes.xml`, `bg_live_dot.xml`, `bg_preview_card.xml`, the `chrome_*` strings, and the
+  Doto heading block on the existing About & source credits screen. The upstream `MainActivity`
+  catalog is still deliberately not ported; the system widget picker owns pinning.
+- **Guard/attribution:** `DotwelWidgetPortGuardTest` now pins 62 providers (50 non-weather + 12
+  weather), the v1.2.0 commit and `bt_battery_levels_widget_info`; `docs/ATTRIBUTION.md` updated.
+- **Not claimed:** no Gradle/APK build, no emulator, no actual CI. XML parse and
+  `git diff --check` are the only local evidence.
+
+## done (previous run — MET Norway attribution copy fix, text-only)
 
 - **Source check first:** `MetWeatherRepository.kt` has a single endpoint,
   `https://api.met.no/weatherapi/locationforecast/2.0/compact`; no other weather source URL or

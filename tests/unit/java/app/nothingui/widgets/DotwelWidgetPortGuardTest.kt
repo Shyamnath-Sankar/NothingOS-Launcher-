@@ -28,11 +28,12 @@ import org.junit.Test
  * needing an Android runtime.
  *
  * The non-weather port is pinned to upstream commit
- * `7167bcdf001b604f1d61a2f07f70825a999eb767`. The twelve weather providers are
- * pinned to the later crash-fixed commit
+ * `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0), which includes the
+ * earlier `7167bcdf001b604f1d61a2f07f70825a999eb767` set. The twelve weather
+ * providers are pinned to the crash-fixed commit
  * `3517608833a184a3f97148ff113ea600a24e6e1b` and must read only the launcher's
  * existing shared weather render state. Together they are the complete
- * sixty-one-provider inventory.
+ * sixty-two-provider inventory.
  */
 class DotwelWidgetPortGuardTest {
 
@@ -89,7 +90,7 @@ class DotwelWidgetPortGuardTest {
         weatherSourceFiles().joinToString("\n") { it.readText() }
 
     @Test
-    fun declaresExactlyTheSixtyOneProviders() {
+    fun declaresExactlyTheSixtyTwoProviders() {
         val receivers = declaredProviders()
         assertEquals("provider count", EXPECTED_PROVIDERS.size, receivers.size)
         assertEquals("duplicate providers", receivers.size, receivers.distinct().size)
@@ -262,6 +263,10 @@ class DotwelWidgetPortGuardTest {
             attribution.contains("7167bcdf001b604f1d61a2f07f70825a999eb767"),
         )
         assertTrue(
+            "attribution does not pin the v1.2.0 upstream commit",
+            attribution.contains("7fc426e93dda173b17df8d65717f5a6fac8479df"),
+        )
+        assertTrue(
             "attribution does not pin the weather upstream commit",
             attribution.contains("3517608833a184a3f97148ff113ea600a24e6e1b"),
         )
@@ -300,7 +305,7 @@ class DotwelWidgetPortGuardTest {
     private companion object {
         /**
          * The complete non-weather provider inventory at upstream commit
-         * `7167bcdf001b604f1d61a2f07f70825a999eb767`, as provider class name to
+         * `7fc426e93dda173b17df8d65717f5a6fac8479df`, as provider class name to
          * `android.appwidget.provider` metadata resource.
          */
         val EXPECTED_NON_WEATHER_PROVIDERS = listOf(
@@ -310,6 +315,7 @@ class DotwelWidgetPortGuardTest {
             "BatteryStatusWidgetProvider" to "battery_status_widget_info",
             "BatteryWidgetProvider" to "battery_widget_info",
             "BluetoothHeadphonesSquareWidgetProvider" to "bt_headphones_square_widget_info",
+            "BluetoothBatteryLevelsWidgetProvider" to "bt_battery_levels_widget_info",
             "BluetoothHeadphonesWideWidgetProvider" to "bt_headphones_wide_widget_info",
             "BluetoothStatusWidgetProvider" to "bt_status_widget_info",
             "CellularStatusWidgetProvider" to "cellular_status_widget_info",
