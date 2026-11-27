@@ -54,6 +54,7 @@ object WidgetUpdater {
     private val headphonesProviders = listOf(
         BluetoothHeadphonesWideWidgetProvider::class.java,
         BluetoothHeadphonesSquareWidgetProvider::class.java,
+        BluetoothBatteryLevelsWidgetProvider::class.java,
     )
 
     private val mediaHandler = Handler(Looper.getMainLooper())
@@ -76,6 +77,7 @@ object WidgetUpdater {
         BatteryStatusWidgetProvider::class.java,
         BluetoothHeadphonesWideWidgetProvider::class.java,
         BluetoothHeadphonesSquareWidgetProvider::class.java,
+        BluetoothBatteryLevelsWidgetProvider::class.java,
         BatteryWidgetProvider::class.java,
         BatteryMiniWidgetProvider::class.java,
         KwgtBattery2WidgetProvider::class.java,
