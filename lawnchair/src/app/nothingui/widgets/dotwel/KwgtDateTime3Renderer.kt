@@ -154,21 +154,19 @@ object KwgtDateTime3Renderer {
         return bitmap
     }
 
-    fun weatherLine(weather: NtWxWeather): String =
-        if (weather.hasForecast) {
-            "${weather.temperatureText}\u00B0 ${weather.conditionText}, AQI --"
-        } else {
-            "Weather unavailable"
-        }
+    fun weatherLine(weather: NtWxWeather): String = if (weather.hasForecast) {
+        "${weather.temperatureText}\u00B0 ${weather.conditionText}, AQI --"
+    } else {
+        "Weather unavailable"
+    }
 
-    private fun textPaint(color: Int, size: Float, align: Paint.Align): Paint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color
-            textSize = size.coerceAtLeast(1f)
-            textAlign = align
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-            isSubpixelText = true
-        }
+    private fun textPaint(color: Int, size: Float, align: Paint.Align): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        this.color = color
+        textSize = size.coerceAtLeast(1f)
+        textAlign = align
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+        isSubpixelText = true
+    }
 
     private fun withAlpha(color: Int, alphaPercent: Int): Int {
         val alpha = (((color ushr 24) and 0xFF) * alphaPercent / 100).coerceIn(0, 255)

@@ -51,15 +51,13 @@ object NtWxWeatherCode {
     }
 
     /** Unknown symbols default to day so the icon is never falsely "night". */
-    fun isDay(symbol: String?): Boolean =
-        symbol?.trim()?.lowercase()?.contains("_night") != true
+    fun isDay(symbol: String?): Boolean = symbol?.trim()?.lowercase()?.contains("_night") != true
 
     /** Uses the launcher's bounded weather vocabulary, never a provider string. */
     fun condition(symbol: String?): String = WeatherWidgetText.condition(symbol)
 
     /** Rounds a reading for display; missing or non-finite values stay unknown. */
-    fun number(value: Double?): String =
-        value?.takeIf { it.isFinite() }?.roundToInt()?.toString() ?: UNKNOWN
+    fun number(value: Double?): String = value?.takeIf { it.isFinite() }?.roundToInt()?.toString() ?: UNKNOWN
 
     /** Maps a US AQI value to the six bands used by the air widget; 0 is unknown. */
     fun airBand(aqi: Int?): Int = when {
@@ -76,6 +74,5 @@ object NtWxWeatherCode {
      * Wraps [current] into a zero-based page for a widget with [pageCount] pages.
      * A non-positive count means the widget cannot page, so it stays on page 0.
      */
-    fun page(pageCount: Int, current: Int): Int =
-        if (pageCount <= 0) 0 else Math.floorMod(current, pageCount)
+    fun page(pageCount: Int, current: Int): Int = if (pageCount <= 0) 0 else Math.floorMod(current, pageCount)
 }

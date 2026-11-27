@@ -44,10 +44,9 @@ abstract class BaseWeatherWidgetProvider : BaseWidgetProvider() {
         weather: NtWxWeather,
     ): Bitmap
 
-    override fun tapIntent(context: Context): Intent =
-        PreferenceActivity.createIntent(context, WeatherSettings).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+    override fun tapIntent(context: Context): Intent = PreferenceActivity.createIntent(context, WeatherSettings).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
 
     override fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
         val style = WidgetPrefs.style(context)

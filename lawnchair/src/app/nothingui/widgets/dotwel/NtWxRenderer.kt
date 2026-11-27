@@ -177,13 +177,12 @@ object NtWxRenderer {
 
     internal fun number(value: Double?): String = NtWxWeatherCode.number(value)
 
-    private fun paint(color: Int, size: Float, align: Paint.Align = Paint.Align.LEFT): Paint =
-        Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
-            this.color = color
-            textSize = size
-            textAlign = align
-            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
-        }
+    private fun paint(color: Int, size: Float, align: Paint.Align = Paint.Align.LEFT): Paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.SUBPIXEL_TEXT_FLAG).apply {
+        this.color = color
+        textSize = size
+        textAlign = align
+        typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+    }
 
     internal fun text(
         canvas: Canvas,

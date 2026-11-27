@@ -41,12 +41,14 @@ internal object WeatherCanvas {
 
     fun palette(style: WidgetStyle): WeatherPalette = when (style) {
         WidgetStyle.BLACK -> WeatherPalette(INK_DARK, WHITE, withAlpha(WHITE, 0x33), RED)
+
         WidgetStyle.TRANSLUCENT -> WeatherPalette(
             TRANSLUCENT_SURFACE,
             INK_DARK,
             withAlpha(INK_DARK, 0x33),
             RED,
         )
+
         WidgetStyle.TRANSPARENT -> WeatherPalette(
             null,
             WHITE,
@@ -55,8 +57,7 @@ internal object WeatherCanvas {
         )
     }
 
-    fun withAlpha(color: Int, alpha: Int): Int =
-        (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
+    fun withAlpha(color: Int, alpha: Int): Int = (color and 0x00FFFFFF) or (alpha.coerceIn(0, 255) shl 24)
 
     fun paint(color: Int, strokeWidth: Float = 0f): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.color = color

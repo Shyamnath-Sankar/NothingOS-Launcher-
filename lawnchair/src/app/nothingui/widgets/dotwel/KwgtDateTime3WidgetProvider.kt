@@ -39,10 +39,9 @@ import java.util.Locale
 class KwgtDateTime3WidgetProvider : BaseWidgetProvider() {
     override val layoutRes: Int = R.layout.widget_kwgt_date_time3
 
-    override fun tapIntent(context: Context): Intent =
-        PreferenceActivity.createIntent(context, WeatherSettings).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
+    override fun tapIntent(context: Context): Intent = PreferenceActivity.createIntent(context, WeatherSettings).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
 
     override fun buildViews(context: Context, appWidgetId: Int): RemoteViews {
         val style = WidgetPrefs.style(context)

@@ -66,8 +66,11 @@ data class NtWxWeather(
     val statusText: String
         get() = when (val current = render) {
             WeatherWidgetRender.Off -> "Weather is off \u00B7 Tap to configure"
+
             WeatherWidgetRender.NotConnected -> "Choose a city \u00B7 Tap to configure"
+
             WeatherWidgetRender.Loading -> "Updating weather"
+
             is WeatherWidgetRender.Forecast -> if (current.forecast.stale) {
                 "Cached \u00B7 ${WeatherWidgetText.asOf(now, current.forecast.asOf)}"
             } else {
@@ -79,15 +82,20 @@ data class NtWxWeather(
                     "Cached \u00B7 ${WeatherWidgetText.asOf(now, current.lastForecast.asOf)}"
 
                 current.retryAt != null -> "Refresh failed \u00B7 Tap to retry"
+
                 else -> "No cached weather \u00B7 Tap to refresh"
             }
         }
 
     fun fallbackText(context: Context): String = when (render) {
         WeatherWidgetRender.Off -> context.getString(R.string.weather_widget_off)
+
         WeatherWidgetRender.NotConnected -> context.getString(R.string.weather_widget_setup)
+
         WeatherWidgetRender.Loading -> context.getString(R.string.weather_widget_loading)
+
         is WeatherWidgetRender.Forecast -> statusText
+
         is WeatherWidgetRender.Unavailable -> when {
             forecast != null -> context.getString(R.string.weather_widget_unavailable)
             render.retryAt != null -> context.getString(R.string.weather_widget_refresh_failed)
@@ -95,17 +103,15 @@ data class NtWxWeather(
         }
     }
 
-    fun contentDescription(context: Context): String =
-        if (forecast == null) {
-            fallbackText(context)
-        } else {
-            "$conditionText, $temperatureText degrees. $statusText"
-        }
+    fun contentDescription(context: Context): String = if (forecast == null) {
+        fallbackText(context)
+    } else {
+        "$conditionText, $temperatureText degrees. $statusText"
+    }
 
     companion object {
         fun from(context: Context): NtWxWeather = from(WeatherWidgetStateStore.render(), Instant.now())
 
-        fun from(render: WeatherWidgetRender, now: Instant = Instant.now()): NtWxWeather =
-            NtWxWeather(render, now)
+        fun from(render: WeatherWidgetRender, now: Instant = Instant.now()): NtWxWeather = NtWxWeather(render, now)
     }
 }
