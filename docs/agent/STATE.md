@@ -3,26 +3,66 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#329 `build-debug-apk` wallpaper-guard true-black fix on
-  `agent/ci-329-build-debug-apk-fails-a`; local guard green, PENDING ACTUAL CI.**
-  The guard no longer hardcodes the pre-ktlint `Black` constant name. It finds the
-  `0xFF000000` background constant by value, requires it to be the `backgroundArgb` default and
-  the full-surface fill (dots/lines/accent stay separate, non-black paints), and, when the real
-  Play APK exists, reads the compiled `NothingWallpaperColors` background constant from
-  `classes.dex` and requires exactly `-16777216`.
-- branch: `agent/ci-329-build-debug-apk-fails-a`
-- head: `d8118a9` (plus this docs commit); branch pushed and tracking `origin`.
+- current_phase: **Dotwel widget port finished on `agent/continue-and-finish-the-dotwel`;
+  inventory proven complete at 49 non-weather providers; guard green locally, PENDING ACTUAL CI.**
+  The pinned upstream commit `7167bcdf001b604f1d61a2f07f70825a999eb767` declares 61 widget
+  providers: 12 are weather and excluded, the other 49 are all present and registered. No provider
+  was missing; the task's "49 of 54" premise was a miscount. The guard now pins the exact
+  provider→info-XML inventory, the weather exclusions, info-XML layouts, attribution content and
+  hermeticity.
+- branch: `agent/continue-and-finish-the-dotwel`
+- head: `f861f4c` (plus this docs commit); branch pushed and tracking `origin`.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/ci-329-build-debug-apk-fails-a
-- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). Local guard is green; the
-  compiled-dex path was exercised against a `d8`-compiled dex built from the real
-  `NothingWallpaperArt.kt`. The pushed branch is the CI trigger.
-- next: let CI run `build-debug-apk` (`verify-play-build.sh` → wallpaper guard) against the real
-  Gradle-built Play APK; open the PR.
-- blockers: no PR from this runner (gh unauthenticated); no real Gradle-built APK, emulator or CI
-  here.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/continue-and-finish-the-dotwel
+- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). The guard test was compiled and
+  run with `kotlinc` + minimal JUnit stubs and passed 10/10; a mutation (removing the
+  `ClockWidgetProvider` receiver) failed 3/10 as expected. The pushed branch is the CI trigger.
+- next: let CI run `testLawnWithQuickstepPlayDebugUnitTest` (real JUnit) and
+  `assembleLawnWithQuickstepPlayDebug`; open the PR.
+- blockers: no PR from this runner (gh unauthenticated); no real Gradle test/APK/emulator/CI here.
 
-## done (this run — CI#329 wallpaper guard true-black reconciliation on `agent/ci-329-build-debug-apk-fails-a`, shell/dex-only)
+## done (this run — finish the Dotwel widget port on `agent/continue-and-finish-the-dotwel`, JVM/guard-only)
+
+- **Inventory proven complete, not assumed:** the pinned upstream manifest
+  (`7167bcdf001b604f1d61a2f07f70825a999eb767`) declares 61 widget receivers: 12 weather and 49
+  non-weather. Our `lawnchair/AndroidManifest.xml` Dotwel block declares exactly the same 49
+  name→info-XML pairs; `WidgetUpdater.kt` lists the same 49; all 49 provider classes exist; all
+  imports and `R.*` references resolve; all 75 widget drawables and all 50 non-weather layouts are
+  present. The only unported layouts are `item_widget_card.xml` (upstream picker item),
+  `widget_kwgt_date_time3.xml` and `widget_weather_sun.xml` (weather). The task's "49 of 54" premise
+  was a miscount; there was nothing missing to port.
+- **Shared weather-named layout ruled intentional:** `widget_weather_temp.xml` stays because
+  `NtAwayWidgetProvider` and `NtPhoto{Circle,Rect}Provider` reuse it. It is not a weather widget: no
+  weather provider is declared, no weather renderer is ported, and the test proves the reuse.
+- **Deliberate upstream exclusions (verified unreferenced):** `WidgetCatalog`, `WidgetPreviewBinder`,
+  `WidgetPreviewRenderer`, `PinResultReceiver`, `MainActivity`, `DotwelApp`, the decoration views,
+  `DotwelWeatherIcons`, `WeatherSettingsDialog`, the weather renderers, and the
+  `MediaNotificationService` (the system picker owns pinning; media widgets render an unavailable
+  state without a notification-listener service).
+- **Guard hardened (`DotwelWidgetPortGuardTest`):** pins the exact 49 provider→info-XML pairs and
+  the declared resources; asserts the 12 weather providers, their info XMLs and their renderers stay
+  absent; checks each declared provider has a class and each concrete provider class is declared
+  (bidirectional); parses each info XML and asserts every `initialLayout`/`previewLayout` exists;
+  checks the MIT attribution commit and license texts; and keeps the hermeticity/helper-component
+  checks. The test also pins `PinResultReceiver` absent and the four intended helper components.
+- **Real guard failure found and fixed:** `MinuteTickScheduler.kt` contained the literal
+  `SCHEDULE_EXACT_ALARM` in a comment, tripping the hermeticity guard. Reworded the comment to
+  "no exact-alarm permission"; behavior is unchanged — the scheduler still uses
+  `setExactAndAllowWhileIdle` only when `canScheduleExactAlarms()` is true and otherwise falls back
+  to a bounded `setWindow`, and the app declares no exact-alarm permission.
+- **Verification actually run (kotlinc + JVM only; no Gradle, real JUnit, APK, emulator or CI):**
+  compiled the test with `kotlinc` against minimal JUnit stubs (rc=0); ran all 10 tests via a
+  reflection runner → **10/10 pass**. Mutation proof: removing the `ClockWidgetProvider` receiver
+  from the manifest made 3 tests fail (`provider count expected 49 but was 48`, the info-XML count,
+  and the bidirectional class check); restoring the manifest returned 10/10 green and
+  `git diff -- lawnchair/AndroidManifest.xml` was empty. `git diff --check` clean.
+- **Untracked, not committed:** the runner's `w/` scratch directory (`task.txt`, `PROMPT.md`,
+  `out/`) is left untracked.
+- **Missing evidence / not claimed:** no Gradle `testLawnWithQuickstepPlayDebugUnitTest` (real JUnit),
+  no APK build, no device/emulator render and no actual CI. The provider inventory and guard are
+  source/JVM-verified; CI is the final proof that the real JUnit task and build are green.
+
+## done (previous run — CI#329 wallpaper guard true-black reconciliation on `agent/ci-329-build-debug-apk-fails-a`, shell/dex-only)
 
 - **Exact CI#329 cause, not a guess:** `scripts/nothingui-wallpaper-guard.sh` still grepped
   `const val Black: Int = 0xFF000000.toInt()`. CI#328 renamed that ktlint-invalid constant to
