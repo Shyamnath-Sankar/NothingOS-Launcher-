@@ -8,13 +8,11 @@ when no task input is given, and continues from "next".
   no longer claims air-quality/AQI data. Text only; PENDING ACTUAL CI.**
 - branch: `agent/met-norway-attribution-copy-fi`
 - head: `c4e567f` (`fix: attribute weather copy to MET Norway in Dotwel strings`).
-- pr: create at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/met-norway-attribution-copy-fi
-  (no GH token in this runner, so the PR was not opened here).
+- pr: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/32
 - ci: **not run here** by instruction. `grep -rniE 'open.?meteo' lawnchair/res lawnchair/src` → no
   matches; XML parse OK; `git diff --check` clean; no Gradle build or emulator.
-- next: open the PR, let CI build the Play debug APK, then continue the v1 plan.
-- blockers: no GH token in this runner, so no PR was opened; no actual CI here.
+- next: let CI build the Play debug APK, review and merge the PR, then continue the v1 plan.
+- blockers: no actual CI here.
 
 ## done (this run — MET Norway attribution copy fix, text-only)
 
