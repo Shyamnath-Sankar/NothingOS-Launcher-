@@ -18,14 +18,12 @@ import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
 import android.text.TextPaint
-import android.text.TextUtils
 import android.widget.RemoteViews
 import com.android.launcher3.R
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.math.max
 import kotlin.math.min
 
 enum class HeadphonesState { PERMISSION_NEEDED, UNAVAILABLE, OFF, DISCONNECTED, CONNECTED }
@@ -168,43 +166,60 @@ object BluetoothHeadphonesState {
     }
 
     @SuppressLint("MissingPermission")
-    private fun connectedHeadphones(manager: BluetoothManager): BluetoothDevice? {
+    internal fun connectedDevices(manager: BluetoothManager): List<BluetoothDevice> {
         val profiles = intArrayOf(
             BluetoothProfile.A2DP,
             BluetoothProfile.HEADSET,
             BluetoothProfile.GATT,
         )
+        val seen = LinkedHashMap<String, BluetoothDevice>()
         for (profile in profiles) {
             val devices = try {
                 manager.getConnectedDevices(profile)
             } catch (_: RuntimeException) {
                 null
             }
-            if (devices.isNullOrEmpty()) continue
-            return devices.firstOrNull { safeName(it) != null } ?: devices.first()
+            devices.orEmpty().forEach { device ->
+                val key = safeAddress(device) ?: device.hashCode().toString()
+                seen.putIfAbsent(key, device)
+            }
         }
-        return null
+        return seen.values.toList()
     }
 
+    private fun connectedHeadphones(manager: BluetoothManager): BluetoothDevice? {
+        val devices = connectedDevices(manager)
+        return devices.firstOrNull { safeName(it) != null } ?: devices.firstOrNull()
+    }
+
+    internal fun cachedLevel(address: String): Int? = cache[address]
+
     @SuppressLint("MissingPermission")
-    private fun safeName(device: BluetoothDevice): String? = try {
+    internal fun safeName(device: BluetoothDevice): String? = try {
         device.name?.takeIf { it.isNotBlank() }
     } catch (_: SecurityException) {
         null
     }
 
     @SuppressLint("MissingPermission")
-    private fun safeAddress(device: BluetoothDevice): String? = try {
+    internal fun safeAddress(device: BluetoothDevice): String? = try {
         device.address?.takeIf { it.isNotBlank() }
     } catch (_: SecurityException) {
         null
     }
 
-    private fun readDeviceBattery(device: BluetoothDevice): Int? = try {
+    internal fun readDeviceBattery(device: BluetoothDevice): Int? = try {
         val method = device.javaClass.getMethod("getBatteryLevel")
         (method.invoke(device) as? Int)?.takeIf { it in 0..100 }
     } catch (_: Throwable) {
         null
+    }
+
+    internal fun readDeviceCharging(device: BluetoothDevice): Boolean = try {
+        val method = device.javaClass.getMethod("isCharging")
+        method.invoke(device) as? Boolean ?: false
+    } catch (_: Throwable) {
+        false
     }
 
     @Suppress("DEPRECATION")
@@ -220,13 +235,110 @@ object BluetoothHeadphonesState {
 }
 
 internal object BluetoothHeadphonesRenderer {
-    private val WHITE = 0xFFFFFFFF.toInt()
-    private val CARD_TRANSLUCENT = 0xE6FFFFFF.toInt()
-    private val INK = 0xFF1B1B1D.toInt()
-    private val MUTED = 0xFF7C7F8A.toInt()
-    private val GREEN = 0xFF34C759.toInt()
-    private val LIGHT_BAR = 0xFFE3E4E1.toInt()
-    private val TRANSPARENT_MUTED = 0xCCFFFFFF.toInt()
+    private const val CARD = 0xFFFEF7FF.toInt()
+    private val GLYPH_INK = 0xFF1D1B20.toInt()
+    val HALO = 0xFFE9E7EC.toInt()
+    private val NAME_GRAY = 0xFF777379.toInt()
+    private val GREEN = 0xFF6A9C89.toInt()
+    private val RED = 0xFFD71921.toInt()
+    private val TRANSPARENT_NAME = 0xCCFFFFFF.toInt()
+
+    private const val NAME_WIDTH_ESTIMATE = 0.68f
+    private const val NAME_HEIGHT_FACTOR = 1.25f
+
+    data class TextBox(
+        val left: Float,
+        val top: Float,
+        val right: Float,
+        val bottom: Float,
+    ) {
+        val width: Float get() = right - left
+        val height: Float get() = bottom - top
+        val centerX: Float get() = (left + right) / 2f
+        val centerY: Float get() = (top + bottom) / 2f
+    }
+
+    data class HeadphonesLayout(
+        val icon: TextBox,
+        val status: TextBox,
+        val percent: TextBox,
+        val name: TextBox,
+        val cardRadius: Float,
+    )
+
+    fun cardColor(style: WidgetStyle): Int = CARD
+
+    fun fittedNameSize(text: String, maxWidth: Float, maxHeight: Float): Float {
+        if (text.isEmpty()) return 0f
+        val byWidth = maxWidth / (text.length * NAME_WIDTH_ESTIMATE)
+        val byHeight = maxHeight / NAME_HEIGHT_FACTOR
+        return min(byWidth, byHeight).coerceAtLeast(0f)
+    }
+
+    fun layout(widthPx: Float, heightPx: Float, square: Boolean): HeadphonesLayout {
+        val width = widthPx.coerceAtLeast(1f)
+        val height = heightPx.coerceAtLeast(1f)
+        val side = min(width, height)
+        val cardRadius = side * 0.16f
+        if (square) {
+            val iconSize = side * 0.36f
+            fun box(cx: Float, cy: Float, w: Float, h: Float) = TextBox(
+                cx - w / 2f,
+                cy - h / 2f,
+                cx + w / 2f,
+                cy + h / 2f,
+            )
+            return HeadphonesLayout(
+                icon = box(width / 2f, height * 0.25f, iconSize, iconSize),
+                status = box(width / 2f, height * 0.52f, width * 0.86f, height * 0.12f),
+                percent = box(width / 2f, height * 0.66f, width * 0.60f, height * 0.14f),
+                name = box(width / 2f, height * 0.82f, width * 0.86f, height * 0.075f),
+                cardRadius = cardRadius,
+            )
+        }
+        val iconSize = min(height * 0.78f, width * 0.24f)
+        val textLeft = width * 0.33f
+        val textRight = width * 0.95f
+        val textCenter = (textLeft + textRight) / 2f
+        val textWidth = textRight - textLeft
+        fun box(cx: Float, cy: Float, w: Float, h: Float) = TextBox(
+            cx - w / 2f,
+            cy - h / 2f,
+            cx + w / 2f,
+            cy + h / 2f,
+        )
+        return HeadphonesLayout(
+            icon = box(width * 0.17f, height * 0.50f, iconSize, iconSize),
+            status = box(textCenter, height * 0.32f, textWidth, height * 0.30f),
+            percent = box(textCenter, height * 0.58f, textWidth, height * 0.24f),
+            name = box(textCenter, height * 0.84f, textWidth, height * 0.18f),
+            cardRadius = cardRadius,
+        )
+    }
+
+    fun batteryColor(percent: Int?): Int = when {
+        percent == null -> NAME_GRAY
+        percent >= 30 -> GREEN
+        else -> RED
+    }
+
+    fun percentText(percent: Int?): String = percent?.let { "$it%" } ?: "NA%"
+
+    fun statusWord(context: Context, snapshot: BluetoothHeadphonesSnapshot): String = when (snapshot.state) {
+        HeadphonesState.CONNECTED ->
+            context.getString(R.string.headphones_status_connected)
+
+        HeadphonesState.OFF -> context.getString(R.string.headphones_status_off)
+
+        HeadphonesState.DISCONNECTED ->
+            context.getString(R.string.headphones_status_disconnected)
+
+        HeadphonesState.UNAVAILABLE ->
+            context.getString(R.string.headphones_status_unavailable)
+
+        HeadphonesState.PERMISSION_NEEDED ->
+            context.getString(R.string.headphones_status_no_access)
+    }
 
     fun render(
         context: Context,
@@ -240,15 +352,11 @@ internal object BluetoothHeadphonesRenderer {
         val height = heightPx.coerceAtLeast(1)
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val inset = min(width, height) * 0.035f
-        val radius = min(width, height) * 0.11f
+        val inset = min(width, height) * 0.03f
+        val radius = min(width, height) * 0.16f
         if (style != WidgetStyle.TRANSPARENT) {
             val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = if (style == WidgetStyle.TRANSLUCENT) {
-                    CARD_TRANSLUCENT
-                } else {
-                    WHITE
-                }
+                color = cardColor(style)
                 if (style == WidgetStyle.TRANSLUCENT) {
                     setShadowLayer(6f, 0f, 3f, 0x33000000)
                 }
@@ -260,12 +368,12 @@ internal object BluetoothHeadphonesRenderer {
                 cardPaint,
             )
         }
-        val ink = if (style == WidgetStyle.TRANSPARENT) WHITE else INK
-        val muted = if (style == WidgetStyle.TRANSPARENT) TRANSPARENT_MUTED else MUTED
+        val ink = GLYPH_INK
+        val nameColor = if (style == WidgetStyle.TRANSPARENT) TRANSPARENT_NAME else NAME_GRAY
         if (square) {
-            drawSquare(context, canvas, width, height, style, snapshot, ink, muted)
+            drawSquare(context, canvas, width, height, style, snapshot, ink, nameColor)
         } else {
-            drawWide(context, canvas, width, height, style, snapshot, ink, muted)
+            drawWide(context, canvas, width, height, style, snapshot, ink, nameColor)
         }
         return bitmap
     }
@@ -278,43 +386,45 @@ internal object BluetoothHeadphonesRenderer {
         style: WidgetStyle,
         snapshot: BluetoothHeadphonesSnapshot,
         ink: Int,
-        muted: Int,
+        nameColor: Int,
     ) {
-        val iconSize = min(height * 0.52f, width * 0.20f)
-        val iconCx = width * 0.17f
-        val iconCy = height * 0.50f
-        drawEarbuds(canvas, iconCx, iconCy, iconSize, ink, style)
-        val textLeft = width * 0.33f
-        val textRight = width * 0.92f
-        val percentText = snapshot.percent?.let { "$it%" } ?: "NA"
-        drawDotText(
+        val layout = layout(width.toFloat(), height.toFloat(), square = false)
+        drawEarbuds(
             canvas,
-            percentText,
-            (textLeft + textRight) / 2f,
-            height * 0.35f,
-            textRight - textLeft,
-            height * 0.32f,
-            if (snapshot.percent != null) GREEN else muted,
-            style,
-        )
-        val name = snapshot.name ?: context.getString(R.string.headphones_label_text)
-        drawName(
-            canvas,
-            name,
-            (textLeft + textRight) / 2f,
-            height * 0.61f,
-            textRight - textLeft,
-            height * 0.13f,
+            layout.icon.centerX,
+            layout.icon.centerY,
+            layout.icon.width,
             ink,
             style,
         )
-        drawBatteryBar(
+        drawDotText(
             canvas,
-            textLeft,
-            height * 0.71f,
-            textRight - textLeft,
-            max(3f, height * 0.055f),
-            snapshot.percent,
+            statusWord(context, snapshot),
+            layout.status.centerX,
+            layout.status.centerY,
+            layout.status.width,
+            layout.status.height,
+            ink,
+            style,
+        )
+        drawDotText(
+            canvas,
+            percentText(snapshot.percent),
+            layout.percent.centerX,
+            layout.percent.centerY,
+            layout.percent.width,
+            layout.percent.height,
+            batteryColor(snapshot.percent),
+            style,
+        )
+        drawName(
+            canvas,
+            snapshot.name ?: context.getString(R.string.headphones_label_text),
+            layout.name.centerX,
+            layout.name.centerY,
+            layout.name.width,
+            layout.name.height,
+            nameColor,
             style,
         )
     }
@@ -327,39 +437,45 @@ internal object BluetoothHeadphonesRenderer {
         style: WidgetStyle,
         snapshot: BluetoothHeadphonesSnapshot,
         ink: Int,
-        muted: Int,
+        nameColor: Int,
     ) {
-        val iconSize = min(width, height) * 0.26f
-        drawEarbuds(canvas, width / 2f, height * 0.28f, iconSize, ink, style)
-        val percentText = snapshot.percent?.let { "$it%" } ?: "NA"
-        drawDotText(
+        val layout = layout(width.toFloat(), height.toFloat(), square = true)
+        drawEarbuds(
             canvas,
-            percentText,
-            width / 2f,
-            height * 0.54f,
-            width * 0.62f,
-            height * 0.18f,
-            if (snapshot.percent != null) GREEN else muted,
-            style,
-        )
-        val name = snapshot.name ?: context.getString(R.string.headphones_label_text)
-        drawName(
-            canvas,
-            name,
-            width / 2f,
-            height * 0.71f,
-            width * 0.78f,
-            height * 0.065f,
+            layout.icon.centerX,
+            layout.icon.centerY,
+            layout.icon.width,
             ink,
             style,
         )
-        drawBatteryBar(
+        drawDotText(
             canvas,
-            width * 0.20f,
-            height * 0.79f,
-            width * 0.60f,
-            max(3f, height * 0.035f),
-            snapshot.percent,
+            statusWord(context, snapshot),
+            layout.status.centerX,
+            layout.status.centerY,
+            layout.status.width,
+            layout.status.height,
+            ink,
+            style,
+        )
+        drawDotText(
+            canvas,
+            percentText(snapshot.percent),
+            layout.percent.centerX,
+            layout.percent.centerY,
+            layout.percent.width,
+            layout.percent.height,
+            batteryColor(snapshot.percent),
+            style,
+        )
+        drawName(
+            canvas,
+            snapshot.name ?: context.getString(R.string.headphones_label_text),
+            layout.name.centerX,
+            layout.name.centerY,
+            layout.name.width,
+            layout.name.height,
+            nameColor,
             style,
         )
     }
@@ -378,6 +494,20 @@ internal object BluetoothHeadphonesRenderer {
                 setShadowLayer(4f, 0f, 2f, 0x99000000.toInt())
             }
         }
+        val haloCenterY = cy + size * 0.05f
+        val haloRadius = size * 0.52f
+        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = HALO }
+        val haloEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = (HALO and 0x00FFFFFF) or (0x55 shl 24)
+        }
+        canvas.drawCircle(cx, haloCenterY, haloRadius * 1.18f, haloEdge)
+        canvas.drawCircle(cx, haloCenterY, haloRadius, haloPaint)
+        val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = RED
+            if (style == WidgetStyle.TRANSPARENT) {
+                setShadowLayer(4f, 0f, 2f, 0x99000000.toInt())
+            }
+        }
         val bulbRadius = size * 0.19f
         val stemWidth = size * 0.13f
         val stemHeight = size * 0.38f
@@ -386,6 +516,9 @@ internal object BluetoothHeadphonesRenderer {
         for (sign in intArrayOf(-1, 1)) {
             val bulbCx = cx + sign * gap / 2f
             canvas.drawCircle(bulbCx, bulbCy, bulbRadius, paint)
+            if (sign > 0) {
+                canvas.drawCircle(bulbCx, bulbCy, bulbRadius * 0.30f, accentPaint)
+            }
             val stemTop = bulbCy + bulbRadius * 0.55f
             canvas.drawRoundRect(
                 RectF(
@@ -399,46 +532,6 @@ internal object BluetoothHeadphonesRenderer {
                 paint,
             )
         }
-    }
-
-    private fun drawBatteryBar(
-        canvas: Canvas,
-        left: Float,
-        top: Float,
-        width: Float,
-        height: Float,
-        percent: Int?,
-        style: WidgetStyle,
-    ) {
-        val radius = height / 2f
-        val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = if (style == WidgetStyle.TRANSPARENT) {
-                0x55FFFFFF
-            } else {
-                LIGHT_BAR
-            }
-        }
-        canvas.drawRoundRect(
-            RectF(left, top, left + width, top + height),
-            radius,
-            radius,
-            background,
-        )
-        val value = percent ?: return
-        if (value <= 0) return
-        val fillWidth = (width * value / 100f).coerceIn(height, width)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = GREEN
-            if (style == WidgetStyle.TRANSPARENT) {
-                setShadowLayer(3f, 0f, 1f, 0x99000000.toInt())
-            }
-        }
-        canvas.drawRoundRect(
-            RectF(left, top, left + fillWidth, top + height),
-            radius,
-            radius,
-            fill,
-        )
     }
 
     private fun drawDotText(
@@ -468,26 +561,26 @@ internal object BluetoothHeadphonesRenderer {
         cx: Float,
         cy: Float,
         maxWidth: Float,
-        textSize: Float,
+        maxHeight: Float,
         color: Int,
         style: WidgetStyle,
     ) {
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
-            this.textSize = textSize.coerceAtLeast(6f)
+            this.textSize = fittedNameSize(text, maxWidth, maxHeight).coerceAtLeast(4f)
             textAlign = Paint.Align.CENTER
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             if (style == WidgetStyle.TRANSPARENT) {
                 setShadowLayer(4f, 0f, 2f, 0x99000000.toInt())
             }
         }
-        val fitted = TextUtils.ellipsize(
-            text,
-            paint,
-            maxWidth.coerceAtLeast(1f),
-            TextUtils.TruncateAt.END,
-        ).toString()
-        canvas.drawText(fitted, cx, cy, paint)
+        val measured = paint.measureText(text)
+        if (measured > maxWidth.coerceAtLeast(1f) && measured > 0f) {
+            paint.textSize *= maxWidth / measured
+        }
+        val metrics = paint.fontMetrics
+        val baseline = cy - (metrics.ascent + metrics.descent) / 2f
+        canvas.drawText(text, cx, baseline, paint)
     }
 }
 

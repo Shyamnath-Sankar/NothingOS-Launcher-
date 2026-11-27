@@ -173,22 +173,15 @@ object IosBatteryRenderer {
         level: Int,
         charging: Boolean,
         includeBackground: Boolean = true,
-    ): Bitmap {
-        val safeWidth = width.coerceAtLeast(1)
-        val safeHeight = height.coerceAtLeast(1)
-        val layout = layout(safeWidth.toFloat(), safeHeight.toFloat())
-        val bitmap = Bitmap.createBitmap(
-            safeWidth,
-            safeHeight,
-            Bitmap.Config.ARGB_8888,
-        )
-        val canvas = Canvas(bitmap)
-        if (includeBackground) drawBackground(canvas, layout, style)
-        drawPercent(canvas, layout, level)
-        drawRing(canvas, layout, level)
-        drawIcon(canvas, context, layout, charging, level)
-        return bitmap
-    }
+    ): Bitmap = ReferenceBatterySurface.render(
+        context,
+        BatterySurfaceKind.WITH_DEVICE_ICON,
+        width,
+        height,
+        level,
+        charging,
+        style,
+    )
 
     private fun drawBackground(
         canvas: Canvas,

@@ -902,6 +902,23 @@
         </receiver>
 
         <receiver
+            android:name="app.nothingui.widgets.dotwel.BluetoothBatteryLevelsWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_bt_battery_levels_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+                <action android:name="android.bluetooth.headset.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED" />
+                <action android:name="android.bluetooth.device.action.BATTERY_LEVEL_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/bt_battery_levels_widget_info" />
+        </receiver>
+
+        <receiver
             android:name="app.nothingui.widgets.dotwel.NtPhotoCircleProvider"
             android:exported="true"
             android:label="@string/widget_photo_circle">

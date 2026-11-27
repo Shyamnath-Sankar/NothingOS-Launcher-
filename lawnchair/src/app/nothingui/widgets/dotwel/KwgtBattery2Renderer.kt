@@ -356,27 +356,15 @@ object KwgtBattery2Renderer {
         level: Int,
         estimate: Estimate,
         includeBackground: Boolean = true,
-    ): Bitmap {
-        val safeWidth = width.coerceAtLeast(1)
-        val safeHeight = height.coerceAtLeast(1)
-        val safeLevel = level.coerceIn(0, 100)
-        val layout = layout(safeWidth.toFloat(), safeHeight.toFloat())
-        val palette = palette(context, style)
-        val bitmap = Bitmap.createBitmap(
-            safeWidth,
-            safeHeight,
-            Bitmap.Config.ARGB_8888,
-        )
-        val canvas = Canvas(bitmap)
-        if (includeBackground) {
-            drawBackground(canvas, layout, palette)
-        }
-        drawLabel(canvas, layout, palette)
-        drawBattery(canvas, layout, palette, safeLevel)
-        drawLevel(canvas, layout, palette, safeLevel)
-        drawEstimate(canvas, layout, palette, estimate)
-        return bitmap
-    }
+    ): Bitmap = ReferenceBatterySurface.render(
+        context,
+        BatterySurfaceKind.GLOW_PROGRESS,
+        width,
+        height,
+        level,
+        BatteryState.isCharging(context),
+        style,
+    )
 
     private fun drawBackground(canvas: Canvas, layout: Layout, palette: Palette) {
         if (((palette.background ushr 24) and 0xFF) == 0) return

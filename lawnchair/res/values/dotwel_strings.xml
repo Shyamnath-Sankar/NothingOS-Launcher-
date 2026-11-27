@@ -600,6 +600,18 @@
     <string name="pin_bt_headphones_wide_confirmed">Headphones (Wide) added. Battery level stays hidden until you allow Bluetooth access.</string>
     <string name="pin_bt_headphones_square_confirmed">Headphones (Square) added. Battery level stays hidden until you allow Bluetooth access.</string>
     <string name="mode_bt_headphones">Headphones · optional live battery</string>
+    <string name="headphones_status_connected">CONNECTED</string>
+    <string name="headphones_status_off">OFF</string>
+    <string name="headphones_status_disconnected">DISCONNECTED</string>
+    <string name="headphones_status_unavailable">UNAVAILABLE</string>
+    <string name="headphones_status_no_access">NO ACCESS</string>
+    <string name="bt_battery_levels_fallback_text">Bluetooth battery levels</string>
+    <string name="bt_battery_levels_content_description">Bluetooth battery levels: %1$s</string>
+    <string name="catalog_bt_battery_levels_desc">A 2x2 white card with one row per battery source: your phone and each connected Bluetooth device. Red fills track the real level and a bolt marks charging. Live Bluetooth levels need optional Bluetooth access; tapping opens Bluetooth settings.</string>
+    <string name="widget_bt_battery_levels_label">Dotwel Bluetooth Battery Levels</string>
+    <string name="widget_bt_battery_levels_description">A 2x2 white card with a red level bar per connected device and the phone. Live Bluetooth levels need optional Bluetooth access; tapping opens system Bluetooth settings.</string>
+    <string name="pin_bt_battery_levels_confirmed">Bluetooth Battery Levels added. Device levels stay hidden until you allow Bluetooth access.</string>
+    <string name="mode_bt_battery_levels">Bluetooth · multi-device battery</string>
     <string name="bt_access_title">Bluetooth status access</string>
     <string name="bt_access_explain">Live Bluetooth state and the connected device name need the Android Bluetooth permission. This is optional and off by default. Without it the tile shows a neutral Bluetooth glyph and still opens system Bluetooth settings. Declining leaves the rest of the app and all other widgets fully usable.</string>
     <string name="bt_access_status">Bluetooth access: %1$s</string>
@@ -619,4 +631,10 @@
     <string name="dotwel_away_description">Samples local screen-on and screen-off transitions to show recent away, longest and today durations. No usage-access permission.</string>
     <string name="dotwel_widget_preview_description">Widget preview</string>
     <string name="dotwel_widget_unavailable">Widget unavailable</string>
+    <string name="chrome_live_label">LIVE_SYSTEM_DISPLAY</string>
+    <string name="chrome_id_label">ID: DW-MOD-01</string>
+    <string name="chrome_headline">DOTWEL WIDGETS</string>
+    <string name="chrome_subtitle">HOME SCREEN WIDGET SYSTEM</string>
+    <string name="chrome_footer">DOTWEL WIDGETS</string>
+    <string name="chrome_live_dot_description">Live system display indicator</string>
 </resources>

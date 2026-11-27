@@ -3,18 +3,105 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **MET Norway attribution copy fix on `agent/met-norway-attribution-copy-fi`.
-  `dotwel_strings.xml` no longer mentions Open-Meteo; weather copy now names MET Norway (met.no) and
-  no longer claims air-quality/AQI data. Text only; PENDING ACTUAL CI.**
-- branch: `agent/met-norway-attribution-copy-fi`
-- head: `c4e567f` (`fix: attribute weather copy to MET Norway in Dotwel strings`).
-- pr: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/32
-- ci: **not run here** by instruction. `grep -rniE 'open.?meteo' lawnchair/res lawnchair/src` → no
-  matches; XML parse OK; `git diff --check` clean; no Gradle build or emulator.
-- next: let CI build the Play debug APK, review and merge the PR, then continue the v1 plan.
-- blockers: no actual CI here.
+- current_phase: **Spotless format fix v1.2.1 (CI#348) on `agent/spotless-format-fix-v1-2-1-ci`.
+  Applied the exact formatter patch to the five Dotwel widget files; formatting only. PENDING
+  ACTUAL CI.**
+- branch: `agent/spotless-format-fix-v1-2-1-ci`
+- head: `bfe221a` (`chore(style): apply spotless formatting to Dotwel v1.2.1 widgets`)
+- pr: **not opened — no GitHub auth/token in this runner** (`gh` unauthenticated). The branch is
+  pushed; open the PR from
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/spotless-format-fix-v1-2-1-ci?expand=1
+- ci: **not run here** by instruction. `git apply` succeeded, `git diff --check` clean; no
+  Gradle/APK/emulator.
+- next: let CI#348 `check-style` run `spotlessKotlinCheck` on these five files. When green, open the
+  PR/merge, then resume the Dotwel v1.2.1 delta resync PR
+  (`agent/delta-resync-v1-2-1-of-dotwel`, head `6585fc0`).
+- blockers: no GitHub auth to open PRs; `spotlessCheck` was not run locally because this runner has
+  no Gradle cache and the task forbids Gradle builds here.
 
-## done (this run — MET Norway attribution copy fix, text-only)
+## done (this run — Spotless format fix v1.2.1, CI#348, formatting only)
+
+- **Task:** CI#348 `check-style` failed `spotlessKotlinCheck` on five files under
+  `lawnchair/src/app/nothingui/widgets/dotwel` (ktlint 1.8.0). Apply the supplied exact patch.
+- **Applied:** decoded the provided base64/gzip patch to `/tmp/fmt.patch` and ran
+  `git apply --whitespace=nowarn`; it applied cleanly (no fallback ktlint download needed).
+- **Files (5):** `BluetoothBatteryLevelsWidgets.kt`, `BluetoothHeadphonesWidgets.kt`,
+  `ReferenceBatterySurface.kt`, `StatusWidgetProviders.kt`, `media/ReferenceMediaCard.kt`.
+- **What changed (formatting only):** expression-body functions collapsed onto the canonical single
+  line, and ktlint inserted the required blank lines between `when` branches. No identifiers,
+  literals, control flow or logic changed; `git diff` is whitespace/line-wrapping only.
+- **Scope:** no workflow, Gradle, SDK, `applicationId`, permission, manifest, provider or resource
+  change. The untracked runner scratch `w/` is left untracked.
+- **Verification actually run:** `git apply` → APPLIED; `git diff --stat` shows 5 files,
+  36 insertions / 34 deletions; `git diff --check` clean.
+- **Missing evidence / not claimed:** no `./gradlew spotlessCheck`, no APK build, no unit test, no
+  emulator and no actual CI for this branch. The PR/push triggers the real `check-style` job, which
+  is the final proof.
+
+## done (previous run — Dotwel v1.2.1 delta resync)
+
+- **Source:** upstream `b0330f873c8f97682ddf6b735e6210a14b14fc8a` (v1.2.1), diffed against the
+  previously pinned `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0). The delta is eight files:
+  three production Kotlin files, four upstream tests and the upstream `docs/agent/STATE.md`.
+- **Source-to-launcher mapping used (same basenames as the v1.2.0 port):**
+  `BluetoothHeadphonesWidgets.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/BluetoothHeadphonesWidgets.kt`;
+  `ReferenceBatterySurface.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/ReferenceBatterySurface.kt`;
+  `media/ReferenceMediaCard.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/media/ReferenceMediaCard.kt`.
+- **Headphones (`4fb397c`):** added `HALO = 0xFFE9E7EC` and the 0x55-alpha outer ring behind the
+  earbuds; the wide icon grew from `min(0.62h, 0.20w)` to `min(0.78h, 0.24w)`, the square icon from
+  `0.32 side` to `0.36 side`, and the square icon moved to `0.25h`. The device name is unchanged by
+  this delta: it stays the gray `#777379` sans-serif line (white in the transparent style), as the
+  upstream v1.2.1 notes confirm.
+- **Media and battery were already at v1.2.1 on this branch:** `media/ReferenceMediaCard.kt` already
+  had `pad = 0.03 side`, `artSize = min(0.40w, 0.72h)`, and the layout-derived `artistHeight` /
+  `titleHeight`; `ReferenceBatterySurface.kt` already painted the mini remainder with
+  `TRACK_SOFT` (since `f3b4d03`). `diff` against `b0330f8` shows only the `package`/import adaptation,
+  so no code change was needed for those two files.
+- **Pin (`9838b90`):** `docs/ATTRIBUTION.md` now pins the non-weather set to `b0330f8` (v1.2.1),
+  keeps the `7fc426e`/`7167bcdf` history, and adds a v1.2.1 delta note; `NOTICE.md` pins `b0330f8`.
+- **Tests (`844e2b1`):** `DotwelWidgetPortGuardTest` now requires the v1.2.1 SHA (still requires
+  `7167bcdf`, `7fc426e` and the weather `35176088`); the 62-provider inventory is unchanged. New
+  text-level `DotwelWidgetV121DeltaTest` locks the halo/icon sizes, the `TRACK_SOFT` track and the
+  `0.03`/`0.40` media art box. The battery assertion is scoped to `drawSmallProgressBar` because
+  `fill(GRAY)` legitimately remains in the separate glow-progress surface.
+- **Scope:** no provider, permission, manifest, `applicationId`, SDK, weather, MET Norway copy,
+  Weather label or workflow change. The 62 manifest receivers are unchanged.
+- **Verification actually run (shell/source only; no Gradle, APK, emulator or actual CI):**
+  `git diff --check` clean; `grep` of `lawnchair/AndroidManifest.xml` still counts 62 Dotwel
+  receivers; `git diff --name-only` shows no weather/MET file; `diff` of the three launcher files
+  against `b0330f8` shows only package/import and the intended adaptations.
+- **Missing evidence / not claimed:** no `./gradlew testLawnWithQuickstepPlayDebugUnitTest`, no APK,
+  no render, no emulator and no actual CI. CI is the final proof that the guard, the new delta test
+  and the resources compile.
+
+## done (this run — Dotwel v1.2.0 widget delta resync)
+
+- **Source:** upstream `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0), diffed against the
+  previously pinned `7167bcdf001b604f1d61a2f07f70825a999eb767`.
+- **Bluetooth (`c5bfa65`):** added `BluetoothBatteryLevelsWidgetProvider`
+  (`bt_battery_levels_widget_info`, `widget_bt_battery_levels.xml`) and its manifest receiver; no
+  new permission. Restyled `BluetoothHeadphonesWidgets` to the reference white card with per-device
+  battery/charging, safe address/name and the new status strings. Added the provider to both
+  `WidgetUpdater` lists.
+- **Battery (`f3b4d03`):** added `ReferenceBatterySurface.kt`; remapped `KwgtBattery` to
+  `CIRCLE_PROGRESS`, `KwgtBatteryMini` to `SMALL_PROGRESSBAR`, `KwgtBattery2` to `GLOW_PROGRESS`
+  and `IosBattery` to `WITH_DEVICE_ICON`; added `BatteryState.isCharging`.
+- **Status (`a9266f5`):** status tiles now render a centred single-glyph disc with `circleColor`,
+  `glyphColor` and `tileText`; battery keeps only the percentage.
+- **Media (`089ba01`):** ported `ReferenceMediaCard.kt` and `MediaTouchGeometry.kt`; `MediaRenderers`
+  delegates to the card. The launcher's renderer has no weather parameter, so the source
+  `WeatherRenderState` import/parameter was removed. Weather copy stays MET Norway and the Weather
+  label fix is untouched.
+- **App chrome (`32af84f`):** added the reference palette to `dotwel_colors.xml`, black
+  `dotwel_themes.xml`, `bg_live_dot.xml`, `bg_preview_card.xml`, the `chrome_*` strings, and the
+  Doto heading block on the existing About & source credits screen. The upstream `MainActivity`
+  catalog is still deliberately not ported; the system widget picker owns pinning.
+- **Guard/attribution:** `DotwelWidgetPortGuardTest` now pins 62 providers (50 non-weather + 12
+  weather), the v1.2.0 commit and `bt_battery_levels_widget_info`; `docs/ATTRIBUTION.md` updated.
+- **Not claimed:** no Gradle/APK build, no emulator, no actual CI. XML parse and
+  `git diff --check` are the only local evidence.
+
+## done (previous run — MET Norway attribution copy fix, text-only)
 
 - **Source check first:** `MetWeatherRepository.kt` has a single endpoint,
   `https://api.met.no/weatherapi/locationforecast/2.0/compact`; no other weather source URL or

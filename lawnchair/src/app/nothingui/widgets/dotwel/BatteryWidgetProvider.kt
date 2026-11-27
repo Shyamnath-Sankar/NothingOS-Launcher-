@@ -27,6 +27,16 @@ object BatteryState {
         val capacity = manager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) ?: -1
         return capacity.takeIf { it in 0..100 } ?: 0
     }
+
+    fun isCharging(context: Context): Boolean {
+        val sticky = context.registerReceiver(
+            null,
+            IntentFilter(Intent.ACTION_BATTERY_CHANGED),
+        )
+        val status = sticky?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        return status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+    }
 }
 
 class BatteryWidgetProvider : BaseWidgetProvider() {
