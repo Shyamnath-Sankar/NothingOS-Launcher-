@@ -29,8 +29,7 @@ internal object ReferenceMediaCard {
 
     fun cardColor(style: WidgetStyle): Int = WHITE
 
-    fun cardColor(kind: MediaWidgetKind, style: WidgetStyle): Int =
-        if (kind == MediaWidgetKind.UNIVERSAL) CARD else cardColor(style)
+    fun cardColor(kind: MediaWidgetKind, style: WidgetStyle): Int = if (kind == MediaWidgetKind.UNIVERSAL) CARD else cardColor(style)
 
     fun artistColor(): Int = RED
 

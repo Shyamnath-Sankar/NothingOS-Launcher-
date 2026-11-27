@@ -53,11 +53,9 @@ internal object ReferenceBatterySurface {
 
     fun digitColor(level: Int): Int = INK
 
-    fun percentText(level: Int): String =
-        if (level in 0..100) "$level%" else "--"
+    fun percentText(level: Int): String = if (level in 0..100) "$level%" else "--"
 
-    fun fillFraction(level: Int): Float =
-        level.coerceIn(0, 100) / 100f
+    fun fillFraction(level: Int): Float = level.coerceIn(0, 100) / 100f
 
     fun verticalFilledDots(level: Int, total: Int): Int {
         if (total <= 0) return 0
@@ -71,8 +69,7 @@ internal object ReferenceBatterySurface {
         return (clamped / 100f * rows).roundToInt().coerceIn(0, rows)
     }
 
-    fun chargeLabel(charging: Boolean): String =
-        if (charging) "CHARGING" else "DISCHARGING"
+    fun chargeLabel(charging: Boolean): String = if (charging) "CHARGING" else "DISCHARGING"
 
     fun render(
         context: Context,
@@ -98,14 +95,19 @@ internal object ReferenceBatterySurface {
         when (kind) {
             BatterySurfaceKind.CIRCLE_PROGRESS ->
                 drawCircleProgress(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level, charging)
+
             BatterySurfaceKind.GLOW_PROGRESS ->
                 drawGlowProgress(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level, charging)
+
             BatterySurfaceKind.VERTICAL_DOTS ->
                 drawVerticalDots(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level)
+
             BatterySurfaceKind.TEXT_ARC ->
                 drawTextArc(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level)
+
             BatterySurfaceKind.SMALL_PROGRESSBAR ->
                 drawSmallProgressBar(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level)
+
             BatterySurfaceKind.WITH_DEVICE_ICON ->
                 drawWithDeviceIcon(canvas, safeWidth.toFloat(), safeHeight.toFloat(), side, level, charging)
         }
@@ -476,6 +478,5 @@ internal object ReferenceBatterySurface {
         this.color = color
     }
 
-    private fun withAlpha(color: Int, alpha: Int): Int =
-        ((alpha and 0xFF) shl 24) or (color and 0x00FFFFFF)
+    private fun withAlpha(color: Int, alpha: Int): Int = ((alpha and 0xFF) shl 24) or (color and 0x00FFFFFF)
 }

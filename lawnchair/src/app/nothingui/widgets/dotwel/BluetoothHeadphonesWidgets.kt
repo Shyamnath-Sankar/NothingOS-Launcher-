@@ -324,21 +324,21 @@ internal object BluetoothHeadphonesRenderer {
 
     fun percentText(percent: Int?): String = percent?.let { "$it%" } ?: "NA%"
 
-    fun statusWord(context: Context, snapshot: BluetoothHeadphonesSnapshot): String =
-        when (snapshot.state) {
-            HeadphonesState.CONNECTED ->
-                context.getString(R.string.headphones_status_connected)
+    fun statusWord(context: Context, snapshot: BluetoothHeadphonesSnapshot): String = when (snapshot.state) {
+        HeadphonesState.CONNECTED ->
+            context.getString(R.string.headphones_status_connected)
 
-            HeadphonesState.OFF -> context.getString(R.string.headphones_status_off)
-            HeadphonesState.DISCONNECTED ->
-                context.getString(R.string.headphones_status_disconnected)
+        HeadphonesState.OFF -> context.getString(R.string.headphones_status_off)
 
-            HeadphonesState.UNAVAILABLE ->
-                context.getString(R.string.headphones_status_unavailable)
+        HeadphonesState.DISCONNECTED ->
+            context.getString(R.string.headphones_status_disconnected)
 
-            HeadphonesState.PERMISSION_NEEDED ->
-                context.getString(R.string.headphones_status_no_access)
-        }
+        HeadphonesState.UNAVAILABLE ->
+            context.getString(R.string.headphones_status_unavailable)
+
+        HeadphonesState.PERMISSION_NEEDED ->
+            context.getString(R.string.headphones_status_no_access)
+    }
 
     fun render(
         context: Context,

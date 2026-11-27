@@ -3,24 +3,42 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Dotwel v1.2.1 delta resync on `agent/delta-resync-v1-2-1-of-dotwel`. Ported the
-  headphones halo and enlarged earbuds; verified the media art box and battery track already match
-  `b0330f8`; pinned the source to v1.2.1. PENDING ACTUAL CI.**
-- branch: `agent/delta-resync-v1-2-1-of-dotwel`
-- head: `6585fc0` (`fix(test): scope the battery track check to the mini bar`), after the pin and
-  v1.2.1 delta-test commits.
+- current_phase: **Spotless format fix v1.2.1 (CI#348) on `agent/spotless-format-fix-v1-2-1-ci`.
+  Applied the exact formatter patch to the five Dotwel widget files; formatting only. PENDING
+  ACTUAL CI.**
+- branch: `agent/spotless-format-fix-v1-2-1-ci`
+- head: `bfe221a` (`chore(style): apply spotless formatting to Dotwel v1.2.1 widgets`)
 - pr: **not opened — no GitHub auth/token in this runner** (`gh` unauthenticated). The branch is
   pushed; open the PR from
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/delta-resync-v1-2-1-of-dotwel?expand=1
-- ci: **not run here** by instruction. `git diff --check` clean, 62 manifest receivers unchanged;
-  no Gradle/APK/emulator.
-- next: open the PR from the compare URL, let CI build `lawnWithQuickstepPlayDebug` and run
-  `testLawnWithQuickstepPlayDebugUnitTest` (the 62-provider guard plus the new v1.2.1 delta test),
-  then merge.
-- blockers: no actual CI here; the 62-provider inventory and the new delta test are only exercised
-  by CI.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/spotless-format-fix-v1-2-1-ci?expand=1
+- ci: **not run here** by instruction. `git apply` succeeded, `git diff --check` clean; no
+  Gradle/APK/emulator.
+- next: let CI#348 `check-style` run `spotlessKotlinCheck` on these five files. When green, open the
+  PR/merge, then resume the Dotwel v1.2.1 delta resync PR
+  (`agent/delta-resync-v1-2-1-of-dotwel`, head `6585fc0`).
+- blockers: no GitHub auth to open PRs; `spotlessCheck` was not run locally because this runner has
+  no Gradle cache and the task forbids Gradle builds here.
 
-## done (this run — Dotwel v1.2.1 delta resync)
+## done (this run — Spotless format fix v1.2.1, CI#348, formatting only)
+
+- **Task:** CI#348 `check-style` failed `spotlessKotlinCheck` on five files under
+  `lawnchair/src/app/nothingui/widgets/dotwel` (ktlint 1.8.0). Apply the supplied exact patch.
+- **Applied:** decoded the provided base64/gzip patch to `/tmp/fmt.patch` and ran
+  `git apply --whitespace=nowarn`; it applied cleanly (no fallback ktlint download needed).
+- **Files (5):** `BluetoothBatteryLevelsWidgets.kt`, `BluetoothHeadphonesWidgets.kt`,
+  `ReferenceBatterySurface.kt`, `StatusWidgetProviders.kt`, `media/ReferenceMediaCard.kt`.
+- **What changed (formatting only):** expression-body functions collapsed onto the canonical single
+  line, and ktlint inserted the required blank lines between `when` branches. No identifiers,
+  literals, control flow or logic changed; `git diff` is whitespace/line-wrapping only.
+- **Scope:** no workflow, Gradle, SDK, `applicationId`, permission, manifest, provider or resource
+  change. The untracked runner scratch `w/` is left untracked.
+- **Verification actually run:** `git apply` → APPLIED; `git diff --stat` shows 5 files,
+  36 insertions / 34 deletions; `git diff --check` clean.
+- **Missing evidence / not claimed:** no `./gradlew spotlessCheck`, no APK build, no unit test, no
+  emulator and no actual CI for this branch. The PR/push triggers the real `check-style` job, which
+  is the final proof.
+
+## done (previous run — Dotwel v1.2.1 delta resync)
 
 - **Source:** upstream `b0330f873c8f97682ddf6b735e6210a14b14fc8a` (v1.2.1), diffed against the
   previously pinned `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0). The delta is eight files:
