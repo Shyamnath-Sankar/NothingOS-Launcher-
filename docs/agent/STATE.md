@@ -3,20 +3,37 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#337 decision-gate fix on `agent/decision-gate-fix-task-shell-o`. The Weather
-  picker now selects the exact unique Weather preview in a narrowed `search_widgets_list_view` even
-  when the provider header is empty/scrolled away. Shell tests green locally; PENDING ACTUAL CI.**
-- branch: `agent/decision-gate-fix-task-shell-o`
-- head: `b0f4ea0` (`fix: select weather cell in narrowed search list without a header`).
-- pr: open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/decision-gate-fix-task-shell-o
-- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → all passed;
-  `sh -n` clean on both edited scripts; no Gradle build, emulator or actual CI.
-- next: let CI re-run the API 37 lane to prove the Weather tile is selected and bound in the
-  narrowed search list; then continue the v1 plan.
-- blockers: no PR from this runner; no actual CI/emulator here.
+- current_phase: **MET Norway attribution copy fix on `agent/met-norway-attribution-copy-fi`.
+  `dotwel_strings.xml` no longer mentions Open-Meteo; weather copy now names MET Norway (met.no) and
+  no longer claims air-quality/AQI data. Text only; PENDING ACTUAL CI.**
+- branch: `agent/met-norway-attribution-copy-fi`
+- head: `c4e567f` (`fix: attribute weather copy to MET Norway in Dotwel strings`).
+- pr: https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/32
+- ci: **not run here** by instruction. `grep -rniE 'open.?meteo' lawnchair/res lawnchair/src` → no
+  matches; XML parse OK; `git diff --check` clean; no Gradle build or emulator.
+- next: let CI build the Play debug APK, review and merge the PR, then continue the v1 plan.
+- blockers: no actual CI here.
 
-## done (this run — CI#337 select Weather in narrowed search list with an empty header, shell-only)
+## done (this run — MET Norway attribution copy fix, text-only)
+
+- **Source check first:** `MetWeatherRepository.kt` has a single endpoint,
+  `https://api.met.no/weatherapi/locationforecast/2.0/compact`; no other weather source URL or
+  geocoder exists in `lawnchair/src/app/nothingui/weather/`. The code makes no air-quality request.
+- **Copy fixed in `lawnchair/res/values/dotwel_strings.xml`:** `about_body`,
+  `catalog_weather_desc`, `weather_explain`, `weather_attribution`,
+  `widget_weather_temp_description`, `widget_weather_sun_description` and `ledger_ready_weather`
+  now say MET Norway (met.no). The false separate air-quality/US-AQI claims were removed from
+  `weather_explain` and `weather_attribution`. The URLs reuse the existing canonical values in
+  `strings.xml` (`https://www.met.no/en`, `https://docs.api.met.no/doc/TermsOfService`).
+- **Verification actually run:** repo-wide `grep -rniE 'open.?meteo'` outside `w/` → only this file
+  before the edit and **no matches in `lawnchair/res` or `lawnchair/src` after**;
+  `python3` `ElementTree.parse` of `dotwel_strings.xml` → OK; `git diff --check` clean.
+- **Scope:** text only; no Kotlin, layout, manifest, SDK, `applicationId`, permission or workflow
+  change. The untracked runner scratch `w/` is left untracked.
+- **Missing evidence / not claimed:** no Gradle/APK build, no emulator and no actual CI. CI is the
+  final proof that resources still compile.
+
+## done (previous run — CI#337 select Weather in narrowed search list with an empty header, shell-only)
 
 - **Exact CI#337 observation:** the Weather tile is found, but `weather-widget-log.txt` shows the
   loop printing `step=search` with `candidate=551 1324 1011 1712` at scroll 1 and
