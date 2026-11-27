@@ -58,13 +58,16 @@ class DotwelWidgetV121DeltaTest {
     @Test
     fun batteryMiniTrackUsesTheSoftTrack() {
         val source = source("ReferenceBatterySurface.kt")
+        val miniBar = source
+            .substringAfter("private fun drawSmallProgressBar")
+            .substringBefore("private fun drawWithDeviceIcon")
         assertTrue(
             "mini battery track is not TRACK_SOFT",
-            source.contains("canvas.drawRoundRect(rect, radius, radius, fill(TRACK_SOFT))"),
+            miniBar.contains("canvas.drawRoundRect(rect, radius, radius, fill(TRACK_SOFT))"),
         )
         assertFalse(
             "mini battery track still uses GRAY",
-            source.contains("canvas.drawRoundRect(rect, radius, radius, fill(GRAY))"),
+            miniBar.contains("canvas.drawRoundRect(rect, radius, radius, fill(GRAY))"),
         )
     }
 
