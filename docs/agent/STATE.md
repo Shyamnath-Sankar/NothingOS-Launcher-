@@ -3,24 +3,30 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#334 weather-tile picker label fix on `agent/small-focused-fix-commit-and-p`.
-  The original weather receiver had no `android:label`, so its picker name fell back to the app label
-  `DotWel Launcher` and the Weather-filtered picker hid it. It now points at the new
-  `nothingui_weather_widget_label` = `Weather`, so it matches the Weather search. Guards extended.
-  Shell/XML verification green locally; PENDING ACTUAL CI.**
-- branch: `agent/small-focused-fix-commit-and-p`
-- head: `b13db1c` (label fix + strict guard tests); pushed after commit.
-- pr: **not created in this run**; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/small-focused-fix-commit-and-p
-- ci: **not run here** by instruction. `nothingui-weather-guard.sh` ok;
-  `nothingui-weather-guard-test.sh` all passed (2 new negative checks); `emulator-smoke-test.sh`
-  all passed; manifest/brand/identity/widget/polish/home guard tests rc=0; both XML files parse;
-  `sh -n` clean; `git diff --check` clean. No Gradle build, emulator or actual CI.
-- next: let CI re-run the API 37 lane and confirm the Weather cell is present and selected by its
-  exact description; then continue the v1 plan.
+- current_phase: **Combining CI#333 search-header expansion into the CI#334 weather-label branch on
+  `agent/combine-branches-task-no-new-f`. Both sides kept; the three smoke scripts merged without
+  dropping any change. Shell/XML verification green locally; PENDING ACTUAL CI.**
+- branch: `agent/combine-branches-task-no-new-f`
+- head: `pending` (merge of `origin/agent/small-focused-harness-fix-comm` into this branch).
+- pr: open a PR at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/combine-branches-task-no-new-f
+- ci: **not run here** by instruction. `sh -n` clean on the three smoke scripts;
+  `grep` confirms the weather receiver label and `widget_picker_search_header_bounds`; no Gradle
+  build, emulator or actual CI.
+- next: push and let CI re-run the API 37 lane to prove the label fix and the search-row expansion
+  together; then continue the v1 plan.
 - blockers: no PR from this runner; no actual CI/emulator here.
 
-## done (this run — CI#334 weather-tile picker label fix, product + shell-only)
+## done (this run — combine CI#334 label fix + CI#333 search-header expansion, no new features)
+
+- **Task:** merge `origin/agent/small-focused-harness-fix-comm` (commits `6d39fac` and `fea53a6`)
+  into the agent branch already containing `b13db1c`, keeping only those changes.
+- **Merge:** `git merge --no-ff origin/agent/small-focused-harness-fix-comm`. The three shell
+  scripts auto-merged (`scripts/emulator-smoke-lib.sh`, `scripts/emulator-smoke.sh`,
+  `scripts/emulator-smoke-test.sh`); only `docs/agent/STATE.md` conflicted and both sides are kept.
+- **No other change:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow edit.
+
+## done (previous run — CI#334 weather-tile picker label fix, product + shell-only)
 
 - **Root cause:** `play/AndroidManifest.xml` declared `app.dotwel.widgets.DotWelWeatherWidgetProvider`
   without `android:label`, so its picker name was the application label `DotWel Launcher`. The smoke
@@ -45,6 +51,34 @@ when no task input is given, and continues from "next".
 - **Missing evidence / not claimed:** no Gradle/APK build, no emulator, no uiautomator dump and no
   actual CI. CI `build-debug-apk` and the API 37 smoke are the final proof that the tile is named
   `Weather` and selected.
+
+## done (previous run — CI#333 collapsed Weather search-row expansion, shell-only)
+
+- **Exact CI#333 observation:** after the idle recovery typed `Weather`, the picker showed one
+  collapsed search result row: clickable `widgets_list_header` with `app_title` = `DotWel Launcher`
+  and `app_subtitle` = a list of widget names (e.g. `Dotwel KWGT Date Time 3 Weather, Do...`).
+  `widget_picker_provider_bounds` only accepts a positive "N widgets" subtitle, so it returned no
+  header; the caller scrolled four times and failed. The list container is
+  `search_widgets_list_view`.
+- **New pure lib helper `widget_picker_search_header_bounds XML LABEL`:** returns the bounds of the
+  clickable `widgets_list_header` whose `app_title` exactly equals `LABEL`, regardless of subtitle,
+  and only when the hierarchy contains `search_widgets_list_view`. It fails closed on a missing/empty
+  file, empty label, missing search list, non-clickable header, malformed bounds or title prefix.
+- **Helper wiring:** `capture_ui_xml_after_widget_expand` takes the expected provider label as its
+  fourth argument. After the Weather search capture succeeds it resolves the search row, logs the
+  measured bounds, taps its centre with `tap_center_of_bounds`, sleeps 1, recaptures with
+  `capture_ui_xml` and returns 1 on any failed step. The real caller passes `$EXPECTED_LABEL`; its
+  existing exact Weather-cell decision/selection and the original fail string are unchanged and
+  Weather is never skipped.
+- **Tests:** three new fixture assertions cover the collapsed search row (found, exact-title
+  mismatch, header outside `search_widgets_list_view`). The executable expand-capture harness now
+  serves a search-list fixture at capture 5 and an expanded hierarchy at capture 6, asserting the
+  measured header tap, 6 captures and success; the always-idle and other-error cases still fail
+  closed. Static checks pin the new helper call and the passed label.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh` and `emulator-smoke-test.sh`;
+  `sh scripts/emulator-smoke-test.sh` → **1401 ok, 0 not ok, all passed**; `git diff --check` clean.
+- **Scope:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow change; shell only.
 
 ## done (previous run — CI#331 Weather-expansion idle capture, shell-only)
 

@@ -165,12 +165,16 @@ capture_ui_xml() (
 # Only that exact dump error is recoverable: disable the three animation scales,
 # retry up to three times, and if the picker is still not idle narrow it through
 # its measured search field by typing Weather so only weather previews render.
-# This helper only obtains a fresh hierarchy; the caller still enforces the exact
-# Weather expansion and cell selection and never skips either.
+# A Weather search collapses the group into one row whose subtitle is a list of
+# widget names, so that row is then expanded by its exact provider title before
+# the fresh hierarchy is returned. This helper only obtains a fresh hierarchy;
+# the caller still enforces the exact Weather expansion and cell selection and
+# never skips either.
 capture_ui_xml_after_widget_expand() (
     _cuex_name=$1
     _cuex_search_source=$2
     _cuex_log=$3
+    _cuex_label=$4
     _cuex_dump="$ARTIFACTS/uiautomator-$_cuex_name.txt"
     sleep 1
     if capture_ui_xml "$_cuex_name"; then
@@ -204,9 +208,19 @@ capture_ui_xml_after_widget_expand() (
     sleep 1
     if capture_ui_xml "$_cuex_name"; then
         printf 'expand-capture=search-weather ok\n' >> "$_cuex_log"
-        return 0
+    else
+        return 1
     fi
-    return 1
+    _cuex_search_header=$(widget_picker_search_header_bounds \
+        "$ARTIFACTS/$_cuex_name" "$_cuex_label")
+    [ -n "$_cuex_search_header" ] || return 1
+    printf 'expand-capture=search-weather-header %s\n' \
+        "$_cuex_search_header" >> "$_cuex_log"
+    tap_center_of_bounds "$_cuex_search_header" >> "$_cuex_log" 2>&1 || return 1
+    sleep 1
+    capture_ui_xml "$_cuex_name" || return 1
+    printf 'expand-capture=search-weather-expanded ok\n' >> "$_cuex_log"
+    return 0
 )
 
 # Poll the live resumed activity, bounded, until it belongs to $1. Only the
@@ -3913,7 +3927,7 @@ capture_weather_widget() {
                 _cww_expand_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand.xml"
                 if ! capture_ui_xml_after_widget_expand \
                     "weather-widget-expand-$_cww_expand.xml" \
-                    "$_cww_picker_xml" "$_cww_log"; then
+                    "$_cww_picker_xml" "$_cww_log" "$EXPECTED_LABEL"; then
                     fail "could not capture fresh picker XML after expanding Weather"
                 fi
                 _cww_picker_xml=$_cww_expand_xml
