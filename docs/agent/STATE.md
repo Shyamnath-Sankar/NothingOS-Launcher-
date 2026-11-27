@@ -3,21 +3,49 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#331 emulator-smoke fix on `agent/small-focused-fix-commit-and-p`; the
-  Weather-expansion capture now recovers from uiautomator "could not get idle state" by disabling
-  the three animation scales, retrying up to 3 times, then narrowing the picker to Weather via the
-  measured search field. Harness-only; no app/widget/manifest/workflow change. Shell suite green
-  locally, PENDING ACTUAL CI.**
-- branch: `agent/small-focused-fix-commit-and-p`
-- head: `95f697f` (harness fix + tests); pushed after commit.
+- current_phase: **CI#333 emulator-smoke fix on `agent/small-focused-harness-fix-comm`; after the
+  Weather search narrows the picker, the single collapsed `DotWel Launcher` search row (whose
+  subtitle is a widget-name list, not an "N widgets" count) is now expanded by its measured header
+  before the caller's unchanged Weather-cell decision runs. Harness-only; no app/widget/manifest/
+  workflow change. Shell suite green locally, PENDING ACTUAL CI.**
+- branch: `agent/small-focused-harness-fix-comm`
+- head: `6d39fac` (harness fix + tests); pushed after commit.
 - pr: **not created in this run**; open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/small-focused-fix-commit-and-p
-- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → 1392 ok, 0 not ok,
-  all passed; `sh -n` clean on both edited scripts; `git diff --check` clean. No Gradle build,
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/small-focused-harness-fix-comm
+- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → 1401 ok, 0 not ok,
+  all passed; `sh -n` clean on the three edited scripts; `git diff --check` clean. No Gradle build,
   emulator or actual CI.
-- next: push and let CI re-run the API 37 lane to prove the Weather expansion no longer times out;
-  then continue the v1 plan.
+- next: push and let CI re-run the API 37 lane to prove the collapsed Weather search row expands and
+  the exact Weather cell is still selected; then continue the v1 plan.
 - blockers: no PR from this runner; no actual CI/emulator here.
+
+## done (this run — CI#333 collapsed Weather search-row expansion, shell-only)
+
+- **Exact CI#333 observation:** after the idle recovery typed `Weather`, the picker showed one
+  collapsed search result row: clickable `widgets_list_header` with `app_title` = `DotWel Launcher`
+  and `app_subtitle` = a list of widget names (e.g. `Dotwel KWGT Date Time 3 Weather, Do...`).
+  `widget_picker_provider_bounds` only accepts a positive "N widgets" subtitle, so it returned no
+  header; the caller scrolled four times and failed. The list container is
+  `search_widgets_list_view`.
+- **New pure lib helper `widget_picker_search_header_bounds XML LABEL`:** returns the bounds of the
+  clickable `widgets_list_header` whose `app_title` exactly equals `LABEL`, regardless of subtitle,
+  and only when the hierarchy contains `search_widgets_list_view`. It fails closed on a missing/empty
+  file, empty label, missing search list, non-clickable header, malformed bounds or title prefix.
+- **Helper wiring:** `capture_ui_xml_after_widget_expand` takes the expected provider label as its
+  fourth argument. After the Weather search capture succeeds it resolves the search row, logs the
+  measured bounds, taps its centre with `tap_center_of_bounds`, sleeps 1, recaptures with
+  `capture_ui_xml` and returns 1 on any failed step. The real caller passes `$EXPECTED_LABEL`; its
+  existing exact Weather-cell decision/selection and the original fail string are unchanged and
+  Weather is never skipped.
+- **Tests:** three new fixture assertions cover the collapsed search row (found, exact-title
+  mismatch, header outside `search_widgets_list_view`). The executable expand-capture harness now
+  serves a search-list fixture at capture 5 and an expanded hierarchy at capture 6, asserting the
+  measured header tap, 6 captures and success; the always-idle and other-error cases still fail
+  closed. Static checks pin the new helper call and the passed label.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh -n` clean on `emulator-smoke.sh`, `emulator-smoke-lib.sh` and `emulator-smoke-test.sh`;
+  `sh scripts/emulator-smoke-test.sh` → **1401 ok, 0 not ok, all passed**; `git diff --check` clean.
+- **Scope:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow change; shell only.
 
 ## done (this run — CI#331 Weather-expansion idle capture, shell-only)
 
