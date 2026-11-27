@@ -404,13 +404,14 @@
     <string name="weather_widget_no_cache">No cached weather · Tap to refresh</string>
     <string name="weather_widget_unavailable">Weather unavailable</string>
     <string name="weather_widget_refresh_failed">Weather refresh failed · Tap to retry</string>
+    <string name="weather_widget_loading">Updating weather</string>
     <string name="weather_solar_unavailable">Unavailable</string>
     <string name="weather_temp_preview_description">Nothing Temp weather widget preview</string>
     <string name="weather_sun_preview_description">Nothing Sun Info weather widget preview</string>
     <string name="widget_weather_temp_label">Dotwel Nothing Temp</string>
-    <string name="widget_weather_temp_description">Optional Open-Meteo weather. Shows today\'s forecast low plus the day\'s high and low for a manually chosen city. Off by default; widget updates read the private cache and never use the network. No location or GPS permission.</string>
+    <string name="widget_weather_temp_description">Optional Open-Meteo current conditions. Shows the current temperature and condition for a manually chosen city. Off by default; widget updates read the private cache and never use the network. No location or GPS permission.</string>
     <string name="widget_weather_sun_label">Dotwel Nothing Sun Info</string>
-    <string name="widget_weather_sun_description">Optional Open-Meteo sunrise and sunset. Shows the next solar event for a manually chosen city, calculated from cached sunrise and sunset instants. Off by default; widget updates read the private cache and never use the network. No location or GPS permission.</string>
+    <string name="widget_weather_sun_description">Optional Open-Meteo current conditions. Shows a solar panel for a manually chosen city; sunrise and sunset read as unavailable when the cached forecast does not include them. Off by default; widget updates read the private cache and never use the network. No location or GPS permission.</string>
     <string name="mode_weather_temp">Cached forecast · optional network</string>
     <string name="mode_weather_sun">Cached sunrise/sunset · optional network</string>
     <string name="weather_preview_hint">Weather is optional and off by default. Tap this preview or Weather settings in the header to enable it, search for a city, and choose a result. Widgets read only the private cache.</string>
@@ -493,7 +494,7 @@
     <string name="pin_media_notification_confirmed">Notification widget added. Enable notification access if needed.</string>
 
     <string name="catalog_kwgt_digital2_desc">A right-aligned Nothing-style minute stack: previous relative minute, live time and next relative minute on a rounded panel. Uses a live TextClock; relative labels refresh on updates.</string>
-    <string name="catalog_kwgt_date_time3_desc">A right-aligned date and time card with AM/PM and an optional manual-city current weather line including US AQI. Weather is off by default and cache-only.</string>
+    <string name="catalog_kwgt_date_time3_desc">A date and time card with a live clock and an optional manual-city current weather line. Weather is off by default and cache-only; readings the cache does not carry stay unavailable.</string>
     <string name="catalog_interstellar_endurance_desc">Experimental, still rough: spacecraft details differ from the source preview. Source spacecraft geometry with Android-owned hour, minute and seconds hands. Android 12+ is required. No copied bitmap artwork.</string>
     <string name="catalog_interstellar_analog_desc">Experimental, still rough: spacecraft details differ from the source preview. The source Endurance analog variant with hour and minute hands plus the shape spacecraft. Requires Android 12+ for the supported RemoteViews path; no third-party art is bundled.</string>
     <string name="catalog_interstellar_analog2_desc">Experimental, still rough: spacecraft details differ from the source preview. Source static spacecraft dial with Android-owned hour and minute hands. Android 8+ supported. Android uses a smooth hour hand rather than the source stepped-hour behavior.</string>

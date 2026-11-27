@@ -1,17 +1,21 @@
 # Dotwel widget set attribution
 
 Ported from [`Shyamnath-Sankar/Dotwel-Widgets`](https://github.com/Shyamnath-Sankar/Dotwel-Widgets)
-at commit `7167bcdf001b604f1d61a2f07f70825a999eb767` (MIT). The original
-`docs/ATTRIBUTION.md` is preserved below, with paths adapted to this repository.
-Weather widgets are excluded. Media widgets compile but render an unavailable
-state because this build does not declare a notification-listener service.
+(MIT). The non-weather widget set is pinned to commit
+`7167bcdf001b604f1d61a2f07f70825a999eb767`. The twelve weather providers are
+pinned to the later crash-fixed commit
+`3517608833a184a3f97148ff113ea600a24e6e1b`, which decorates each per-size
+`RemoteViews` before combining them. The original `docs/ATTRIBUTION.md` is
+preserved below, with paths adapted to this repository. Media widgets compile
+but render an unavailable state because this build does not declare a
+notification-listener service.
 
 # Third-party attribution
 
 The Dotwel widget set was originally authored as an independent app. It is not
 affiliated with, endorsed by, or sponsored by Nothing Technology Limited,
 OnePlus, Kustom, or the referenced authors. It is ported here into the DotWel
-Launcher as a widget source set, with the weather widgets intentionally excluded.
+Launcher as a widget source set, including the twelve weather providers.
 
 ## AwesomeAWidgets (MIT)
 
@@ -374,8 +378,30 @@ the app from About & source credits > View MIT license texts.
   `Nothing_Date_Time2`, `Nothing_Digital4`, `Nothing_Digital3`,
   `Nothing_Digital`, and `Nothing_Mini_Calender` are implemented in this
   checkpoint (15 of 40); the rest remain pending or dependency-blocked and are
-  not claimed as imported. All 21 registered providers are build-verified only
-  and remain runtime-unverified.
+  not claimed as imported. All 61 registered providers (49 non-weather plus 12
+  weather) are build-verified only and remain runtime-unverified.
+
+## Dotwel weather providers (MIT)
+
+Source: [`Shyamnath-Sankar/Dotwel-Widgets`](https://github.com/Shyamnath-Sankar/Dotwel-Widgets)
+at commit `3517608833a184a3f97148ff113ea600a24e6e1b`. The twelve providers are
+`NothingTempWidgetProvider`, `NothingSunInfoWidgetProvider`,
+`KwgtDateTime3WidgetProvider`, and the nine `NtWx*Provider` variants. Their
+renderers are native Kotlin translations of the author-written
+`NothingTempRenderer`, `NothingSunInfoRenderer`, `KwgtDateTime3Renderer`,
+`NtWxRenderer`, `NtWxExtraRenderer` and `DotwelWeatherIcons` code. The upstream
+fonts and drawable payloads are not copied; text uses platform families and the
+weather symbols are Dotwel's original geometric art.
+
+The upstream widgets expect a richer snapshot (high/low, solar events, US AQI,
+precipitation probability and a city label). This launcher deliberately exposes
+only a coordinate-free current temperature, MET symbol, evidence time and stale
+flag through `WeatherWidgetStateStore`. The port therefore renders `--` or
+"Unavailable" for fields the shared state does not carry. It never invents a
+reading, never reads the device location, never performs network I/O from a
+widget update, and never schedules an alarm or worker. Multi-page NtWx kinds
+cycle pages on tap; all other taps open the existing Weather settings
+destination.
 
 ## Not included
 
@@ -390,5 +416,7 @@ the app from About & source credits > View MIT license texts.
 - `nothing-kde-widgets` and `nothing_archive` source, archives, or assets; those
   repositories were inspected as references only.
 - Media/notification, location, broad-storage, accessibility, overlay, or
-  foreground-service capabilities. Weather data remains a pending, isolated
-  domain/transport layer; weather providers are intentionally not ported.
+  foreground-service capabilities. Weather data remains an isolated
+  domain/transport layer. The twelve ported weather providers add no network,
+  location or scheduling path of their own; they render only the launcher's
+  shared, coordinate-free cache state.

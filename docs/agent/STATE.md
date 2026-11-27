@@ -3,25 +3,55 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Dotwel widget port finished on `agent/continue-and-finish-the-dotwel`;
-  inventory proven complete at 49 non-weather providers; guard green locally, PENDING ACTUAL CI.**
-  The pinned upstream commit `7167bcdf001b604f1d61a2f07f70825a999eb767` declares 61 widget
-  providers: 12 are weather and excluded, the other 49 are all present and registered. No provider
-  was missing; the task's "49 of 54" premise was a miscount. The guard now pins the exact
-  provider→info-XML inventory, the weather exclusions, info-XML layouts, attribution content and
-  hermeticity.
-- branch: `agent/continue-and-finish-the-dotwel`
-- head: `f861f4c` (plus this docs commit); branch pushed and tracking `origin`.
+- current_phase: **The twelve Dotwel weather providers are ported on
+  `agent/add-the-12-dotwel-ntwx-weather`; combined inventory is 61; guard 12/12 and pure weather
+  tests 12/12 locally, PENDING ACTUAL CI.** The non-weather 49 stay pinned to
+  `7167bcdf001b604f1d61a2f07f70825a999eb767`; the weather 12 come from the crash-fixed
+  `3517608833a184a3f97148ff113ea600a24e6e1b`. They read only `WeatherWidgetStateStore` and add no
+  network, location, alarm or worker path.
+- branch: `agent/add-the-12-dotwel-ntwx-weather`
+- head: this commit (docs + weather port); branch not yet pushed in this run.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/continue-and-finish-the-dotwel
-- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). The guard test was compiled and
-  run with `kotlinc` + minimal JUnit stubs and passed 10/10; a mutation (removing the
-  `ClockWidgetProvider` receiver) failed 3/10 as expected. The pushed branch is the CI trigger.
-- next: let CI run `testLawnWithQuickstepPlayDebugUnitTest` (real JUnit) and
-  `assembleLawnWithQuickstepPlayDebug`; open the PR.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/add-the-12-dotwel-ntwx-weather
+- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). The guard and pure weather tests
+  were compiled and run with `kotlinc` + minimal JUnit stubs. The new production weather files also
+  compile against `android.jar` (API 37) with local `R`/`PreferenceActivity` stubs. The pushed
+  branch is the CI trigger.
+- next: push and let CI run `testLawnWithQuickstepPlayDebugUnitTest` (real JUnit),
+  `assembleLawnWithQuickstepPlayDebug` and the API 37 lane; inspect the 12 new widgets on a device.
 - blockers: no PR from this runner (gh unauthenticated); no real Gradle test/APK/emulator/CI here.
 
-## done (this run — finish the Dotwel widget port on `agent/continue-and-finish-the-dotwel`, JVM/guard-only)
+## done (this run — port the twelve Dotwel weather providers, JVM/compile-check only)
+
+- **Fixed source, not the crashing commit:** the weather set comes from
+  `3517608833a184a3f97148ff113ea600a24e6e1b`, whose only relevant change is decorating each
+  per-size `RemoteViews` before `buildBitmapViews` combines them. `BaseWidgetProvider` already
+  exposes the same `decorate` hook, so the crash fix is preserved.
+- **Providers added (12):** `NothingTempWidgetProvider`, `NothingSunInfoWidgetProvider`,
+  `KwgtDateTime3WidgetProvider`, and `NtWx{Circle,Square,Rect,Combo,Sunset,Air,W1Temp,W1Status,W1Rain}Provider`.
+  The Dotwel manifest block now declares 61 provider→info-XML pairs; the guard pins the exact list.
+- **Resources:** added `weather_temp_widget_info`, `weather_sun_widget_info`,
+  `kwgt_date_time3_widget_info` and nine `ntwx_*_info` XMLs, all `updatePeriodMillis=0` and
+  permission-free; added `widget_weather_sun.xml` and `widget_kwgt_date_time3.xml`.
+- **Data honesty:** the launcher state carries only temperature, MET symbol, evidence time and
+  stale. `NtWxWeather` adapts it; high/low, solar instants, AQI and precipitation probability render
+  `--`/`Unavailable` rather than a guess. Descriptions were corrected to stop claiming high/low,
+  sunrise/sunset or US AQI that the cache does not provide.
+- **No new load path:** the providers read `WeatherWidgetStateStore` only. There is no
+  `MetWeatherRepository`, transport, work factory, cache store, location API, `AlarmManager`,
+  `WorkManager` or `MinuteTickScheduler` in the weather sources; the guard asserts this.
+- **Wiring:** `WeatherWidgetUpdater` refreshes the 12; `WeatherHomeRuntime` and
+  `NothingUiWidgetMonitor` call it after state changes; `WidgetUpdater.providers` includes them.
+  Multi-page NtWx kinds cycle pages on tap; other taps open the existing Weather settings route.
+- **Attribution:** `docs/ATTRIBUTION.md` now pins both upstream commits, records the weather
+  adapter and placeholder policy, and keeps the MIT texts bundled.
+- **Tests:** `NtWxWeatherCodeTest` 7/7, `NtWxWeatherTest` 5/5, `DotwelWidgetPortGuardTest` 12/12
+  under `kotlinc` + JUnit stubs. Production weather sources compile against `android.jar` API 37
+  with local `R`/`PreferenceActivity` stubs; no Gradle/APK/emulator/CI was run here.
+- **Scope:** no workflow, Gradle, SDK, `applicationId`, signing, permission or other-repo change.
+  The 49 non-weather providers are untouched.
+
+## done (previous run — finish the Dotwel widget port on `agent/continue-and-finish-the-dotwel`, JVM/guard-only)
 
 - **Inventory proven complete, not assumed:** the pinned upstream manifest
   (`7167bcdf001b604f1d61a2f07f70825a999eb767`) declares 61 widget receivers: 12 weather and 49

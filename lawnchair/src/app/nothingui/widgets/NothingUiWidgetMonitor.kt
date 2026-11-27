@@ -25,6 +25,7 @@ import app.dotwel.widgets.DotWelBatteryWidgetProvider
 import app.dotwel.widgets.DotWelClockWidgetProvider
 import app.dotwel.widgets.DotWelDeviceWidgetProvider
 import app.dotwel.widgets.DotWelWeatherWidgetProvider
+import app.nothingui.widgets.dotwel.WeatherWidgetUpdater
 
 /**
  * Lifecycle-bounded foreground monitor for the Play home widgets.
@@ -88,5 +89,6 @@ object NothingUiWidgetMonitor {
         DotWelBatteryWidgetProvider.refreshAll(context)
         DotWelDeviceWidgetProvider.refreshAll(context)
         DotWelWeatherWidgetProvider.refreshAll(context)
+        WeatherWidgetUpdater.refreshAll(context)
     }
 }

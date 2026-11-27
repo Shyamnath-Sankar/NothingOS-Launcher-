@@ -20,6 +20,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import app.dotwel.widgets.DotWelWeatherWidgetProvider
+import app.nothingui.widgets.dotwel.WeatherWidgetUpdater
 import com.android.launcher3.BuildConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,6 +109,9 @@ object WeatherHomeRuntime {
      */
     private fun refreshWeatherWidgets(context: Context) {
         val appContext = context.applicationContext
-        mainHandler.post { DotWelWeatherWidgetProvider.refreshAll(appContext) }
+        mainHandler.post {
+            DotWelWeatherWidgetProvider.refreshAll(appContext)
+            WeatherWidgetUpdater.refreshAll(appContext)
+        }
     }
 }

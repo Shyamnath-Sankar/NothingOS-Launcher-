@@ -113,7 +113,7 @@ object WidgetUpdater {
         NothingMediaPlayer3Provider::class.java,
         UniversalMediaPlayerProvider::class.java,
         MaterialNotificationWidgetProvider::class.java,
-    )
+    ) + WeatherWidgetUpdater.providers
 
     fun updateAll(context: Context) {
         val manager = AppWidgetManager.getInstance(context)

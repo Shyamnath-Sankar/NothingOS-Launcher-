@@ -24,14 +24,15 @@ import org.junit.Test
 
 /**
  * Text-level guard for the Dotwel widget port. It keeps the provider inventory,
- * weather exclusion, hermeticity and attribution files from drifting without
+ * weather data source, hermeticity and attribution files from drifting without
  * needing an Android runtime.
  *
- * The pinned upstream commit (`7167bcdf001b604f1d61a2f07f70825a999eb767`)
- * declares 61 widget providers. Twelve are weather widgets and are excluded;
- * the remaining 49 are the complete non-weather port. This test pins that
- * inventory by name so a missing or accidentally-dropped provider fails the
- * build instead of silently disappearing.
+ * The non-weather port is pinned to upstream commit
+ * `7167bcdf001b604f1d61a2f07f70825a999eb767`. The twelve weather providers are
+ * pinned to the later crash-fixed commit
+ * `3517608833a184a3f97148ff113ea600a24e6e1b` and must read only the launcher's
+ * existing shared weather render state. Together they are the complete
+ * sixty-one-provider inventory.
  */
 class DotwelWidgetPortGuardTest {
 
@@ -67,14 +68,34 @@ class DotwelWidgetPortGuardTest {
         sourceDir.walk().filter { it.isFile && it.extension == "kt" }
             .joinToString("\n") { it.readText() }
 
+    private fun weatherSourceFiles(): List<File> = listOf(
+        "WeatherWidgetProvider.kt",
+        "NtWxWidgetProviders.kt",
+        "NtWxRenderer.kt",
+        "NtWxExtraRenderer.kt",
+        "NtWxWeather.kt",
+        "NtWxWeatherCode.kt",
+        "DotwelWeatherIcons.kt",
+        "NothingTempRenderer.kt",
+        "NothingSunInfoRenderer.kt",
+        "KwgtDateTime3WidgetProvider.kt",
+        "KwgtDateTime3Renderer.kt",
+        "WeatherCanvas.kt",
+        "WeatherWidgetUpdater.kt",
+    ).map { File(sourceDir, it) }
+        .onEach { assertTrue("missing ${it.name}", it.isFile) }
+
+    private fun weatherSourceText(): String =
+        weatherSourceFiles().joinToString("\n") { it.readText() }
+
     @Test
-    fun declaresExactlyTheFortyNineNonWeatherProviders() {
+    fun declaresExactlyTheSixtyOneProviders() {
         val receivers = declaredProviders()
-        assertEquals("provider count", EXPECTED_NON_WEATHER_PROVIDERS.size, receivers.size)
+        assertEquals("provider count", EXPECTED_PROVIDERS.size, receivers.size)
         assertEquals("duplicate providers", receivers.size, receivers.distinct().size)
         assertEquals(
-            "declared providers differ from the pinned non-weather inventory",
-            EXPECTED_NON_WEATHER_PROVIDERS.map { it.first }.sorted(),
+            "declared providers differ from the pinned inventory",
+            EXPECTED_PROVIDERS.map { it.first }.sorted(),
             receivers.sorted(),
         )
     }
@@ -84,45 +105,91 @@ class DotwelWidgetPortGuardTest {
         val declared = declaredProviders()
         val resources = declaredInfoXmls()
         assertEquals(declared.size, resources.size)
-        EXPECTED_NON_WEATHER_PROVIDERS.forEach { (provider, infoXml) ->
+        EXPECTED_PROVIDERS.forEach { (provider, infoXml) ->
             assertTrue("$provider is not declared", provider in declared)
             assertTrue("$infoXml is not declared", infoXml in resources)
         }
         assertEquals(
             "declared info XMLs differ from the pinned inventory",
-            EXPECTED_NON_WEATHER_PROVIDERS.map { it.second }.sorted(),
+            EXPECTED_PROVIDERS.map { it.second }.sorted(),
             resources.sorted(),
         )
     }
 
     @Test
-    fun excludesEveryWeatherProvider() {
-        WEATHER_PROVIDERS.forEach { name ->
-            assertFalse("manifest still declares $name", dotwelBlock.contains(name))
-            assertFalse(
-                "source still contains $name",
-                sourceDir.walk().any { it.isFile && it.readText().contains(name) },
-            )
+    fun weatherProvidersReadOnlyTheSharedLauncherRenderState() {
+        val weatherSources = weatherSourceText()
+        assertTrue(
+            "weather widgets do not use the shared launcher render state",
+            weatherSources.contains("WeatherWidgetStateStore"),
+        )
+        listOf(
+            "MetWeatherRepository",
+            "OkHttpWeatherTransport",
+            "WeatherWorkFactory",
+            "FileWeatherCacheStore",
+            "WeatherHomeOwner",
+            "WeatherHomeRuntime",
+            "java.net.",
+            "okhttp",
+            "HttpURLConnection",
+            "Socket(",
+        ).forEach { token ->
+            assertFalse("weather source contains $token", weatherSources.contains(token))
         }
-        WEATHER_INFO_XMLS.forEach { name ->
-            assertFalse("weather info XML $name was ported", File(resXmlDir, "$name.xml").exists())
-            assertFalse("manifest still references $name", dotwelBlock.contains("@xml/$name"))
-        }
-        assertFalse(File(sourceDir, "NtWxRenderer.kt").exists())
-        assertFalse(File(sourceDir, "WeatherWidgetProvider.kt").exists())
-        assertFalse(File(sourceDir, "weather").exists())
     }
 
     @Test
-    fun sharedWeatherNamedLayoutIsOnlyUsedByNonWeatherProviders() {
+    fun weatherProvidersAddNoLocationTrackingOrBackgroundScheduling() {
+        val weatherSources = weatherSourceText()
+        listOf(
+            "ACCESS_FINE_LOCATION",
+            "ACCESS_COARSE_LOCATION",
+            "ACCESS_BACKGROUND_LOCATION",
+            "LocationManager",
+            "getLastKnownLocation",
+            "requestLocationUpdates",
+            "FusedLocationProviderClient",
+            "AlarmManager",
+            "WorkManager",
+            "JobScheduler",
+            "setRepeating",
+            "MinuteTickScheduler",
+            "SCHEDULE_EXACT_ALARM",
+        ).forEach { token ->
+            assertFalse("weather source contains $token", weatherSources.contains(token))
+        }
+        assertFalse(dotwelBlock.contains("ACCESS_FINE_LOCATION"))
+        assertFalse(dotwelBlock.contains("ACCESS_COARSE_LOCATION"))
+        assertFalse(dotwelBlock.contains("ACCESS_BACKGROUND_LOCATION"))
+    }
+
+    @Test
+    fun weatherInfoXmlsAreCacheOnlyAndDeclareNoPermission() {
+        EXPECTED_WEATHER_PROVIDERS.map { it.second }.forEach { name ->
+            val info = File(resXmlDir, "$name.xml")
+            assertTrue("missing res/xml/$name.xml", info.isFile)
+            val text = info.readText()
+            assertTrue("$name.xml must not poll", text.contains("android:updatePeriodMillis=\"0\""))
+            assertFalse("$name.xml declares a permission", text.contains("uses-permission"))
+            assertFalse("$name.xml requests location", text.contains("LOCATION"))
+        }
+    }
+
+    @Test
+    fun weatherNamedLayoutIsSharedByWeatherAndNonWeatherProviders() {
         // NtAway and NtPhoto reuse the upstream widget_weather_temp layout. It is
-        // not a weather widget: no weather provider is declared and no weather
-        // renderer is ported. Keep the shared layout, but prove the reuse.
+        // now also the NtWx weather surface. Keep the shared layout and prove
+        // every intended user.
         assertTrue(File(root, "lawnchair/res/layout/widget_weather_temp.xml").isFile)
+        assertTrue(File(root, "lawnchair/res/layout/widget_weather_sun.xml").isFile)
+        assertTrue(File(root, "lawnchair/res/layout/widget_kwgt_date_time3.xml").isFile)
         val source = allSourceText()
         assertTrue(source.contains("NtAwayWidgetProvider"))
         assertTrue(source.contains("BaseNtPhotoProvider"))
         assertTrue(source.contains("R.layout.widget_weather_temp"))
+        assertTrue(source.contains("R.layout.widget_weather_sun"))
+        assertTrue(source.contains("R.layout.widget_kwgt_date_time3"))
     }
 
     @Test
@@ -142,7 +209,8 @@ class DotwelWidgetPortGuardTest {
         // registered in the manifest is just as broken as a receiver without a
         // class. Abstract bases are intentionally not registered.
         val concrete = Regex(
-            "(?m)^(?:open\\s+|internal\\s+|private\\s+)?class\\s+([A-Za-z0-9_]+)\\s*:\\s*[A-Za-z0-9_]*Provider\\s*\\(\\s*\\)",
+            "(?m)^(?:open\\s+|internal\\s+|private\\s+)?class\\s+" +
+                "([A-Za-z0-9_]+)\\s*:\\s*[A-Za-z0-9_]*Provider\\s*\\(\\s*\\)",
         ).findAll(allSourceText()).map { it.groupValues[1] }.toList()
         assertEquals(
             "concrete provider classes differ from the manifest declarations",
@@ -153,7 +221,7 @@ class DotwelWidgetPortGuardTest {
 
     @Test
     fun everyAppWidgetInfoFileAndItsLayoutsExist() {
-        EXPECTED_NON_WEATHER_PROVIDERS.map { it.second }.forEach { name ->
+        EXPECTED_PROVIDERS.map { it.second }.forEach { name ->
             val info = File(resXmlDir, "$name.xml")
             assertTrue("missing res/xml/$name.xml", info.isFile)
             val text = info.readText()
@@ -190,8 +258,12 @@ class DotwelWidgetPortGuardTest {
     fun attributionAndLicenseTextsAreBundled() {
         val attribution = File(root, "docs/ATTRIBUTION.md").readText()
         assertTrue(
-            "attribution does not pin the upstream commit",
+            "attribution does not pin the non-weather upstream commit",
             attribution.contains("7167bcdf001b604f1d61a2f07f70825a999eb767"),
+        )
+        assertTrue(
+            "attribution does not pin the weather upstream commit",
+            attribution.contains("3517608833a184a3f97148ff113ea600a24e6e1b"),
         )
         assertTrue("attribution does not mention MIT", attribution.contains("MIT"))
         listOf(
@@ -283,34 +355,26 @@ class DotwelWidgetPortGuardTest {
             "WorldWidgetProvider" to "world_widget_info",
         )
 
-        val WEATHER_PROVIDERS = listOf(
-            "KwgtDateTime3WidgetProvider",
-            "NothingSunInfoWidgetProvider",
-            "NothingTempWidgetProvider",
-            "NtWxAirProvider",
-            "NtWxCircleProvider",
-            "NtWxComboProvider",
-            "NtWxRectProvider",
-            "NtWxSquareProvider",
-            "NtWxSunsetProvider",
-            "NtWxW1RainProvider",
-            "NtWxW1StatusProvider",
-            "NtWxW1TempProvider",
+        /**
+         * The complete weather provider inventory at the crash-fixed upstream
+         * commit `3517608833a184a3f97148ff113ea600a24e6e1b`.
+         */
+        val EXPECTED_WEATHER_PROVIDERS = listOf(
+            "KwgtDateTime3WidgetProvider" to "kwgt_date_time3_widget_info",
+            "NothingSunInfoWidgetProvider" to "weather_sun_widget_info",
+            "NothingTempWidgetProvider" to "weather_temp_widget_info",
+            "NtWxAirProvider" to "ntwx_air_info",
+            "NtWxCircleProvider" to "ntwx_circle_info",
+            "NtWxComboProvider" to "ntwx_combo_info",
+            "NtWxRectProvider" to "ntwx_rect_info",
+            "NtWxSquareProvider" to "ntwx_square_info",
+            "NtWxSunsetProvider" to "ntwx_sunset_info",
+            "NtWxW1RainProvider" to "ntwx_w1rain_info",
+            "NtWxW1StatusProvider" to "ntwx_w1status_info",
+            "NtWxW1TempProvider" to "ntwx_w1temp_info",
         )
 
-        val WEATHER_INFO_XMLS = listOf(
-            "kwgt_date_time3_widget_info",
-            "weather_sun_widget_info",
-            "weather_temp_widget_info",
-            "ntwx_air_info",
-            "ntwx_circle_info",
-            "ntwx_combo_info",
-            "ntwx_rect_info",
-            "ntwx_square_info",
-            "ntwx_sunset_info",
-            "ntwx_w1rain_info",
-            "ntwx_w1status_info",
-            "ntwx_w1temp_info",
-        )
+        val EXPECTED_PROVIDERS =
+            (EXPECTED_NON_WEATHER_PROVIDERS + EXPECTED_WEATHER_PROVIDERS).sortedBy { it.first }
     }
 }

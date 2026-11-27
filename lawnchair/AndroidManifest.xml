@@ -211,7 +211,7 @@
             android:name="org.chickenhook.restrictionbypass.BypassProvider"
             android:authorities="${applicationId}.restrictionbypass"
             tools:node="remove"/>
-        <!-- Dotwel widget set (MIT). Weather widgets are intentionally not ported. -->
+        <!-- Dotwel widget set (MIT). Weather widgets read only the shared launcher weather state. -->
         <receiver
             android:name="app.nothingui.widgets.dotwel.ClockWidgetProvider"
             android:exported="true"
@@ -938,6 +938,186 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/away_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NothingTempWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_weather_temp_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_temp_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NothingSunInfoWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_weather_sun_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/weather_sun_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxCircleProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_circle">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_circle_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxSquareProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_square">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_square_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxRectProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_rect">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_rect_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxComboProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_combo">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_combo_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxSunsetProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_sunset">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_sunset_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxAirProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_air">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_air_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxW1TempProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_w1temp">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_w1temp_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxW1StatusProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_w1status">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_w1status_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.NtWxW1RainProvider"
+            android:exported="true"
+            android:label="@string/widget_ntwx_w1rain">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/ntwx_w1rain_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.nothingui.widgets.dotwel.KwgtDateTime3WidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_kwgt_date_time3_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/kwgt_date_time3_widget_info" />
         </receiver>
 
         <receiver
