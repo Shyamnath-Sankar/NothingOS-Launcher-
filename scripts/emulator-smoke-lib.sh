@@ -3628,6 +3628,18 @@ widget_picker_weather_decision() (
         printf 'select\n'
         return 0
     fi
+    # A narrowed Weather search list (search_widgets_list_view) reports widget
+    # names instead of a "<n> widgets" subtitle, so no provider header is
+    # measured and it may have scrolled away. The exact unique description
+    # preview and the full-visibility check still fail closed on ambiguity or a
+    # clipped cell, so select in that narrow mode only.
+    if [ -z "$header" ] && [ -n "$candidate" ] &&
+        widget_picker_preview_is_visible "$candidate" "$viewport" &&
+        [ -s "$xml" ] &&
+        grep -Eq 'resource-id="[^"]*search_widgets_list_view"' "$xml"; then
+        printf 'select\n'
+        return 0
+    fi
     state=$(widget_picker_provider_state "$xml" "$header")
     if [ -n "$header" ] && [ "$state" = collapsed ] &&
         [ "$expand_count" -lt "$max_expand" ]; then

@@ -217,6 +217,7 @@
         -->
         <receiver
             android:name="app.dotwel.widgets.DotWelWeatherWidgetProvider"
+            android:label="@string/nothingui_weather_widget_label"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
