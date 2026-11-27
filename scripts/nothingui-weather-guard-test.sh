@@ -202,6 +202,16 @@ sed -i '/app.dotwel.widgets.DotWelWeatherWidgetProvider/,/<\/receiver>/ s/androi
 expect_fail 'an exported weather widget receiver is rejected'
 
 reset_fixture
+sed -i '/android:label="@string\/nothingui_weather_widget_label"/d' \
+    "$FIXTURE/play/AndroidManifest.xml"
+expect_fail 'a weather widget receiver without its picker label is rejected'
+
+reset_fixture
+sed -i 's|<string name="nothingui_weather_widget_label">Weather</string>|<string name="nothingui_weather_widget_label">DotWel Launcher</string>|' \
+    "$FIXTURE/lawnchair/res/values/strings.xml"
+expect_fail 'a weather widget picker label other than Weather is rejected'
+
+reset_fixture
 printf '\n<appwidget launcher:className="app.dotwel.widgets.DotWelWeatherWidgetProvider" />\n' \
     >>"$FIXTURE/play/res/xml/default_workspace_4x5.xml"
 expect_fail 'auto-seeding the weather widget into the default layout is rejected'

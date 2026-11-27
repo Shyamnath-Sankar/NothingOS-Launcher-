@@ -410,6 +410,12 @@ if ! grep -A6 'app.dotwel.widgets.DotWelWeatherWidgetProvider' "$PLAY_MANIFEST" 
     grep -Fq 'android:exported="false"'; then
     fail 'the weather widget receiver is exported or has no exported=false declaration'
 fi
+if ! grep -A6 'app.dotwel.widgets.DotWelWeatherWidgetProvider' "$PLAY_MANIFEST" |
+    grep -Fq 'android:label="@string/nothingui_weather_widget_label"'; then
+    fail 'the weather widget receiver has no label, so the picker would name it after the app'
+fi
+require_text "$WIDGET_STRINGS" '<string name="nothingui_weather_widget_label">Weather</string>' \
+    'the weather widget picker label must be the searchable name Weather'
 require_text "$PLAY_MANIFEST" '@xml/nothingui_weather_widget_info' \
     'the Play manifest does not point the weather receiver at its metadata'
 forbid_text "$DEFAULT_LAYOUT" 'DotWelWeatherWidgetProvider' \

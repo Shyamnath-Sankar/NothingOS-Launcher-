@@ -3014,6 +3014,82 @@ widget_picker_provider_bounds() (
         '
 )
 
+# Print the bounds ("x1 y1 x2 y2") of a clickable widgets_list_header whose
+# app_title exactly matches $2, regardless of its subtitle. This is only for a
+# narrowed search result list (search_widgets_list_view): a filtered group row
+# reports its widget names as the subtitle instead of a "<n> widgets" count, so
+# widget_picker_provider_bounds rejects it. The XML must contain the search
+# result list; any other hierarchy yields no bounds. The subtitle is locale text
+# and is deliberately not inspected.
+widget_picker_search_header_bounds() (
+    xml=$1
+    want=$2
+    [ -s "$xml" ] || return 0
+    [ -n "$want" ] || return 0
+    grep -Eq 'resource-id="[^"]*search_widgets_list_view"' "$xml" || return 0
+    tr '>' '\n' < "$xml" |
+        awk -v want="$want" '
+            function attr(s, name,    pat, v) {
+                pat = "[[:space:]]" name "=\"[^\"]*\""
+                if (!match(s, pat)) return ""
+                v = substr(s, RSTART, RLENGTH)
+                sub("^[[:space:]]" name "=\"", "", v)
+                sub("\"$", "", v)
+                return v
+            }
+            function emit(b,    s, p, n) {
+                if (b !~ /^\[[0-9]+,[0-9]+\]\[[0-9]+,[0-9]+\]$/) return
+                s = b
+                gsub(/\[/, " ", s)
+                gsub(/\]/, " ", s)
+                gsub(/,/, " ", s)
+                sub(/^[[:space:]]+/, "", s)
+                sub(/[[:space:]]+$/, "", s)
+                n = split(s, p, /[[:space:]]+/)
+                if (n == 4) print p[1], p[2], p[3], p[4]
+            }
+            {
+                if ($0 ~ /<\/node/) {
+                    if (sp > 0) sp--
+                    next
+                }
+                if ($0 !~ /<node[[:space:]]/) next
+                rid = attr($0, "resource-id")
+                click = attr($0, "clickable")
+                bounds = attr($0, "bounds")
+                text = attr($0, "text")
+                selfclose = ($0 ~ /\/[[:space:]]*$/)
+                is_header = (rid ~ /(^|\/)widgets_list_header$/ &&
+                    click == "true" && bounds != "")
+                if (!selfclose) {
+                    sp++
+                    header_idx[sp] = 0
+                }
+                if (is_header) {
+                    hcount++
+                    header_bounds[hcount] = bounds
+                    header_title[hcount] = ""
+                    if (!selfclose) header_idx[sp] = hcount
+                }
+                hd = 0
+                for (i = sp; i >= 1; i--) {
+                    if (header_idx[i] > 0) {
+                        hd = header_idx[i]
+                        break
+                    }
+                }
+                if (hd > 0 && rid ~ /(^|\/)app_title$/) header_title[hd] = text
+            }
+            END {
+                for (i = 1; i <= hcount; i++) {
+                    if (header_title[i] != want) continue
+                    emit(header_bounds[i])
+                    exit
+                }
+            }
+        '
+)
+
 # Print the bounds of the widget_preview_container below the selected provider
 # header and above the next provider header. The container must be clickable or
 # long-clickable, matching the inherited WidgetCell preview. A preview from a
@@ -3549,6 +3625,18 @@ widget_picker_weather_decision() (
     max_scroll=${8:-4}
     if [ -n "$header" ] && [ -n "$candidate" ] &&
         widget_picker_preview_is_visible "$candidate" "$viewport"; then
+        printf 'select\n'
+        return 0
+    fi
+    # A narrowed Weather search list (search_widgets_list_view) reports widget
+    # names instead of a "<n> widgets" subtitle, so no provider header is
+    # measured and it may have scrolled away. The exact unique description
+    # preview and the full-visibility check still fail closed on ambiguity or a
+    # clipped cell, so select in that narrow mode only.
+    if [ -z "$header" ] && [ -n "$candidate" ] &&
+        widget_picker_preview_is_visible "$candidate" "$viewport" &&
+        [ -s "$xml" ] &&
+        grep -Eq 'resource-id="[^"]*search_widgets_list_view"' "$xml"; then
         printf 'select\n'
         return 0
     fi

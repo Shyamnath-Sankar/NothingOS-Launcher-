@@ -928,6 +928,34 @@ assert_eq 'a HOME without a widget preview yields no preview bounds' \
     '' \
     "$(widget_picker_preview_bounds "$home_xml" '0 540 1080 660')"
 
+# A Weather search narrows the picker to one collapsed provider row whose
+# subtitle lists widget names instead of a "<n> widgets" count, so the normal
+# provider lookup rejects it. The search-list lookup must find that clickable
+# header by its exact title, and must only act on the real search result list.
+widget_search_header_xml="$TMP_DIR/widget-search-header.xml"
+cat > "$widget_search_header_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,380][1080,1800]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,400][1080,520]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" clickable="false" bounds="[100,420][400,460]" />
+        <node index="1" text="Dotwel KWGT Date Time 3 Weather, Do..." resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" clickable="false" bounds="[100,465][900,500]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+assert_eq 'a collapsed search row is found by its exact provider title despite a widget-name subtitle' \
+    '0 400 1080 520' \
+    "$(widget_picker_search_header_bounds "$widget_search_header_xml" 'DotWel Launcher')"
+assert_eq 'a search row title must match exactly, not as a prefix' \
+    '' \
+    "$(widget_picker_search_header_bounds "$widget_search_header_xml" DotWel)"
+assert_eq 'a provider header outside the search result list is not a search row' \
+    '' \
+    "$(widget_picker_search_header_bounds "$widget_headers_xml" Clock)"
+
 # Expanding a provider can move its header and the following header. The
 # expanded hierarchy must be re-resolved by title, or a stale header can skip
 # the real preview and associate a later provider's preview instead.
@@ -1362,6 +1390,76 @@ assert_eq 'the loop decision never selects a wrong-provider cell' \
     'reveal' \
     "$(widget_picker_weather_decision "$weather_picker_wrong_cell_xml" \
         '0 300 1080 420' '' "$weather_picker_wrong_viewport" 0 0 2 4)"
+
+# --- Weather narrowed-search selection fixtures ----------------------------
+# CI337: after the DotWel search row was expanded, the hierarchy is the Weather
+# filtered search list. Its provider row reports widget names as the subtitle, so
+# widget_picker_provider_bounds returns no header and the header scrolls away.
+# The exact description preview is still unique and fully visible, so the
+# decision may select in that narrow search-list mode only.
+weather_picker_search_xml="$TMP_DIR/weather-picker-search.xml"
+cat > "$weather_picker_search_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="Weather" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,360][1080,420]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,365][300,400]" />
+        <node index="1" text="Dotwel KWGT Date Time 3 Weather, Do..." resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,400][900,420]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][1040,900]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][1020,860]" />
+        <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][1000,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_search_viewport=$(widget_picker_viewport_bounds "$weather_picker_search_xml")
+weather_picker_search_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_xml" 'Weather, opens weather settings')
+assert_eq 'the narrowed Weather search list has no provider widget-count header' \
+    '' \
+    "$(widget_picker_provider_bounds "$weather_picker_search_xml" 'DotWel Launcher')"
+assert_eq 'the narrowed Weather search list still exposes the unique visible preview' \
+    '60 460 1020 860' "$weather_picker_search_candidate"
+assert_eq 'a visible unique candidate selects with an empty header in the search list' \
+    'select' \
+    "$(widget_picker_weather_decision "$weather_picker_search_xml" \
+        '' "$weather_picker_search_candidate" "$weather_picker_search_viewport" 1 0 2 4)"
+
+weather_picker_search_primary_xml="$TMP_DIR/weather-picker-search-primary.xml"
+sed 's#search_widgets_list_view#primary_widgets_list_view#' \
+    "$weather_picker_search_xml" > "$weather_picker_search_primary_xml"
+weather_picker_search_primary_viewport=$(widget_picker_viewport_bounds \
+    "$weather_picker_search_primary_xml")
+weather_picker_search_primary_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_primary_xml" 'Weather, opens weather settings')
+assert_eq 'the same visible candidate is measured outside search list mode' \
+    '60 460 1020 860' "$weather_picker_search_primary_candidate"
+assert_eq 'an empty header outside the search list never selects' \
+    'search' \
+    "$(widget_picker_weather_decision "$weather_picker_search_primary_xml" \
+        '' "$weather_picker_search_primary_candidate" \
+        "$weather_picker_search_primary_viewport" 1 0 2 4)"
+
+weather_picker_search_clipped_xml="$TMP_DIR/weather-picker-search-clipped.xml"
+sed 's#\[60,460\]\[1020,860\]#[60,1750][1020,1950]#' \
+    "$weather_picker_search_xml" > "$weather_picker_search_clipped_xml"
+weather_picker_search_clipped_viewport=$(widget_picker_viewport_bounds \
+    "$weather_picker_search_clipped_xml")
+weather_picker_search_clipped_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_clipped_xml" 'Weather, opens weather settings')
+assert_eq 'the clipped search-list candidate is still measured' \
+    '60 1750 1020 1950' "$weather_picker_search_clipped_candidate"
+assert_eq 'a clipped candidate never selects even in the search list' \
+    'fail' \
+    "$(widget_picker_weather_decision "$weather_picker_search_clipped_xml" \
+        '' "$weather_picker_search_clipped_candidate" \
+        "$weather_picker_search_clipped_viewport" 1 4 2 4)"
 
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
@@ -6157,6 +6255,168 @@ assert_true 'the widget-tap caller copies the returned notice activities artifac
     grep -Fq 'cp "$_weather_screen_notice_activities"' "$weather_widget_body"
 assert_false 'the widget-tap caller never reconstructs the helper artifact path' \
     grep -Fq 'weather-widget-tap-screen-notice' "$weather_widget_body"
+assert_true 'the weather widget expansion uses the idle-safe capture helper' \
+    grep -Fq 'capture_ui_xml_after_widget_expand' "$weather_widget_body"
+
+# --- executable expand-capture idle recovery contract ----------------------
+# Source the real expand capture helper and run it against stubbed captures:
+# only the "could not get idle state" dump error may trigger the animation
+# scale reset and retries, a still-not-idle picker is narrowed to Weather
+# through the measured search field, and every other outcome fails closed.
+expand_helper_body="$TMP_DIR/capture-after-widget-expand.sh"
+sed -n '/^capture_ui_xml_after_widget_expand() (/,/^)/p' "$SMOKE" > "$expand_helper_body"
+assert_true 'the expand idle-safe capture helper is extractable' \
+    test -s "$expand_helper_body"
+assert_true 'the expand idle-safe capture reacts to the exact idle-state dump error' \
+    grep -Fq "could not get idle state" "$expand_helper_body"
+assert_true 'the expand idle-safe capture disables all three animation scales' \
+    sh -c 'grep -Fq "settings put global animator_duration_scale 0" "$1" &&
+        grep -Fq "settings put global window_animation_scale 0" "$1" &&
+        grep -Fq "settings put global transition_animation_scale 0" "$1"' \
+    sh "$expand_helper_body"
+assert_true 'the expand idle-safe capture narrows the picker with Weather only' \
+    sh -c 'grep -Fq "input text Weather" "$1" &&
+        ! grep -Fq "input text DotWel" "$1"' sh "$expand_helper_body"
+assert_true 'the expand idle-safe capture expands the Weather search row by title' \
+    grep -Fq 'widget_picker_search_header_bounds' "$expand_helper_body"
+assert_true 'the expand idle-safe capture looks up the search row with the passed label' \
+    grep -Fq '"$_cuex_label"' "$expand_helper_body"
+assert_true 'the expand idle-safe capture taps the measured Weather search row' \
+    grep -Fq 'tap_center_of_bounds "$_cuex_search_header"' "$expand_helper_body"
+expand_recapture_count=$(grep -Fc 'capture_ui_xml "$_cuex_name"' "$expand_helper_body")
+assert_true 'the expand idle-safe capture recaptures after the search expansion' \
+    test "$expand_recapture_count" -ge 2
+assert_true 'the Weather expansion passes the exact expected provider label' \
+    grep -Fq '$_cww_log" "$EXPECTED_LABEL"' "$weather_widget_body"
+
+expand_harness="$TMP_DIR/weather-expand-idle-harness.sh"
+cat > "$expand_harness" <<'EOF'
+set -eu
+LIB=$1
+BODY=$2
+ROOT=$3
+MODE=$4
+ARTIFACTS="$ROOT/artifacts"
+mkdir -p "$ARTIFACTS"
+COUNT_FILE="$ROOT/count"
+: > "$ROOT/adb-calls"
+printf '0\n' > "$COUNT_FILE"
+. "$LIB"
+sleep() { :; }
+adb_cmd() {
+    printf '%s\n' "$*" >> "$ROOT/adb-calls"
+    return 0
+}
+tap_center_of_bounds() {
+    printf 'tap %s\n' "$1" >> "$ROOT/adb-calls"
+    return 0
+}
+SEARCH_XML="$ROOT/search-source.xml"
+cat > "$SEARCH_XML" <<'XML'
+<hierarchy>
+  <node resource-id="com.android.settings:id/widgets_search_bar_edit_text" bounds="[0,100][1080,220]" />
+</hierarchy>
+XML
+capture_ui_xml() {
+    n=$(cat "$COUNT_FILE")
+    n=$((n + 1))
+    printf '%s\n' "$n" > "$COUNT_FILE"
+    case "$MODE" in
+        retry-once)
+            if [ "$n" -eq 1 ]; then
+                printf 'ERROR: could not get idle state.\n' \
+                    > "$ARTIFACTS/uiautomator-$1.txt"
+                return 1
+            fi
+            ;;
+        search)
+            if [ "$n" -le 4 ]; then
+                printf 'ERROR: could not get idle state.\n' \
+                    > "$ARTIFACTS/uiautomator-$1.txt"
+                return 1
+            fi
+            if [ "$n" -eq 5 ]; then
+                printf '%s\n' \
+                    '<hierarchy><node resource-id="search_widgets_list_view">' \
+                    '<node resource-id="widgets_list_header" clickable="true" bounds="[0,400][1080,520]">' \
+                    '<node resource-id="app_title" text="DotWel Launcher" />' \
+                    '<node resource-id="app_subtitle" text="Dotwel KWGT Weather, Do..." />' \
+                    '</node></node></hierarchy>' > "$ARTIFACTS/$1"
+                return 0
+            fi
+            ;;
+        always)
+            printf 'ERROR: could not get idle state.\n' \
+                > "$ARTIFACTS/uiautomator-$1.txt"
+            return 1
+            ;;
+        other-error)
+            printf 'ERROR: could not find a matched view.\n' \
+                > "$ARTIFACTS/uiautomator-$1.txt"
+            return 1
+            ;;
+    esac
+    printf '<hierarchy><node text="weather"/></hierarchy>\n' > "$ARTIFACTS/$1"
+    return 0
+}
+. "$BODY"
+if capture_ui_xml_after_widget_expand expanded.xml "$SEARCH_XML" \
+    "$ROOT/expand.log" 'DotWel Launcher'; then
+    printf 'result=ok\n'
+else
+    printf 'result=fail\n'
+fi
+printf 'captures=%s\n' "$(cat "$COUNT_FILE")"
+EOF
+
+expand_retry_root="$TMP_DIR/weather-expand-retry"
+expand_retry=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_retry_root" retry-once) || expand_retry=
+assert_eq 'the expand idle-safe capture recovers on the first retry after disabling animation scales' \
+    'result=ok
+captures=2' "$expand_retry"
+assert_true 'the idle retry disables the animator duration scale before recapturing' \
+    grep -Fq 'shell settings put global animator_duration_scale 0' \
+    "$expand_retry_root/adb-calls"
+assert_true 'the idle retry disables the window animation scale before recapturing' \
+    grep -Fq 'shell settings put global window_animation_scale 0' \
+    "$expand_retry_root/adb-calls"
+assert_true 'the idle retry disables the transition animation scale before recapturing' \
+    grep -Fq 'shell settings put global transition_animation_scale 0' \
+    "$expand_retry_root/adb-calls"
+
+expand_search_root="$TMP_DIR/weather-expand-search"
+expand_search=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_search_root" search) || expand_search=
+assert_eq 'a still-not-idle picker is narrowed to Weather and the search row is expanded' \
+    'result=ok
+captures=6' "$expand_search"
+assert_true 'a still-not-idle picker taps the measured search bar bounds' \
+    grep -Fq 'tap 0 100 1080 220' "$expand_search_root/adb-calls"
+assert_true 'a still-not-idle picker types Weather through the measured search field' \
+    grep -Fq 'shell input text Weather' "$expand_search_root/adb-calls"
+assert_true 'the collapsed Weather search row is tapped by its measured header bounds' \
+    grep -Fq 'tap 0 400 1080 520' "$expand_search_root/adb-calls"
+assert_true 'the animation scales are reset exactly once before the Weather search' \
+    sh -c '[ "$(grep -Fxc "shell settings put global animator_duration_scale 0" "$1")" = 1 ]' \
+    sh "$expand_search_root/adb-calls"
+
+expand_fail_root="$TMP_DIR/weather-expand-fail"
+expand_fail=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_fail_root" always) || expand_fail=
+assert_eq 'a picker that never becomes idle still fails closed after the search attempt' \
+    'result=fail
+captures=5' "$expand_fail"
+
+expand_other_root="$TMP_DIR/weather-expand-other"
+expand_other=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_other_root" other-error) || expand_other=
+assert_eq 'a non-idle dump error fails closed without disabling animations' \
+    'result=fail
+captures=1' "$expand_other"
+assert_true 'a non-idle dump error never issues the animation settings commands' \
+    sh -c '! grep -Fq "settings put global" "$1"' \
+    sh "$expand_other_root/adb-calls"
 
 # --- executable Weather screen artifact-path contract ----------------------
 # Source the real two-stage helper and the real widget-tap post-confirmation
