@@ -3,25 +3,43 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **The twelve Dotwel weather providers are ported on
-  `agent/add-the-12-dotwel-ntwx-weather`; combined inventory is 61; guard 12/12 and pure weather
-  tests 12/12 locally, PENDING ACTUAL CI.** The non-weather 49 stay pinned to
-  `7167bcdf001b604f1d61a2f07f70825a999eb767`; the weather 12 come from the crash-fixed
-  `3517608833a184a3f97148ff113ea600a24e6e1b`. They read only `WeatherWidgetStateStore` and add no
-  network, location, alarm or worker path.
-- branch: `agent/add-the-12-dotwel-ntwx-weather`
-- head: this commit (docs + weather port); branch not yet pushed in this run.
+- current_phase: **CI#331 check-style Spotless violations fixed on
+  `agent/fix-ci-331-check-style-spotles`; `./gradlew spotlessApply` reformatted 7 ported Dotwel
+  widget files and `./gradlew spotlessCheck --rerun-tasks` is green locally, PENDING ACTUAL CI.**
+  Formatting only; no behavior, manifest, SDK or `applicationId` change.
+- branch: `agent/fix-ci-331-check-style-spotles`
+- head: this commit (Spotless formatting + STATE); pushed after commit.
 - pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/add-the-12-dotwel-ntwx-weather
-- ci: **not run here** (no Gradle/APK/emulator/CI by instruction). The guard and pure weather tests
-  were compiled and run with `kotlinc` + minimal JUnit stubs. The new production weather files also
-  compile against `android.jar` (API 37) with local `R`/`PreferenceActivity` stubs. The pushed
-  branch is the CI trigger.
-- next: push and let CI run `testLawnWithQuickstepPlayDebugUnitTest` (real JUnit),
-  `assembleLawnWithQuickstepPlayDebug` and the API 37 lane; inspect the 12 new widgets on a device.
-- blockers: no PR from this runner (gh unauthenticated); no real Gradle test/APK/emulator/CI here.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-ci-331-check-style-spotles
+- ci: **not run here**; no APK/build/emulator by instruction. Local Gradle `spotlessApply` and
+  `spotlessCheck --rerun-tasks` both returned BUILD SUCCESSFUL with the pinned ktlint 1.8.0 and the
+  same repo config CI uses. The pushed branch is the CI trigger.
+- next: push and let CI re-run `check-style` / `spotlessKotlinCheck`; then continue the v1 plan.
+- blockers: no PR from this runner (gh unauthenticated); no actual CI here.
 
-## done (this run — port the twelve Dotwel weather providers, JVM/compile-check only)
+## done (this run — CI#331 check-style Spotless formatting fix, Gradle Spotless verified)
+
+- **Task:** CI#331 `check-style` failed on `spotlessKotlinCheck` in the ported Dotwel widget files
+  (first reported around `KwgtDateTime3Renderer.kt` / `weatherLine`). No behavior change allowed.
+- **Fix is formatter-produced, not hand-guessed:** ran the authoritative
+  `JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 ./gradlew spotlessApply --no-daemon` →
+  **BUILD SUCCESSFUL in 1m 7s**. It reformatted 7 files, all under
+  `lawnchair/src/app/nothingui/widgets/dotwel/`: `KwgtDateTime3Renderer.kt`,
+  `KwgtDateTime3WidgetProvider.kt`, `NtWxRenderer.kt`, `NtWxWeather.kt`, `NtWxWeatherCode.kt`,
+  `WeatherCanvas.kt`, `WeatherWidgetProvider.kt`.
+- **What changed (formatting only):** expression-body functions moved onto the canonical single
+  line (`fun f(): T = if (...) {` / `= Paint(...).apply {`), and ktlint inserted the required blank
+  lines between `when` branches. No identifiers, literals, control flow or logic changed; the diff is
+  whitespace/line-wrapping only.
+- **Verification actually run:** `./gradlew spotlessCheck --no-daemon --rerun-tasks` →
+  **BUILD SUCCESSFUL in 25s, 4 tasks executed** (`spotlessKotlinCheck` and `spotlessCheck` green)
+  with the pinned `ktlint 1.8.0` + compose rules and the repo `.editorconfig`.
+- **Missing evidence / not claimed:** no APK build, no unit tests, no emulator and no actual CI for
+  this branch. The PR/push triggers the real `check-style` job, which is the final proof.
+- **Scope:** no workflow, Gradle, SDK, `applicationId`, permission or manifest change. The
+  untracked runner scratch dir `w/` is left untracked.
+
+## done (previous run — port the twelve Dotwel weather providers, JVM/compile-check only)
 
 - **Fixed source, not the crashing commit:** the weather set comes from
   `3517608833a184a3f97148ff113ea600a24e6e1b`, whose only relevant change is decorating each
