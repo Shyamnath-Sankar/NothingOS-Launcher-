@@ -249,12 +249,11 @@ internal object StatusTileRenderer {
     }
 
     /** Only the battery tile carries text; every other tile is glyph-only. */
-    fun tileText(snapshot: StatusSnapshot): String =
-        if (snapshot.kind == StatusKind.BATTERY) {
-            snapshot.percent?.let { "$it%" } ?: "NA%"
-        } else {
-            ""
-        }
+    fun tileText(snapshot: StatusSnapshot): String = if (snapshot.kind == StatusKind.BATTERY) {
+        snapshot.percent?.let { "$it%" } ?: "NA%"
+    } else {
+        ""
+    }
 
     fun render(
         context: Context,

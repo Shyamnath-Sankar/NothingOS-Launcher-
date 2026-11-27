@@ -146,6 +146,7 @@ object BluetoothBatteryLevelsReader {
                 BatteryManager.BATTERY_STATUS_CHARGING,
                 BatteryManager.BATTERY_STATUS_FULL,
                 -> true
+
                 else -> false
             }
         } catch (_: RuntimeException) {
@@ -191,10 +192,12 @@ object BluetoothBatteryLevelsReader {
             BluetoothClass.Device.AUDIO_VIDEO_PORTABLE_AUDIO,
             BluetoothClass.Device.AUDIO_VIDEO_HIFI_AUDIO,
             -> BluetoothBatteryDeviceKind.SPEAKER
+
             BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET,
             BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES,
             BluetoothClass.Device.AUDIO_VIDEO_HANDSFREE,
             -> BluetoothBatteryDeviceKind.EARBUDS
+
             else -> BluetoothBatteryDeviceKind.HEADPHONES
         }
     }
@@ -215,23 +218,20 @@ internal object BluetoothBatteryLevelsRenderer {
 
     fun cardColor(style: WidgetStyle): Int = CARD
 
-    fun cardRadius(widthPx: Int, heightPx: Int): Float =
-        min(widthPx.coerceAtLeast(1), heightPx.coerceAtLeast(1)) * CARD_RADIUS_FRACTION
+    fun cardRadius(widthPx: Int, heightPx: Int): Float = min(widthPx.coerceAtLeast(1), heightPx.coerceAtLeast(1)) * CARD_RADIUS_FRACTION
 
     fun trackColor(): Int = TRACK
 
     fun fillColor(): Int = FILL
 
-    fun percentText(percent: Int?): String =
-        percent?.let { "${it.coerceIn(0, 100)}%" } ?: "--"
+    fun percentText(percent: Int?): String = percent?.let { "${it.coerceIn(0, 100)}%" } ?: "--"
 
     fun displayName(name: String?): String {
         val cleaned = name?.trim().orEmpty()
         return if (cleaned.isEmpty()) "DEVICE" else cleaned.uppercase(Locale.US)
     }
 
-    fun fillFraction(percent: Int?): Float =
-        (percent ?: 0).coerceIn(0, 100) / 100f
+    fun fillFraction(percent: Int?): Float = (percent ?: 0).coerceIn(0, 100) / 100f
 
     /**
      * Fixed pill height keeps a single source from stretching into one
@@ -525,8 +525,11 @@ internal object BluetoothBatteryLevelsRenderer {
 
     private fun statusMessage(status: BluetoothBatteryLevelsStatus): String = when (status) {
         BluetoothBatteryLevelsStatus.PERMISSION_NEEDED -> "NO ACCESS"
+
         BluetoothBatteryLevelsStatus.UNAVAILABLE -> "UNAVAILABLE"
+
         BluetoothBatteryLevelsStatus.OFF -> "BLUETOOTH OFF"
+
         BluetoothBatteryLevelsStatus.EMPTY,
         BluetoothBatteryLevelsStatus.ROWS,
         -> "NO DEVICES"
