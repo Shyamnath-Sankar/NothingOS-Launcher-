@@ -7,7 +7,8 @@ when no task input is given, and continues from "next".
   headphones halo and enlarged earbuds; verified the media art box and battery track already match
   `b0330f8`; pinned the source to v1.2.1. PENDING ACTUAL CI.**
 - branch: `agent/delta-resync-v1-2-1-of-dotwel`
-- head: `844e2b1` (`test(widget): pin and lock the Dotwel v1.2.1 delta`).
+- head: `6585fc0` (`fix(test): scope the battery track check to the mini bar`), after the pin and
+  v1.2.1 delta-test commits.
 - pr: not opened yet.
 - ci: **not run here** by instruction. `git diff --check` clean, 62 manifest receivers unchanged;
   no Gradle/APK/emulator.
@@ -41,7 +42,8 @@ when no task input is given, and continues from "next".
 - **Tests (`844e2b1`):** `DotwelWidgetPortGuardTest` now requires the v1.2.1 SHA (still requires
   `7167bcdf`, `7fc426e` and the weather `35176088`); the 62-provider inventory is unchanged. New
   text-level `DotwelWidgetV121DeltaTest` locks the halo/icon sizes, the `TRACK_SOFT` track and the
-  `0.03`/`0.40` media art box.
+  `0.03`/`0.40` media art box. The battery assertion is scoped to `drawSmallProgressBar` because
+  `fill(GRAY)` legitimately remains in the separate glow-progress surface.
 - **Scope:** no provider, permission, manifest, `applicationId`, SDK, weather, MET Norway copy,
   Weather label or workflow change. The 62 manifest receivers are unchanged.
 - **Verification actually run (shell/source only; no Gradle, APK, emulator or actual CI):**
