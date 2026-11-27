@@ -237,6 +237,7 @@ object BluetoothHeadphonesState {
 internal object BluetoothHeadphonesRenderer {
     private const val CARD = 0xFFFEF7FF.toInt()
     private val GLYPH_INK = 0xFF1D1B20.toInt()
+    val HALO = 0xFFE9E7EC.toInt()
     private val NAME_GRAY = 0xFF777379.toInt()
     private val GREEN = 0xFF6A9C89.toInt()
     private val RED = 0xFFD71921.toInt()
@@ -280,7 +281,7 @@ internal object BluetoothHeadphonesRenderer {
         val side = min(width, height)
         val cardRadius = side * 0.16f
         if (square) {
-            val iconSize = side * 0.32f
+            val iconSize = side * 0.36f
             fun box(cx: Float, cy: Float, w: Float, h: Float) = TextBox(
                 cx - w / 2f,
                 cy - h / 2f,
@@ -288,14 +289,14 @@ internal object BluetoothHeadphonesRenderer {
                 cy + h / 2f,
             )
             return HeadphonesLayout(
-                icon = box(width / 2f, height * 0.26f, iconSize, iconSize),
+                icon = box(width / 2f, height * 0.25f, iconSize, iconSize),
                 status = box(width / 2f, height * 0.52f, width * 0.86f, height * 0.12f),
                 percent = box(width / 2f, height * 0.66f, width * 0.60f, height * 0.14f),
                 name = box(width / 2f, height * 0.82f, width * 0.86f, height * 0.075f),
                 cardRadius = cardRadius,
             )
         }
-        val iconSize = min(height * 0.62f, width * 0.20f)
+        val iconSize = min(height * 0.78f, width * 0.24f)
         val textLeft = width * 0.33f
         val textRight = width * 0.95f
         val textCenter = (textLeft + textRight) / 2f
@@ -493,6 +494,14 @@ internal object BluetoothHeadphonesRenderer {
                 setShadowLayer(4f, 0f, 2f, 0x99000000.toInt())
             }
         }
+        val haloCenterY = cy + size * 0.05f
+        val haloRadius = size * 0.52f
+        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = HALO }
+        val haloEdge = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = (HALO and 0x00FFFFFF) or (0x55 shl 24)
+        }
+        canvas.drawCircle(cx, haloCenterY, haloRadius * 1.18f, haloEdge)
+        canvas.drawCircle(cx, haloCenterY, haloRadius, haloPaint)
         val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = RED
             if (style == WidgetStyle.TRANSPARENT) {
