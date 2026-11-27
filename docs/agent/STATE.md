@@ -7,7 +7,7 @@ when no task input is given, and continues from "next".
   `agent/combine-branches-task-no-new-f`. Both sides kept; the three smoke scripts merged without
   dropping any change. Shell/XML verification green locally; PENDING ACTUAL CI.**
 - branch: `agent/combine-branches-task-no-new-f`
-- head: `pending` (merge of `origin/agent/small-focused-harness-fix-comm` into this branch).
+- head: `9bd6844` (merge of `origin/agent/small-focused-harness-fix-comm` into this branch).
 - pr: open a PR at
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/combine-branches-task-no-new-f
 - ci: **not run here** by instruction. `sh -n` clean on the three smoke scripts;
@@ -25,6 +25,14 @@ when no task input is given, and continues from "next".
   scripts auto-merged (`scripts/emulator-smoke-lib.sh`, `scripts/emulator-smoke.sh`,
   `scripts/emulator-smoke-test.sh`); only `docs/agent/STATE.md` conflicted and both sides are kept.
 - **No other change:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow edit.
+- **Verification actually run (shell only; no Gradle, emulator or actual CI):**
+  `grep play/AndroidManifest.xml` shows `android:label="@string/nothingui_weather_widget_label"` on
+  `app.dotwel.widgets.DotWelWeatherWidgetProvider`; `grep scripts/emulator-smoke-lib.sh` shows
+  `widget_picker_search_header_bounds`; `bash -n` clean on all three smoke scripts;
+  `git diff origin/agent/small-focused-harness-fix-comm -- scripts/emulator-smoke{,-lib,-test}.sh`
+  is empty (no incoming change dropped); `sh scripts/emulator-smoke-test.sh` → all passed, exit 0.
+- **Missing evidence / not claimed:** no Gradle/APK build, no emulator, no uiautomator dump and no
+  actual CI. The API 37 lane is the final proof.
 
 ## done (previous run — CI#334 weather-tile picker label fix, product + shell-only)
 
