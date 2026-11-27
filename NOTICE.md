@@ -59,7 +59,7 @@ or assets were copied.
 
 The Dotwel widget set is ported from
 [`Shyamnath-Sankar/Dotwel-Widgets`](https://github.com/Shyamnath-Sankar/Dotwel-Widgets) at commit
-`7167bcdf001b604f1d61a2f07f70825a999eb767`, Copyright (c) 2026 the Dotwel Widgets contributors,
+`b0330f873c8f97682ddf6b735e6210a14b14fc8a`, Copyright (c) 2026 the Dotwel Widgets contributors,
 licensed under the MIT License. The port excludes all weather widgets and does not declare a
 notification-listener service. Full provenance and the MIT license texts are in
 [`docs/ATTRIBUTION.md`](docs/ATTRIBUTION.md),
