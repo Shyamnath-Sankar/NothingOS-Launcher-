@@ -3,16 +3,37 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **copy-only artifact checkpoint — Lawnchair 16 Dev (#338) play debug APK added,
+- current_phase: **copy-only artifact checkpoint — Lawnchair 16 Dev (#349) play debug APK added,
   verified and pushed. DONE.**
 - branch: `agent/copy-only-task-with-no-code-ch`
-- head: **`b8f8d6f`** (APK checkpoint); this STATE update follows.
+- head: **`b59653c`** (APK checkpoint); this STATE update follows.
 - pr: **none** — the task explicitly says no pull request.
 - ci: **No CI run triggered by this task.** No code, manifest, build, dependency or workflow changed.
 - next: none for this task; parent may dispatch the next task.
 - blockers: none for this task.
 
-## done (this run — copy-only Lawnchair 16 Dev (#338) APK checkpoint, verified, PUSHED)
+## done (this run — copy-only Lawnchair 16 Dev (#349) APK checkpoint, verified, PUSHED)
+
+- Downloaded artifact `15203990394` from workflow run `46008010508` with
+  `gh api repos/Shyamnath-Sankar/NothingOS-Launcher-/actions/artifacts/15203990394/zip`, authenticating
+  with the same repo token as git push (decoded from the git `extraheader`). The artifact was not
+  expired and the zip is 45114171 bytes.
+- Extracted exactly one APK: `lawnWithQuickstepPlay/debug/Lawnchair.16.Dev.(#349).play.debug.apk`.
+- Committed a byte-identical copy as `checkpoints/Lawnchair.16.Dev.349.play.debug.apk` in commit
+  `b59653c`. It was force-added because `.gitignore` ignores `*.apk`, the same as the prior
+  checkpoints.
+- Verified the committed blob: `git cat-file -s` = **53654159** bytes; the committed blob and the
+  working-tree file both SHA-256 to
+  **9e30042f527bda4f11471b980a7f73ed1fc89191ea085bf5b4c10c3845f7e7ef**. `cmp` against the extracted
+  APK reported byte-identical.
+- Pushed `agent/copy-only-task-with-no-code-ch` to origin (`618007e..b59653c`). GitHub emitted only
+  the >50 MB advisory warning; the push succeeded.
+- No other file was created, modified or deleted. The pre-existing untracked `w/` harness directory
+  was left untouched and not committed.
+- Not run / not claimed: no Gradle build, no emulator, no CI, no PR. The APK was not rebuilt; it is
+  the published artifact bytes.
+
+## done (previous run — copy-only Lawnchair 16 Dev (#338) APK checkpoint, verified, PUSHED)
 
 - Downloaded artifact `15191118898` from workflow run `45985053951` with
   `gh api repos/.../actions/artifacts/15191118898/zip` using the same repo token as git push (read
