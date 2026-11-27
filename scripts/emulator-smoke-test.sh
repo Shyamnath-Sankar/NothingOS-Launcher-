@@ -1391,6 +1391,76 @@ assert_eq 'the loop decision never selects a wrong-provider cell' \
     "$(widget_picker_weather_decision "$weather_picker_wrong_cell_xml" \
         '0 300 1080 420' '' "$weather_picker_wrong_viewport" 0 0 2 4)"
 
+# --- Weather narrowed-search selection fixtures ----------------------------
+# CI337: after the DotWel search row was expanded, the hierarchy is the Weather
+# filtered search list. Its provider row reports widget names as the subtitle, so
+# widget_picker_provider_bounds returns no header and the header scrolls away.
+# The exact description preview is still unique and fully visible, so the
+# decision may select in that narrow search-list mode only.
+weather_picker_search_xml="$TMP_DIR/weather-picker-search.xml"
+cat > "$weather_picker_search_xml" <<'EOF'
+<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" text="" class="android.widget.FrameLayout" bounds="[0,0][1080,1920]">
+    <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_bar_container" class="android.widget.FrameLayout" bounds="[0,300][1080,360]">
+      <node index="0" text="Weather" resource-id="com.launchernos.dotwellabs.debug:id/widgets_search_bar_edit_text" class="android.widget.EditText" bounds="[40,310][1040,350]" />
+    </node>
+    <node index="1" text="" resource-id="com.launchernos.dotwellabs.debug:id/search_widgets_list_view" class="com.android.launcher3.widget.picker.WidgetsRecyclerView" bounds="[0,360][1080,1920]">
+      <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widgets_list_header" class="com.android.launcher3.widget.picker.WidgetsListHeader" clickable="true" bounds="[0,360][1080,420]">
+        <node index="0" text="DotWel Launcher" resource-id="com.launchernos.dotwellabs.debug:id/app_title" class="android.widget.TextView" bounds="[100,365][300,400]" />
+        <node index="1" text="Dotwel KWGT Date Time 3 Weather, Do..." resource-id="com.launchernos.dotwellabs.debug:id/app_subtitle" class="android.widget.TextView" bounds="[100,400][900,420]" />
+      </node>
+      <node index="1" text="" class="com.android.launcher3.widget.WidgetCell" bounds="[40,440][1040,900]">
+        <node index="0" text="" resource-id="com.launchernos.dotwellabs.debug:id/widget_preview_container" class="com.android.launcher3.widget.WidgetCellPreview" clickable="true" long-clickable="true" bounds="[60,460][1020,860]" />
+        <node index="1" text="Weather, opens weather settings" resource-id="com.launchernos.dotwellabs.debug:id/widget_description" class="android.widget.TextView" bounds="[80,860][1000,900]" />
+      </node>
+    </node>
+  </node>
+</hierarchy>
+EOF
+weather_picker_search_viewport=$(widget_picker_viewport_bounds "$weather_picker_search_xml")
+weather_picker_search_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_xml" 'Weather, opens weather settings')
+assert_eq 'the narrowed Weather search list has no provider widget-count header' \
+    '' \
+    "$(widget_picker_provider_bounds "$weather_picker_search_xml" 'DotWel Launcher')"
+assert_eq 'the narrowed Weather search list still exposes the unique visible preview' \
+    '60 460 1020 860' "$weather_picker_search_candidate"
+assert_eq 'a visible unique candidate selects with an empty header in the search list' \
+    'select' \
+    "$(widget_picker_weather_decision "$weather_picker_search_xml" \
+        '' "$weather_picker_search_candidate" "$weather_picker_search_viewport" 1 0 2 4)"
+
+weather_picker_search_primary_xml="$TMP_DIR/weather-picker-search-primary.xml"
+sed 's#search_widgets_list_view#primary_widgets_list_view#' \
+    "$weather_picker_search_xml" > "$weather_picker_search_primary_xml"
+weather_picker_search_primary_viewport=$(widget_picker_viewport_bounds \
+    "$weather_picker_search_primary_xml")
+weather_picker_search_primary_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_primary_xml" 'Weather, opens weather settings')
+assert_eq 'the same visible candidate is measured outside search list mode' \
+    '60 460 1020 860' "$weather_picker_search_primary_candidate"
+assert_eq 'an empty header outside the search list never selects' \
+    'search' \
+    "$(widget_picker_weather_decision "$weather_picker_search_primary_xml" \
+        '' "$weather_picker_search_primary_candidate" \
+        "$weather_picker_search_primary_viewport" 1 0 2 4)"
+
+weather_picker_search_clipped_xml="$TMP_DIR/weather-picker-search-clipped.xml"
+sed 's#\[60,460\]\[1020,860\]#[60,1750][1020,1950]#' \
+    "$weather_picker_search_xml" > "$weather_picker_search_clipped_xml"
+weather_picker_search_clipped_viewport=$(widget_picker_viewport_bounds \
+    "$weather_picker_search_clipped_xml")
+weather_picker_search_clipped_candidate=$(widget_picker_description_preview_bounds \
+    "$weather_picker_search_clipped_xml" 'Weather, opens weather settings')
+assert_eq 'the clipped search-list candidate is still measured' \
+    '60 1750 1020 1950' "$weather_picker_search_clipped_candidate"
+assert_eq 'a clipped candidate never selects even in the search list' \
+    'fail' \
+    "$(widget_picker_weather_decision "$weather_picker_search_clipped_xml" \
+        '' "$weather_picker_search_clipped_candidate" \
+        "$weather_picker_search_clipped_viewport" 1 4 2 4)"
+
 widget_add_xml="$TMP_DIR/widget-add.xml"
 cat > "$widget_add_xml" <<'EOF'
 <hierarchy rotation="0">
