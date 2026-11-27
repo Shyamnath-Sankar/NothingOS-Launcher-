@@ -202,14 +202,14 @@ object BatteryStatusState {
 }
 
 /**
- * Original programmatic control-tile glyphs and dot-matrix status text. The
- * reference collection's red/white circular tiles are recreated here from
- * primitives; no font or bitmap asset from that collection is bundled.
+ * Original programmatic control-tile glyphs. The reference collection's
+ * red/white circular tiles are recreated here from primitives; no font or
+ * bitmap asset from that collection is bundled. Each tile is one large filled
+ * circle (93% of the cell) with a single centred glyph and no status text.
  */
 internal object StatusTileRenderer {
-    private val OFF_WHITE = 0xFFF5F5F3.toInt()
-    private val DARK_GLYPH = 0xFF3A3A38.toInt()
     private val WHITE = 0xFFFFFFFF.toInt()
+    private val BLACK = 0xFF000000.toInt()
     private val NOTHING_RED = 0xFFD71921.toInt()
 
     data class TileLayout(
@@ -225,16 +225,36 @@ internal object StatusTileRenderer {
         val safeHeight = height.coerceAtLeast(1)
         val side = min(safeWidth, safeHeight).toFloat()
         val centerX = safeWidth / 2f
-        val centerY = safeHeight * 0.43f
-        val radius = side * 0.38f
+        val centerY = safeHeight / 2f
+        val radius = side * 0.465f
         return TileLayout(
             centerX = centerX,
             centerY = centerY,
             radius = radius,
-            glyphCenterY = centerY - radius * 0.12f,
-            textCenterY = centerY + radius * 0.52f,
+            glyphCenterY = centerY,
+            textCenterY = centerY,
         )
     }
+
+    fun circleColor(snapshot: StatusSnapshot): Int = when {
+        snapshot.kind == StatusKind.BATTERY -> WHITE
+        snapshot.active() -> NOTHING_RED
+        else -> WHITE
+    }
+
+    fun glyphColor(snapshot: StatusSnapshot): Int = when {
+        snapshot.kind == StatusKind.BATTERY -> BLACK
+        snapshot.active() -> WHITE
+        else -> BLACK
+    }
+
+    /** Only the battery tile carries text; every other tile is glyph-only. */
+    fun tileText(snapshot: StatusSnapshot): String =
+        if (snapshot.kind == StatusKind.BATTERY) {
+            snapshot.percent?.let { "$it%" } ?: "NA%"
+        } else {
+            ""
+        }
 
     fun render(
         context: Context,
@@ -248,35 +268,36 @@ internal object StatusTileRenderer {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         val tile = layout(width, height)
-        val active = snapshot.active()
-        val circleColor = if (active) NOTHING_RED else OFF_WHITE
-        val glyphColor = if (active) WHITE else DARK_GLYPH
         val circlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = circleColor
+            color = circleColor(snapshot)
             if (style == WidgetStyle.TRANSPARENT) {
                 setShadowLayer(6f, 0f, 3f, 0x66000000)
             }
         }
         canvas.drawCircle(tile.centerX, tile.centerY, tile.radius, circlePaint)
-        drawGlyph(
-            canvas,
-            snapshot.kind,
-            tile.centerX,
-            tile.glyphCenterY,
-            tile.radius * 0.95f,
-            glyphColor,
-            style,
-        )
-        drawDotText(
-            canvas,
-            snapshot.shortText(),
-            tile.centerX,
-            tile.textCenterY,
-            tile.radius * 1.55f,
-            tile.radius * 0.52f,
-            glyphColor,
-            style,
-        )
+        val text = tileText(snapshot)
+        if (text.isNotEmpty()) {
+            drawDotText(
+                canvas,
+                text,
+                tile.centerX,
+                tile.centerY,
+                tile.radius * 1.35f,
+                tile.radius * 0.72f,
+                glyphColor(snapshot),
+                style,
+            )
+        } else {
+            drawGlyph(
+                canvas,
+                snapshot.kind,
+                tile.centerX,
+                tile.glyphCenterY,
+                tile.radius * 0.92f,
+                glyphColor(snapshot),
+                style,
+            )
+        }
         return bitmap
     }
 
