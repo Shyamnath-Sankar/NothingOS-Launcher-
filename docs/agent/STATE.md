@@ -9,10 +9,12 @@ when no task input is given, and continues from "next".
 - branch: `agent/delta-resync-v1-2-1-of-dotwel`
 - head: `6585fc0` (`fix(test): scope the battery track check to the mini bar`), after the pin and
   v1.2.1 delta-test commits.
-- pr: not opened yet.
+- pr: **not opened — no GitHub auth/token in this runner** (`gh` unauthenticated). The branch is
+  pushed; open the PR from
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/delta-resync-v1-2-1-of-dotwel?expand=1
 - ci: **not run here** by instruction. `git diff --check` clean, 62 manifest receivers unchanged;
   no Gradle/APK/emulator.
-- next: open the PR to main, let CI build `lawnWithQuickstepPlayDebug` and run
+- next: open the PR from the compare URL, let CI build `lawnWithQuickstepPlayDebug` and run
   `testLawnWithQuickstepPlayDebugUnitTest` (the 62-provider guard plus the new v1.2.1 delta test),
   then merge.
 - blockers: no actual CI here; the 62-provider inventory and the new delta test are only exercised
