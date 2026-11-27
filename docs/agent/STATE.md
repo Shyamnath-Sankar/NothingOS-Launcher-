@@ -3,21 +3,49 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#331 check-style Spotless violations fixed on
-  `agent/fix-ci-331-check-style-spotles`; `./gradlew spotlessApply` reformatted 7 ported Dotwel
-  widget files and `./gradlew spotlessCheck --rerun-tasks` is green locally, PENDING ACTUAL CI.**
-  Formatting only; no behavior, manifest, SDK or `applicationId` change.
-- branch: `agent/fix-ci-331-check-style-spotles`
-- head: this commit (Spotless formatting + STATE); pushed after commit.
-- pr: **not created in this run** (no `gh` auth/token in the runner). Open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/fix-ci-331-check-style-spotles
-- ci: **not run here**; no APK/build/emulator by instruction. Local Gradle `spotlessApply` and
-  `spotlessCheck --rerun-tasks` both returned BUILD SUCCESSFUL with the pinned ktlint 1.8.0 and the
-  same repo config CI uses. The pushed branch is the CI trigger.
-- next: push and let CI re-run `check-style` / `spotlessKotlinCheck`; then continue the v1 plan.
-- blockers: no PR from this runner (gh unauthenticated); no actual CI here.
+- current_phase: **CI#331 emulator-smoke fix on `agent/small-focused-fix-commit-and-p`; the
+  Weather-expansion capture now recovers from uiautomator "could not get idle state" by disabling
+  the three animation scales, retrying up to 3 times, then narrowing the picker to Weather via the
+  measured search field. Harness-only; no app/widget/manifest/workflow change. Shell suite green
+  locally, PENDING ACTUAL CI.**
+- branch: `agent/small-focused-fix-commit-and-p`
+- head: `95f697f` (harness fix + tests); pushed after commit.
+- pr: **not created in this run**; open a PR at
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/small-focused-fix-commit-and-p
+- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → 1392 ok, 0 not ok,
+  all passed; `sh -n` clean on both edited scripts; `git diff --check` clean. No Gradle build,
+  emulator or actual CI.
+- next: push and let CI re-run the API 37 lane to prove the Weather expansion no longer times out;
+  then continue the v1 plan.
+- blockers: no PR from this runner; no actual CI/emulator here.
 
-## done (this run — CI#331 check-style Spotless formatting fix, Gradle Spotless verified)
+## done (this run — CI#331 Weather-expansion idle capture, shell-only)
+
+- **Exact CI#331 observation:** after tapping the DotWel provider header, all five
+  `weather-widget-expand-<n>-<poll>` uiautomator dumps returned `ERROR: could not get idle state`
+  (~12 s each), so the picker never became idle and the run failed at
+  `could not capture fresh picker XML after expanding Weather`. No crash/ANR.
+- **New helper `capture_ui_xml_after_widget_expand`:** only the exact dump text
+  `could not get idle state` is recoverable. It sets
+  `adb shell settings put global animator_duration_scale 0`, `window_animation_scale 0` and
+  `transition_animation_scale 0`, then retries `capture_ui_xml` up to 3 times with a short sleep.
+  Any other capture error still fails immediately.
+- **Second stage:** if the picker is still not idle it locates the measured search field with the
+  existing `widget_picker_search_bar_bounds`, taps it, types `Weather` through the normal
+  `adb shell input text` path so only weather previews render, and captures once more.
+- **Strictness preserved:** the expansion tap and the exact Weather-cell decision/selection are
+  unchanged; only the fresh-hierarchy capture is wrapped. The original fail string is unchanged,
+  and the helper returns non-zero when both stages fail.
+- **Tests:** new static checks plus an executable fixture in `scripts/emulator-smoke-test.sh`
+  exercises retry-once (animations off, 2 captures), still-idle→Weather search (5 captures, measured
+  search tap, `input text Weather`, settings reset exactly once), always-idle fails closed, and a
+  non-idle error fails without touching animation settings.
+- **Verification actually run (shell only):** `sh -n scripts/emulator-smoke.sh` and
+  `sh -n scripts/emulator-smoke-test.sh` clean; `sh scripts/emulator-smoke-test.sh` →
+  **1392 ok, 0 not ok, all emulator-smoke tests passed**; `git diff --check` clean.
+- **Scope:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow change; shell only.
+
+## done (previous run — CI#331 check-style Spotless formatting fix, Gradle Spotless verified)
 
 - **Task:** CI#331 `check-style` failed on `spotlessKotlinCheck` in the ported Dotwel widget files
   (first reported around `KwgtDateTime3Renderer.kt` / `weatherLine`). No behavior change allowed.
