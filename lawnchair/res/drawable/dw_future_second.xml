@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source second ShapeModule: CIRCLE diameter h / 2, paint_color toggle 0
+         so the actual paint stays BLACK (not the bg global), SWEEP to the sec
+         global #6C696E, active CLOCK_SECOND formula and 180 degree offset. -->
+    <group
+        android:pivotX="138.5"
+        android:pivotY="138.5"
+        android:rotation="180">
+        <path android:pathData="M0,138.5 A138.5,138.5 0 1,1 277,138.5 A138.5,138.5 0 1,1 0,138.5 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="sweep"
+                    android:centerX="138.5"
+                    android:centerY="138.5">
+                    <item android:color="#FF000000" android:offset="0" />
+                    <item android:color="#FF6C696E" android:offset="1" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

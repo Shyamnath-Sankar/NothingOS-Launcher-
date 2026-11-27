@@ -33,14 +33,20 @@ fail() {
 }
 
 SURFACES="$ROOT/lawnchair/src/app/nothingui/theme/NothingUiNativeSurfaces.kt"
+COLORS="$ROOT/lawnchair/src/app/nothingui/theme/NothingUiColors.kt"
 FEATURE="$ROOT/lawnchair/src/app/nothingui/theme/NothingUiFeature.kt"
 TOKENS="$ROOT/lawnchair/src/app/lawnchair/theme/color/tokens/ColorTokens.kt"
 UTILS="$ROOT/lawnchair/src/app/lawnchair/util/LawnchairUtils.kt"
+TOPBAR="$ROOT/lawnchair/src/app/lawnchair/ui/preferences/components/layout/TopBar.kt"
+THEME="$ROOT/lawnchair/src/app/lawnchair/ui/theme/Theme.kt"
 
 [ -f "$SURFACES" ] || fail "missing $SURFACES"
+[ -f "$COLORS" ] || fail "missing $COLORS"
 [ -f "$FEATURE" ] || fail "missing $FEATURE"
 [ -f "$TOKENS" ] || fail "missing $TOKENS"
 [ -f "$UTILS" ] || fail "missing $UTILS"
+[ -f "$TOPBAR" ] || fail "missing $TOPBAR"
+[ -f "$THEME" ] || fail "missing $THEME"
 
 token_block() {
     token=$1
@@ -67,10 +73,32 @@ for token in \
         fail "missing neutral token $token"
 done
 
-for color in Ink Paper White Gray900 Gray700 Gray100; do
+for color in Ink Paper White Black Gray900 Gray700 Gray100; do
     grep -Fq "NothingUiPalette.$color" "$SURFACES" ||
         fail "the native surfaces do not use NothingUiPalette.$color"
 done
+
+grep -Fq 'fun allAppsBackground(dark: Boolean): Color = if (dark) NothingUiPalette.Black else NothingUiPalette.White' "$SURFACES" ||
+    fail "the dark app drawer must use pure black"
+grep -Fq 'fun popupSurface(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White' "$SURFACES" ||
+    fail "the dark popup must stay charcoal"
+grep -Fq 'fun allAppsHeader(dark: Boolean): Color = allAppsBackground(dark)' "$SURFACES" ||
+    fail "the drawer header must share the pure-black drawer background"
+grep -Fq 'fun allAppsTabBackground(dark: Boolean): Color = allAppsBackground(dark)' "$SURFACES" ||
+    fail "the drawer tabs must share the pure-black drawer background"
+
+grep -Fq 'val Black = Color(0xFF000000)' "$COLORS" ||
+    fail "missing the pure-black palette swatch"
+grep -Fq 'background = NothingUiPalette.Black' "$COLORS" ||
+    fail "the dark settings background must be pure black"
+grep -Fq 'NothingUiFeature.themeEnabled &&' "$TOPBAR" ||
+    fail "the AMOLED top bar must stay Play-gated"
+grep -Fq 'MaterialTheme.colorScheme.background == Color.Black' "$TOPBAR" ||
+    fail "the AMOLED top bar must detect the pure-black background"
+grep -Fq 'NothingUiFeature.themeEnabled &&' "$THEME" ||
+    fail "the AMOLED navigation-bar scrim must stay Play-gated"
+grep -Fq 'MaterialTheme.colorScheme.background.toArgb() == Color.BLACK' "$THEME" ||
+    fail "the AMOLED navigation-bar scrim must use the pure-black background"
 
 if grep -Eq 'Accent1|Accent2|Accent3|AccentRed|ColorAccent|WidgetsPicker' "$SURFACES"; then
     fail "the native surfaces must not use accent or widget-picker colors"

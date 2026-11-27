@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Source hour dot diameter 12 at radius 102 from centre, zero at 12 o'clock. -->
+    <path
+        android:fillColor="#FFD71921"
+        android:pathData="M138.5,30.5 A6,6 0 1,1 138.5,42.5 A6,6 0 1,1 138.5,30.5 Z" />
+</vector>

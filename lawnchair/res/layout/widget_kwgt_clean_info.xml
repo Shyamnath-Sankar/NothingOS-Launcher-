@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_none"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/kwgt_clean_info_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:visibility="gone" />
+
+    <ImageView
+        android:id="@+id/kwgt_clean_info_bg_fallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:importantForAccessibility="no"
+        android:scaleType="fitXY"
+        android:visibility="gone" />
+
+    <!-- Oversized ghost time is an intentional back layer. It is drawn before
+         the weekday/date stack and battery so those stay readable on top. -->
+    <TextClock
+        android:id="@+id/kwgt_clean_info_time"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fontFamily="sans-serif"
+        android:format12Hour="h:mm"
+        android:format24Hour="h:mm"
+        android:gravity="center_vertical|end"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/widget_ink" />
+
+    <LinearLayout
+        android:id="@+id/kwgt_clean_info_left"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="bottom|start"
+        android:orientation="vertical">
+
+        <TextClock
+            android:id="@+id/kwgt_clean_info_weekday"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif"
+            android:format12Hour="EEEE"
+            android:format24Hour="EEEE"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+
+        <TextClock
+            android:id="@+id/kwgt_clean_info_date"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="sans-serif"
+            android:format12Hour="MMMM d"
+            android:format24Hour="MMMM d"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:textAllCaps="true"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/kwgt_clean_info_battery"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fontFamily="sans-serif"
+        android:gravity="center"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/widget_ink_dark"
+        android:textStyle="bold" />
+
+</FrameLayout>

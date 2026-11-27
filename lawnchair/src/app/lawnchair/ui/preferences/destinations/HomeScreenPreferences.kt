@@ -47,8 +47,14 @@ import app.lawnchair.ui.preferences.components.controls.SwitchPreference
 import app.lawnchair.ui.preferences.components.layout.ExpandAndShrink
 import app.lawnchair.ui.preferences.components.layout.PreferenceGroup
 import app.lawnchair.ui.preferences.components.layout.PreferenceLayout
+import app.lawnchair.ui.preferences.navigation.AmoledWallpapers
 import app.lawnchair.ui.preferences.navigation.HomeScreenGrid
+import app.lawnchair.ui.preferences.navigation.WeatherSettings
+import app.lawnchair.ui.util.isPlayStoreFlavor
 import app.lawnchair.util.collectAsStateBlocking
+import app.nothingui.launcher.WidgetPickerRequest
+import app.nothingui.weather.WeatherSettingsCopy
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherAppState
 import com.android.launcher3.LauncherSettings
 import com.android.launcher3.R
@@ -72,6 +78,7 @@ fun HomeScreenPreferences(
     val prefs2 = preferenceManager2()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val networkEnabled = WeatherSettingsCopy.networkEnabled(BuildConfig.DEBUG)
     val hasMotionSensor = remember {
         context.getSystemService(SensorManager::class.java)
             ?.let { manager ->
@@ -86,6 +93,33 @@ fun HomeScreenPreferences(
         backArrowVisible = !LocalIsExpandedScreen.current,
         modifier = modifier,
     ) {
+        if (isPlayStoreFlavor()) {
+            PreferenceGroup(heading = stringResource(id = R.string.customize_launcher_label)) {
+                SliderPreference(
+                    label = stringResource(id = R.string.icon_sizes),
+                    adapter = prefs2.homeIconSizeFactor.getAdapter(),
+                    step = 0.01f,
+                    valueRange = 0.5F..1.5F,
+                    showAsPercentage = true,
+                )
+                ClickablePreference(
+                    label = stringResource(id = R.string.browse_widgets_label),
+                    subtitle = stringResource(id = R.string.browse_widgets_description),
+                    onClick = {
+                        context.startActivity(WidgetPickerRequest.launcherIntent(context))
+                    },
+                )
+            }
+            PreferenceGroup(heading = stringResource(id = R.string.dotwel_weather_settings_label)) {
+                NavigationActionPreference(
+                    label = stringResource(id = R.string.dotwel_weather_entry_label),
+                    subtitle = stringResource(
+                        id = WeatherSettingsCopy.settingsDescription(networkEnabled),
+                    ),
+                    destination = WeatherSettings,
+                )
+            }
+        }
         val lockHomeScreenAdapter = prefs2.lockHomeScreen.getAdapter()
         val showDeckLayout = prefs2.showDeckLayout.getAdapter().state.value
 
@@ -165,6 +199,13 @@ fun HomeScreenPreferences(
             )
         }
         PreferenceGroup(heading = stringResource(id = R.string.wallpaper)) {
+            if (isPlayStoreFlavor()) {
+                NavigationActionPreference(
+                    label = stringResource(id = R.string.dotwel_amoled_wallpapers_label),
+                    destination = AmoledWallpapers,
+                    subtitle = stringResource(id = R.string.dotwel_amoled_wallpapers_description),
+                )
+            }
             SwitchPreference(
                 prefs.wallpaperScrolling.getAdapter(),
                 label = stringResource(id = R.string.wallpaper_scrolling_label),
@@ -234,13 +275,15 @@ fun HomeScreenPreferences(
         }
         val homeScreenLabelsAdapter = prefs2.showIconLabelsOnHomeScreen.getAdapter()
         PreferenceGroup(heading = stringResource(id = R.string.icons)) {
-            SliderPreference(
-                label = stringResource(id = R.string.icon_sizes),
-                adapter = prefs2.homeIconSizeFactor.getAdapter(),
-                step = 0.1f,
-                valueRange = 0.5F..1.5F,
-                showAsPercentage = true,
-            )
+            if (!isPlayStoreFlavor()) {
+                SliderPreference(
+                    label = stringResource(id = R.string.icon_sizes),
+                    adapter = prefs2.homeIconSizeFactor.getAdapter(),
+                    step = 0.1f,
+                    valueRange = 0.5F..1.5F,
+                    showAsPercentage = true,
+                )
+            }
             SwitchPreference(
                 adapter = homeScreenLabelsAdapter,
                 label = stringResource(id = R.string.show_labels),

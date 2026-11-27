@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="8dp">
+
+    <AnalogClock
+        android:id="@+id/kwgt_orbit_clock"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:contentDescription="@string/kwgt_orbit_content_description"
+        android:dial="@drawable/dw_orbit_dial_translucent"
+        android:hand_hour="@drawable/dw_orbit_hour"
+        android:hand_minute="@drawable/dw_orbit_minute_dark" />
+
+    <TextClock
+        android:id="@+id/kwgt_orbit_time"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:fontFamily="sans-serif"
+        android:format12Hour="hh:mm"
+        android:format24Hour="HH:mm"
+        android:includeFontPadding="false"
+        android:textColor="#FFFFFFFF" />
+
+</FrameLayout>

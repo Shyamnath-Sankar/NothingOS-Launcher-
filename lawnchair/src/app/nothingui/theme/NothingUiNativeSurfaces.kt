@@ -32,7 +32,9 @@ import app.lawnchair.theme.color.tokens.withContext
  * drawer background or popup cannot be tinted by an accent swatch. The light/dark choice is made
  * by [DayNightColorToken], which follows the inherited LIGHT/DARK/SYSTEM theme resolution.
  *
- * Non-Play channels keep the inherited color tokens unchanged.
+ * The dark drawer and header use pure black so large surfaces disappear on AMOLED panels, while
+ * popups and cards stay charcoal for separation. Non-Play channels keep the inherited color
+ * tokens unchanged.
  */
 object NothingUiNativeSurfaces {
     fun popupSurface(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
@@ -51,7 +53,7 @@ object NothingUiNativeSurfaces {
 
     fun textPrimaryInverse(dark: Boolean): Color = if (dark) NothingUiPalette.Ink else NothingUiPalette.Paper
 
-    fun allAppsBackground(dark: Boolean): Color = if (dark) NothingUiPalette.Gray900 else NothingUiPalette.White
+    fun allAppsBackground(dark: Boolean): Color = if (dark) NothingUiPalette.Black else NothingUiPalette.White
 
     fun allAppsHeader(dark: Boolean): Color = allAppsBackground(dark)
 

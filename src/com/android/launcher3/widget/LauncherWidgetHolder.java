@@ -454,7 +454,16 @@ public class LauncherWidgetHolder {
                 || pw.isDeferredWidget())
                 && view.getAppWidgetInfo() != null;
         if (isRealWidget && mViews.get(view.getAppWidgetId()) != view) {
-            view = recycleExistingView(view);
+            LauncherAppWidgetHostView originalView = view;
+            view = recycleExistingView(originalView);
+            if (view != originalView) {
+                // Recycling can return a fresh view without the item tag. Without the tag the
+                // workspace drops it and reInflate() can never restore it.
+                view.setTag(WidgetViewRecycling.resolveItemTag(
+                        originalView.getTag(), view.getTag()));
+                view.setOnFocusChangeListener(originalView.getOnFocusChangeListener());
+                view.setFocusable(originalView.isFocusable());
+            }
             mViews.put(view.getAppWidgetId(), view);
         }
         return view;

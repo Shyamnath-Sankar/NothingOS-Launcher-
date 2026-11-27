@@ -63,6 +63,15 @@ class NothingUiTokenTest {
     }
 
     @Test
+    fun darkBackgroundIsPureBlackWhileSurfacesStayCharcoal() {
+        assertEquals(Color(0xFF000000), NothingUiPalette.Black)
+        assertEquals(NothingUiPalette.Black, DarkNothingUiColors.background)
+        assertEquals(NothingUiPalette.Gray900, DarkNothingUiColors.surface)
+        assertEquals(NothingUiPalette.Gray700, DarkNothingUiColors.surfaceElevated)
+        assertEquals(NothingUiPalette.White, LightNothingUiColors.background)
+    }
+
+    @Test
     fun spacingScaleIsOrderedAndOnTheFourDpGrid() {
         val values = NothingUiSpacing.scale.map { it.value }
         assertEquals(values.sorted(), values)

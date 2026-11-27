@@ -95,7 +95,7 @@
             android:stateNotNeeded="true"
             android:windowSoftInputMode="adjustPan"
             android:screenOrientation="unspecified"
-            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode"
+            android:configChanges="keyboard|keyboardHidden|mcc|mnc|navigation|orientation|screenSize|screenLayout|smallestScreenSize"
             android:resizeableActivity="true"
             android:resumeWhilePausing="true"
             android:taskAffinity=""
@@ -114,6 +114,22 @@
             <meta-data
                 android:name="com.android.launcher3.grid.control"
                 android:value="${applicationId}.grid_control" />
+        </activity>
+
+        <!--
+          Play-only discoverability: surface the existing preferences dashboard as
+          a normal app-drawer entry. This adds only MAIN/LAUNCHER; HOME resolution
+          stays on the launcher activity above, and the activity keeps its
+          APPLICATION_PREFERENCES and lawnchair://settings filters from lawnchair/.
+        -->
+        <activity
+            android:name="app.lawnchair.ui.preferences.PreferenceActivity"
+            android:label="@string/play_settings_label"
+            tools:replace="android:label">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
         </activity>
 
         <!-- Play compliance: third-party QSB / Smartspacer components. -->
@@ -148,5 +164,88 @@
         <service
             android:name="app.lawnchair.bugreport.UploaderService"
             tools:node="remove" />
+
+        <!--
+          Original DotWel home widgets. Only these three providers are declared, and only in the
+          Play overlay. They add no permission: the clock is a native TextClock, the battery reads
+          the sticky BATTERY_CHANGED broadcast through the launcher's lifecycle receiver, and the
+          device card reads only the app data volume with StatFs.
+        -->
+        <receiver
+            android:name="app.dotwel.widgets.DotWelClockWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_clock_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.dotwel.widgets.DotWelBatteryWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+                <action android:name="android.intent.action.POWER_CONNECTED" />
+                <action android:name="android.intent.action.POWER_DISCONNECTED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_battery_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name="app.dotwel.widgets.DotWelDeviceWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_device_widget_info" />
+        </receiver>
+
+        <!--
+          Original compact weather tile. Render-only: the provider reads the
+          process-wide shared render state published by the launcher owner and
+          never loads, schedules or reads the device location. It is declared
+          only in the Play overlay and adds no permission. It is user-placeable
+          and is deliberately not seeded into the default workspace.
+        -->
+        <receiver
+            android:name="app.dotwel.widgets.DotWelWeatherWidgetProvider"
+            android:label="@string/nothingui_weather_widget_label"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.appwidget.action.APPWIDGET_OPTIONS_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/nothingui_weather_widget_info" />
+        </receiver>
+
+        <!--
+          Original dot-field live wallpaper. Play-only and protected by the
+          platform BIND_WALLPAPER permission; it adds no uses-permission and no
+          wider access. The user reaches it only through the explicit live
+          preview action in the AMOLED wallpaper settings, and the system
+          preview/confirmation owns the actual selection.
+        -->
+        <service
+            android:name="app.nothingui.wallpaper.DotFieldWallpaperService"
+            android:label="@string/dotwel_live_wallpaper_label"
+            android:exported="true"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/dotwel_dot_field_wallpaper" />
+        </service>
     </application>
 </manifest>

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black"
+    android:padding="8dp">
+
+    <ImageView
+        android:id="@+id/widget_media_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/media_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/media_message"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="3"
+        android:padding="18dp"
+        android:textColor="@color/widget_muted"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <FrameLayout android:id="@+id/media_overlay" android:layout_width="match_parent" android:layout_height="match_parent" android:visibility="gone">
+        <ImageView android:id="@+id/media_previous" android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="top|left" android:background="@android:color/transparent" android:clickable="true" android:focusable="true" android:contentDescription="@string/media_action_previous" />
+        <ImageView android:id="@+id/media_play_pause" android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="top|left" android:background="@android:color/transparent" android:clickable="true" android:focusable="true" android:contentDescription="@string/media_action_play_pause" />
+        <ImageView android:id="@+id/media_next" android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="top|left" android:background="@android:color/transparent" android:clickable="true" android:focusable="true" android:contentDescription="@string/media_action_next" />
+        <ImageView android:id="@+id/media_volume_up" android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="top|left" android:background="@android:color/transparent" android:clickable="true" android:focusable="true" android:contentDescription="@string/media_volume_up" />
+        <ImageView android:id="@+id/media_volume_down" android:layout_width="1dp" android:layout_height="1dp" android:layout_gravity="top|left" android:background="@android:color/transparent" android:clickable="true" android:focusable="true" android:contentDescription="@string/media_volume_down" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/media_clear"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="top|left"
+        android:background="@android:color/transparent"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center"
+        android:minWidth="0dp"
+        android:paddingStart="0dp"
+        android:paddingEnd="0dp"
+        android:contentDescription="@string/media_action_clear"
+        android:text=""
+        android:textColor="@color/widget_muted"
+        android:textSize="11sp"
+        android:visibility="gone" />
+
+</FrameLayout>

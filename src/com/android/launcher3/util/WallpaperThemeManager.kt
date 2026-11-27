@@ -20,8 +20,11 @@ import android.app.Activity
 import android.content.ComponentCallbacks
 import android.content.res.Configuration
 import android.os.Bundle
+import android.util.Log
 import app.lawnchair.theme.ThemeProvider
+import app.lawnchair.theme.UiColorMode
 import app.lawnchair.wallpaper.WallpaperManagerCompat
+import com.android.launcher3.BuildConfig
 import com.android.launcher3.LauncherConstants.SavedInstanceKeys.RUNTIME_STATE_RECREATE_TO_UPDATE_THEME
 import com.android.launcher3.R
 import com.android.launcher3.Utilities
@@ -44,6 +47,7 @@ class WallpaperThemeManager(private val activity: Activity) :
             themeRes = expectedTheme
             activity.setTheme(expectedTheme)
         }
+        logThemeState(expectedTheme, "init")
 
         if (Utilities.ATLEAST_Q) {
             activity.registerActivityLifecycleCallbacks(this)
@@ -56,21 +60,52 @@ class WallpaperThemeManager(private val activity: Activity) :
     override fun onActivitySaveInstanceState(activity: Activity, bundle: Bundle) =
         bundle.putBoolean(RUNTIME_STATE_RECREATE_TO_UPDATE_THEME, recreateToUpdateTheme)
 
-    override fun onActivityDestroyed(unused: Activity) {
-        WallpaperManagerCompat.INSTANCE.get(activity).removeOnChangeListener(this);
-        WallpaperColorHints.get(activity).unregisterOnColorsChangedListener(this)
+    /**
+     * A stopped activity can receive the configuration change before it is resumed, or can be
+     * resumed with resources that were updated while it was not visible. Re-check the resolved
+     * activity theme here so returning from Settings after a night-mode change cannot keep the
+     * previous native popup/drawer theme.
+     */
+    override fun onActivityResumed(resumedActivity: Activity) {
+        if (resumedActivity === activity) {
+            updateTheme("resume")
+        }
     }
 
-    override fun onConfigurationChanged(config: Configuration) = updateTheme()
+    override fun onActivityDestroyed(destroyedActivity: Activity) {
+        if (destroyedActivity !== activity) return
+        WallpaperManagerCompat.INSTANCE.get(activity).removeOnChangeListener(this);
+        WallpaperColorHints.get(activity).unregisterOnColorsChangedListener(this)
+        activity.unregisterComponentCallbacks(this)
+        if (Utilities.ATLEAST_Q) {
+            activity.unregisterActivityLifecycleCallbacks(this)
+        } else {
+            activity.application.unregisterActivityLifecycleCallbacks(this)
+        }
+    }
+
+    override fun onConfigurationChanged(config: Configuration) {
+        updateTheme("config", config)
+        logDeferredConfigurationIfStale(config)
+    }
 
     override fun onLowMemory() {}
 
-    override fun onColorHintsChanged(colorHints: Int) = updateTheme()
+    override fun onColorHintsChanged(colorHints: Int) = updateTheme("color-hints")
 
-    fun updateTheme() {
-        if (themeRes != Themes.getActivityThemeRes(activity)) {
-            recreateToUpdateTheme()
-        }
+    fun updateTheme() = updateTheme("manual")
+
+    private fun updateTheme(source: String, suppliedConfig: Configuration? = null) {
+        val expectedTheme = Themes.getActivityThemeRes(activity)
+        logThemeState(expectedTheme, source, suppliedConfig)
+        if (themeRes == expectedTheme) return
+
+        // Remember the theme before requesting recreation. The next instance applies it in init,
+        // and a resume that cannot recreate immediately must not request the same recreation
+        // again forever.
+        themeRes = expectedTheme
+        activity.setTheme(expectedTheme)
+        recreateToUpdateTheme()
     }
 
     fun recreateToUpdateTheme() {
@@ -78,11 +113,55 @@ class WallpaperThemeManager(private val activity: Activity) :
         activity.recreate()
     }
 
+    private fun logDeferredConfigurationIfStale(suppliedConfig: Configuration) {
+        if (!BuildConfig.DEBUG) return
+        val suppliedNight = isNight(suppliedConfig)
+        val activityNight = isNight(activity.resources.configuration)
+        if (suppliedNight == activityNight) return
+        activity.window?.decorView?.post {
+            if (!activity.isDestroyed) {
+                logThemeState(Themes.getActivityThemeRes(activity), "config-post", suppliedConfig)
+            }
+        }
+    }
+
+    private fun logThemeState(
+        expectedTheme: Int,
+        source: String,
+        suppliedConfig: Configuration? = null,
+    ) {
+        if (!BuildConfig.DEBUG) return
+        val configuration = activity.resources.configuration
+        val night = isNight(configuration)
+        val appConfiguration = runCatching {
+            activity.application.resources.configuration
+        }.getOrNull()
+        val appNight = appConfiguration?.let(::isNight)?.toString() ?: "n/a"
+        val suppliedNight = suppliedConfig?.let(::isNight)?.toString() ?: "n/a"
+        val resolvedDark = UiColorMode(
+            Themes.getAttrInteger(activity, R.attr.uiColorMode),
+        ).isDarkTheme
+        val expectedName = runCatching {
+            activity.resources.getResourceEntryName(expectedTheme)
+        }.getOrDefault("unknown")
+        Log.d(
+            TAG,
+            "theme-refresh night=$night resolvedDark=$resolvedDark expected=$expectedName" +
+                " source=$source activity=${activity.javaClass.name}" +
+                " suppliedNight=$suppliedNight appNight=$appNight",
+        )
+    }
+
+    private fun isNight(configuration: Configuration): Boolean =
+        configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+
     override fun onColorsChanged() {
-        updateTheme()
+        updateTheme("wallpaper-colors")
     }
 
     companion object {
+        private const val TAG = "DotWelTheme"
 
         /**
          * Sets a wallpaper dependent theme on this activity. The activity is automatically

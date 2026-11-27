@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="277dp"
+    android:height="277dp"
+    android:viewportWidth="277"
+    android:viewportHeight="277">
+    <!-- Minutes: width 20, stroke 2, height 277/2.475, capsule radius 10. -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF1B1B1D"
+        android:strokeWidth="2"
+        android:pathData="M128.5,46.1919 A10,10 0 0 1 148.5,46.1919 L148.5,138.1112 A10,10 0 0 1 128.5,138.1112 Z" />
+</vector>

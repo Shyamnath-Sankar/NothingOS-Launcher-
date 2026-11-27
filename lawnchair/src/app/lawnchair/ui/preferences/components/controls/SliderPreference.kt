@@ -222,26 +222,6 @@ private fun SliderPreference(
     )
 }
 
-fun getSteps(valueRange: ClosedFloatingPointRange<Float>, step: Float): Int {
-    if (step == 0f) return 0
-    val start = valueRange.start.toBigDecimal()
-    val end = valueRange.endInclusive.toBigDecimal()
-    val decimalSteps = (end - start) / step.toBigDecimal()
-    val steps = decimalSteps.toInt()
-    require(decimalSteps.compareTo(steps.toBigDecimal()) == 0) {
-        "value range must be a multiple of step"
-    }
-    return steps - 1
-}
-
-fun snapSliderValue(start: Float, value: Float, step: Float): Float {
-    if (step == 0f) return value
-    val distance = value - start
-    val stepsFromStart = (distance / step).roundToInt()
-    val snappedDistance = stepsFromStart * step
-    return start + snappedDistance
-}
-
 @PreviewLawnchair
 @Composable
 private fun SliderPreferencePreview(

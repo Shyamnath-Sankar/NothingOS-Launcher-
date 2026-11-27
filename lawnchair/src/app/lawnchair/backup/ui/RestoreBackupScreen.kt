@@ -42,6 +42,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import androidx.navigation.toRoute
+import app.lawnchair.backup.BackupOperationResult
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
@@ -124,6 +125,7 @@ fun ColumnScope.RestoreBackupOptions(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var restoringBackup by remember { mutableStateOf(false) }
+    var unavailable by remember { mutableStateOf(false) }
     if (restoringBackup) {
         BackHandler {}
     }
@@ -133,14 +135,31 @@ fun ColumnScope.RestoreBackupOptions(
         scope.launch {
             restoringBackup = true
             try {
-                backup.restore(contents)
-                Toast.makeText(context, R.string.backup_restore_success, Toast.LENGTH_SHORT).show()
-                restartLauncher(context)
-            } catch (t: Throwable) {
-                Log.e("RestoreBackupScreen", "failed to restore backup", t)
-                Toast.makeText(context, R.string.backup_restore_error, Toast.LENGTH_SHORT).show()
+                when (val result = backup.restore(contents)) {
+                    BackupOperationResult.Success -> {
+                        Toast.makeText(context, R.string.backup_restore_success, Toast.LENGTH_SHORT)
+                            .show()
+                        restartLauncher(context)
+                    }
+
+                    is BackupOperationResult.Failure -> {
+                        Log.e("RestoreBackupScreen", "failed to restore backup", result.cause)
+                        unavailable = true
+                        Toast.makeText(context, R.string.backup_restore_error, Toast.LENGTH_SHORT)
+                            .show()
+                    }
+
+                    BackupOperationResult.Unavailable -> unavailable = true
+                }
+            } finally {
+                restoringBackup = false
             }
-            restoringBackup = false
+        }
+    }
+
+    if (unavailable) {
+        PreferenceGroup {
+            BackupUnavailableNotice()
         }
     }
 

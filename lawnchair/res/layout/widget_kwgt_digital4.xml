@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_widget_black">
+
+    <ImageView
+        android:id="@+id/widget_kwgt_digital4_bitmap"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@string/kwgt_digital4_preview_description"
+        android:scaleType="fitCenter"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/kwgt_digital4_fallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal">
+
+        <TextClock
+            android:id="@+id/kwgt_digital4_hour"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:autoSizeMaxTextSize="48sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="2sp"
+            android:autoSizeTextType="uniform"
+            android:fontFamily="monospace"
+            android:format12Hour="hh"
+            android:format24Hour="hh"
+            android:gravity="end|center_vertical"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:paddingEnd="4dp"
+            android:textColor="@color/dot_accent"
+            android:textStyle="bold" />
+
+        <!-- RemoteViews only inflates allowlisted widget classes. Keep this
+             static divider an ImageView/TextView, never a raw View. -->
+        <ImageView
+            android:id="@+id/kwgt_digital4_divider"
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="@color/dot_accent"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no" />
+
+        <TextClock
+            android:id="@+id/kwgt_digital4_minute"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:autoSizeMaxTextSize="48sp"
+            android:autoSizeMinTextSize="8sp"
+            android:autoSizeStepGranularity="2sp"
+            android:autoSizeTextType="uniform"
+            android:fontFamily="monospace"
+            android:format12Hour="mm"
+            android:format24Hour="mm"
+            android:gravity="start|center_vertical"
+            android:includeFontPadding="false"
+            android:maxLines="1"
+            android:paddingStart="5dp"
+            android:textColor="@color/widget_ink"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</FrameLayout>

@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.lawnchair.backup.BackupOperationResult
 import app.lawnchair.backup.LawnchairBackup
 import app.lawnchair.ui.preferences.LocalIsExpandedScreen
 import app.lawnchair.ui.preferences.LocalNavController
@@ -72,6 +73,7 @@ fun CreateBackupScreen(
     val hasWallpaperPermission = wallpaperAccessState == FileAccessState.Full
 
     var showPermissionDialog by remember { mutableStateOf(false) }
+    var unavailable by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
     var creatingBackup by remember { mutableStateOf(false) }
@@ -87,15 +89,26 @@ fun CreateBackupScreen(
         scope.launch {
             creatingBackup = true
             try {
-                LawnchairBackup.create(context, contents, screenshot, uri)
-                navController.popBackStack()
-                Toast.makeText(context, R.string.backup_create_success, Toast.LENGTH_SHORT).show()
-            } catch (t: Throwable) {
-                Log.e("CreateBackupScreen", "failed to create backup", t)
-                Toast.makeText(context, R.string.backup_create_error, Toast.LENGTH_SHORT).show()
-                runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+                when (val result = LawnchairBackup.create(context, contents, screenshot, uri)) {
+                    BackupOperationResult.Success -> {
+                        navController.popBackStack()
+                        Toast.makeText(context, R.string.backup_create_success, Toast.LENGTH_SHORT)
+                            .show()
+                    }
+
+                    is BackupOperationResult.Failure -> {
+                        Log.e("CreateBackupScreen", "failed to create backup", result.cause)
+                        unavailable = true
+                        Toast.makeText(context, R.string.backup_create_error, Toast.LENGTH_SHORT)
+                            .show()
+                        runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+                    }
+
+                    BackupOperationResult.Unavailable -> unavailable = true
+                }
+            } finally {
+                creatingBackup = false
             }
-            creatingBackup = false
         }
     }
 
@@ -120,6 +133,12 @@ fun CreateBackupScreen(
                 viewModel.setBackupContents(contents.removeFlag(LawnchairBackup.INCLUDE_WALLPAPER))
             }
             onDispose { }
+        }
+
+        if (unavailable) {
+            PreferenceGroup {
+                BackupUnavailableNotice()
+            }
         }
 
         if (isPortrait) {

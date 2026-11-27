@@ -27,6 +27,7 @@ object NothingUiPalette {
     val Ink = Color(0xFF0B0B0B)
     val Paper = Color(0xFFF2F2F2)
     val White = Color(0xFFFFFFFF)
+    val Black = Color(0xFF000000)
     val Gray900 = Color(0xFF1A1A1A)
     val Gray700 = Color(0xFF3A3A3A)
     val Gray500 = Color(0xFF6E6E6E)
@@ -51,7 +52,7 @@ data class NothingUiColors(
 )
 
 val DarkNothingUiColors = NothingUiColors(
-    background = NothingUiPalette.Ink,
+    background = NothingUiPalette.Black,
     surface = NothingUiPalette.Gray900,
     surfaceElevated = NothingUiPalette.Gray700,
     onBackground = NothingUiPalette.Paper,
