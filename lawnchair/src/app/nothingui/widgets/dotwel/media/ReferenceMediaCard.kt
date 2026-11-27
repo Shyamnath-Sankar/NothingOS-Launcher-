@@ -3,8 +3,8 @@ package app.nothingui.widgets.dotwel.media
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
-import com.dotwelwidgets.dotwellabs.DotGlyphFont
-import com.dotwelwidgets.dotwellabs.WidgetStyle
+import app.nothingui.widgets.dotwel.DotGlyphFont
+import app.nothingui.widgets.dotwel.WidgetStyle
 import java.util.Locale
 import kotlin.math.min
 
