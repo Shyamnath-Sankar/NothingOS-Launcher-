@@ -6157,6 +6157,145 @@ assert_true 'the widget-tap caller copies the returned notice activities artifac
     grep -Fq 'cp "$_weather_screen_notice_activities"' "$weather_widget_body"
 assert_false 'the widget-tap caller never reconstructs the helper artifact path' \
     grep -Fq 'weather-widget-tap-screen-notice' "$weather_widget_body"
+assert_true 'the weather widget expansion uses the idle-safe capture helper' \
+    grep -Fq 'capture_ui_xml_after_widget_expand' "$weather_widget_body"
+
+# --- executable expand-capture idle recovery contract ----------------------
+# Source the real expand capture helper and run it against stubbed captures:
+# only the "could not get idle state" dump error may trigger the animation
+# scale reset and retries, a still-not-idle picker is narrowed to Weather
+# through the measured search field, and every other outcome fails closed.
+expand_helper_body="$TMP_DIR/capture-after-widget-expand.sh"
+sed -n '/^capture_ui_xml_after_widget_expand() (/,/^)/p' "$SMOKE" > "$expand_helper_body"
+assert_true 'the expand idle-safe capture helper is extractable' \
+    test -s "$expand_helper_body"
+assert_true 'the expand idle-safe capture reacts to the exact idle-state dump error' \
+    grep -Fq "could not get idle state" "$expand_helper_body"
+assert_true 'the expand idle-safe capture disables all three animation scales' \
+    sh -c 'grep -Fq "settings put global animator_duration_scale 0" "$1" &&
+        grep -Fq "settings put global window_animation_scale 0" "$1" &&
+        grep -Fq "settings put global transition_animation_scale 0" "$1"' \
+    sh "$expand_helper_body"
+assert_true 'the expand idle-safe capture narrows the picker with Weather only' \
+    sh -c 'grep -Fq "input text Weather" "$1" &&
+        ! grep -Fq "input text DotWel" "$1"' sh "$expand_helper_body"
+
+expand_harness="$TMP_DIR/weather-expand-idle-harness.sh"
+cat > "$expand_harness" <<'EOF'
+set -eu
+LIB=$1
+BODY=$2
+ROOT=$3
+MODE=$4
+ARTIFACTS="$ROOT/artifacts"
+mkdir -p "$ARTIFACTS"
+COUNT_FILE="$ROOT/count"
+: > "$ROOT/adb-calls"
+printf '0\n' > "$COUNT_FILE"
+. "$LIB"
+sleep() { :; }
+adb_cmd() {
+    printf '%s\n' "$*" >> "$ROOT/adb-calls"
+    return 0
+}
+tap_center_of_bounds() {
+    printf 'tap %s\n' "$1" >> "$ROOT/adb-calls"
+    return 0
+}
+SEARCH_XML="$ROOT/search-source.xml"
+cat > "$SEARCH_XML" <<'XML'
+<hierarchy>
+  <node resource-id="com.android.settings:id/widgets_search_bar_edit_text" bounds="[0,100][1080,220]" />
+</hierarchy>
+XML
+capture_ui_xml() {
+    n=$(cat "$COUNT_FILE")
+    n=$((n + 1))
+    printf '%s\n' "$n" > "$COUNT_FILE"
+    case "$MODE" in
+        retry-once)
+            if [ "$n" -eq 1 ]; then
+                printf 'ERROR: could not get idle state.\n' \
+                    > "$ARTIFACTS/uiautomator-$1.txt"
+                return 1
+            fi
+            ;;
+        search)
+            if [ "$n" -le 4 ]; then
+                printf 'ERROR: could not get idle state.\n' \
+                    > "$ARTIFACTS/uiautomator-$1.txt"
+                return 1
+            fi
+            ;;
+        always)
+            printf 'ERROR: could not get idle state.\n' \
+                > "$ARTIFACTS/uiautomator-$1.txt"
+            return 1
+            ;;
+        other-error)
+            printf 'ERROR: could not find a matched view.\n' \
+                > "$ARTIFACTS/uiautomator-$1.txt"
+            return 1
+            ;;
+    esac
+    printf '<hierarchy><node text="weather"/></hierarchy>\n' > "$ARTIFACTS/$1"
+    return 0
+}
+. "$BODY"
+if capture_ui_xml_after_widget_expand expanded.xml "$SEARCH_XML" "$ROOT/expand.log"; then
+    printf 'result=ok\n'
+else
+    printf 'result=fail\n'
+fi
+printf 'captures=%s\n' "$(cat "$COUNT_FILE")"
+EOF
+
+expand_retry_root="$TMP_DIR/weather-expand-retry"
+expand_retry=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_retry_root" retry-once) || expand_retry=
+assert_eq 'the expand idle-safe capture recovers on the first retry after disabling animation scales' \
+    'result=ok
+captures=2' "$expand_retry"
+assert_true 'the idle retry disables the animator duration scale before recapturing' \
+    grep -Fq 'shell settings put global animator_duration_scale 0' \
+    "$expand_retry_root/adb-calls"
+assert_true 'the idle retry disables the window animation scale before recapturing' \
+    grep -Fq 'shell settings put global window_animation_scale 0' \
+    "$expand_retry_root/adb-calls"
+assert_true 'the idle retry disables the transition animation scale before recapturing' \
+    grep -Fq 'shell settings put global transition_animation_scale 0' \
+    "$expand_retry_root/adb-calls"
+
+expand_search_root="$TMP_DIR/weather-expand-search"
+expand_search=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_search_root" search) || expand_search=
+assert_eq 'a still-not-idle picker is narrowed to Weather before the final capture' \
+    'result=ok
+captures=5' "$expand_search"
+assert_true 'a still-not-idle picker taps the measured search bar bounds' \
+    grep -Fq 'tap 0 100 1080 220' "$expand_search_root/adb-calls"
+assert_true 'a still-not-idle picker types Weather through the measured search field' \
+    grep -Fq 'shell input text Weather' "$expand_search_root/adb-calls"
+assert_true 'the animation scales are reset exactly once before the Weather search' \
+    sh -c '[ "$(grep -Fxc "shell settings put global animator_duration_scale 0" "$1")" = 1 ]' \
+    sh "$expand_search_root/adb-calls"
+
+expand_fail_root="$TMP_DIR/weather-expand-fail"
+expand_fail=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_fail_root" always) || expand_fail=
+assert_eq 'a picker that never becomes idle still fails closed after the search attempt' \
+    'result=fail
+captures=5' "$expand_fail"
+
+expand_other_root="$TMP_DIR/weather-expand-other"
+expand_other=$(sh "$expand_harness" "$LIB" "$expand_helper_body" \
+    "$expand_other_root" other-error) || expand_other=
+assert_eq 'a non-idle dump error fails closed without disabling animations' \
+    'result=fail
+captures=1' "$expand_other"
+assert_true 'a non-idle dump error never issues the animation settings commands' \
+    sh -c '! grep -Fq "settings put global" "$1"' \
+    sh "$expand_other_root/adb-calls"
 
 # --- executable Weather screen artifact-path contract ----------------------
 # Source the real two-stage helper and the real widget-tap post-confirmation

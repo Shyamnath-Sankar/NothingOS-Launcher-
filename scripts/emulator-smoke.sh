@@ -159,6 +159,56 @@ capture_ui_xml() (
     return 1
 )
 
+# Capture the hierarchy after expanding the DotWel provider. An expanded DotWel
+# section renders many live widget previews, and per-second clock animations can
+# stop uiautomator from ever reaching an idle state ("could not get idle state").
+# Only that exact dump error is recoverable: disable the three animation scales,
+# retry up to three times, and if the picker is still not idle narrow it through
+# its measured search field by typing Weather so only weather previews render.
+# This helper only obtains a fresh hierarchy; the caller still enforces the exact
+# Weather expansion and cell selection and never skips either.
+capture_ui_xml_after_widget_expand() (
+    _cuex_name=$1
+    _cuex_search_source=$2
+    _cuex_log=$3
+    _cuex_dump="$ARTIFACTS/uiautomator-$_cuex_name.txt"
+    sleep 1
+    if capture_ui_xml "$_cuex_name"; then
+        return 0
+    fi
+    grep -Fq 'could not get idle state' "$_cuex_dump" 2>/dev/null || return 1
+    printf 'expand-capture=idle-error; disabling animation scales\n' >> "$_cuex_log"
+    adb_cmd shell settings put global animator_duration_scale 0 \
+        >> "$_cuex_log" 2>&1 || true
+    adb_cmd shell settings put global window_animation_scale 0 \
+        >> "$_cuex_log" 2>&1 || true
+    adb_cmd shell settings put global transition_animation_scale 0 \
+        >> "$_cuex_log" 2>&1 || true
+    _cuex_attempt=1
+    while [ "$_cuex_attempt" -le 3 ]; do
+        sleep 1
+        if capture_ui_xml "$_cuex_name"; then
+            printf 'expand-capture=idle-retry attempt=%s ok\n' \
+                "$_cuex_attempt" >> "$_cuex_log"
+            return 0
+        fi
+        grep -Fq 'could not get idle state' "$_cuex_dump" 2>/dev/null || return 1
+        _cuex_attempt=$((_cuex_attempt + 1))
+    done
+    printf 'expand-capture=idle-retry exhausted; narrowing search to Weather\n' \
+        >> "$_cuex_log"
+    _cuex_search_input=$(widget_picker_search_bar_bounds "$_cuex_search_source")
+    [ -n "$_cuex_search_input" ] || return 1
+    tap_center_of_bounds "$_cuex_search_input" >> "$_cuex_log" 2>&1 || return 1
+    adb_cmd shell input text Weather >> "$_cuex_log" 2>&1 || return 1
+    sleep 1
+    if capture_ui_xml "$_cuex_name"; then
+        printf 'expand-capture=search-weather ok\n' >> "$_cuex_log"
+        return 0
+    fi
+    return 1
+)
+
 # Poll the live resumed activity, bounded, until it belongs to $1. Only the
 # topResumedActivity/mResumedActivity fields count: task history also names
 # packages and must never be mistaken for the foreground app.
@@ -3860,19 +3910,12 @@ capture_weather_widget() {
                 tap_center_of_bounds "$_cww_header" ||
                     fail "could not tap the measured DotWel provider header to expand Weather"
                 _cww_expand=$((_cww_expand + 1))
-                _cww_expand_xml=
-                _cww_expand_poll=1
-                while [ "$_cww_expand_poll" -le 5 ]; do
-                    sleep 1
-                    if capture_ui_xml \
-                        "weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"; then
-                        _cww_expand_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand-$_cww_expand_poll.xml"
-                        break
-                    fi
-                    _cww_expand_poll=$((_cww_expand_poll + 1))
-                done
-                [ -n "$_cww_expand_xml" ] ||
+                _cww_expand_xml="$ARTIFACTS/weather-widget-expand-$_cww_expand.xml"
+                if ! capture_ui_xml_after_widget_expand \
+                    "weather-widget-expand-$_cww_expand.xml" \
+                    "$_cww_picker_xml" "$_cww_log"; then
                     fail "could not capture fresh picker XML after expanding Weather"
+                fi
                 _cww_picker_xml=$_cww_expand_xml
                 capture_screenshot_to "weather-widget-expand-$_cww_expand.png"
                 continue
