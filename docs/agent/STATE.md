@@ -3,23 +3,39 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Spotless format fix v1.2.1 (CI#348) on `agent/spotless-format-fix-v1-2-1-ci`.
-  Applied the exact formatter patch to the five Dotwel widget files; formatting only. PENDING
-  ACTUAL CI.**
-- branch: `agent/spotless-format-fix-v1-2-1-ci`
-- head: `bfe221a` (`chore(style): apply spotless formatting to Dotwel v1.2.1 widgets`)
+- current_phase: **Photo widget configure flow fix on `agent/fix-the-photo-widget-configure`.** The
+  picker now opens when the photo widget is added. PENDING ACTUAL CI.
+- branch: `agent/fix-the-photo-widget-configure`
+- head: `b1edf62` (`fix: open photo widget configure activity when added`)
 - pr: **not opened — no GitHub auth/token in this runner** (`gh` unauthenticated). The branch is
   pushed; open the PR from
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/spotless-format-fix-v1-2-1-ci?expand=1
-- ci: **not run here** by instruction. `git apply` succeeded, `git diff --check` clean; no
-  Gradle/APK/emulator.
-- next: let CI#348 `check-style` run `spotlessKotlinCheck` on these five files. When green, open the
-  PR/merge, then resume the Dotwel v1.2.1 delta resync PR
-  (`agent/delta-resync-v1-2-1-of-dotwel`, head `6585fc0`).
-- blockers: no GitHub auth to open PRs; `spotlessCheck` was not run locally because this runner has
-  no Gradle cache and the task forbids Gradle builds here.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/compare/main...agent/fix-the-photo-widget-configure?expand=1
+- ci: **not run here** by instruction (no Gradle). XML parses, `git diff --check` clean.
+- next: let CI build the APK and confirm the manifest merge; manually verify on a device that adding
+  the photo widget opens `NtPhotoConfigActivity` immediately.
+- blockers: no GitHub auth to open PRs; Gradle builds are forbidden in this runner.
 
-## done (this run — Spotless format fix v1.2.1, CI#348, formatting only)
+## done (this run — photo widget configure flow, manifest + widget XML only)
+
+- **Task:** the photo widget picker only opened when the placed widget was tapped afterwards; make
+  it open at add time.
+- **Widget info XML:** `lawnchair/res/xml/photo_circle_info.xml` and
+  `lawnchair/res/xml/photo_rect_info.xml` now declare
+  `android:configure="app.nothingui.widgets.dotwel.NtPhotoConfigActivity"` on the
+  `appwidget-provider` root. Every existing attribute is unchanged.
+- **Manifest:** `app.nothingui.widgets.dotwel.NtPhotoConfigActivity` in
+  `lawnchair/AndroidManifest.xml` is now `android:exported="true"`, keeps
+  `android:theme="@style/Theme.Dotwel"`, and gained an intent-filter with only
+  `android.appwidget.action.APPWIDGET_CONFIGURE`.
+- **Scope:** no Kotlin, permission, other manifest entry or workflow change. No `applicationId`,
+  `minSdk` or `targetSdk` change.
+- **Verification actually run (XML/shell only; no Gradle, APK, emulator or CI):**
+  `python3` `ElementTree.parse` of both info XMLs and the manifest → `XML OK`;
+  `git diff --check` clean; `git diff --stat` shows 3 files, 8 insertions / 2 deletions.
+- **Missing evidence / not claimed:** no `./gradlew` build, no merged-manifest dump, no device/emulator
+  run and no actual CI. CI is the final proof that the manifest merges and the APK builds.
+
+## done (previous run — Spotless format fix v1.2.1, CI#348, formatting only)
 
 - **Task:** CI#348 `check-style` failed `spotlessKotlinCheck` on five files under
   `lawnchair/src/app/nothingui/widgets/dotwel` (ktlint 1.8.0). Apply the supplied exact patch.
