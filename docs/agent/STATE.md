@@ -3,18 +3,54 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Dotwel v1.2.0 widget delta resync on
-  `agent/resync-redesigned-dotwel-widge`. Ported the new Bluetooth battery-levels provider, the
-  reference battery/status/Bluetooth/media restyles, and the app-screen chrome. PENDING ACTUAL CI.**
-- branch: `agent/resync-redesigned-dotwel-widge`
-- head: `32af84f` (`feat(ui): apply the Dotwel black chrome to the credits screen`) plus the
-  guard/attribution update that follows.
+- current_phase: **Dotwel v1.2.1 delta resync on `agent/delta-resync-v1-2-1-of-dotwel`. Ported the
+  headphones halo and enlarged earbuds; verified the media art box and battery track already match
+  `b0330f8`; pinned the source to v1.2.1. PENDING ACTUAL CI.**
+- branch: `agent/delta-resync-v1-2-1-of-dotwel`
+- head: `844e2b1` (`test(widget): pin and lock the Dotwel v1.2.1 delta`).
 - pr: not opened yet.
-- ci: **not run here** by instruction. XML parse OK, `git diff --check` clean; no Gradle/APK/emulator.
-- next: push the guard/attribution update, open the PR to main, let CI build
-  `lawnWithQuickstepPlayDebug`, then run the emulator smoke lane (Weather tile and the new Bluetooth
-  widget) and merge.
-- blockers: no actual CI here; the 62-provider inventory test is only exercised by CI.
+- ci: **not run here** by instruction. `git diff --check` clean, 62 manifest receivers unchanged;
+  no Gradle/APK/emulator.
+- next: open the PR to main, let CI build `lawnWithQuickstepPlayDebug` and run
+  `testLawnWithQuickstepPlayDebugUnitTest` (the 62-provider guard plus the new v1.2.1 delta test),
+  then merge.
+- blockers: no actual CI here; the 62-provider inventory and the new delta test are only exercised
+  by CI.
+
+## done (this run — Dotwel v1.2.1 delta resync)
+
+- **Source:** upstream `b0330f873c8f97682ddf6b735e6210a14b14fc8a` (v1.2.1), diffed against the
+  previously pinned `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0). The delta is eight files:
+  three production Kotlin files, four upstream tests and the upstream `docs/agent/STATE.md`.
+- **Source-to-launcher mapping used (same basenames as the v1.2.0 port):**
+  `BluetoothHeadphonesWidgets.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/BluetoothHeadphonesWidgets.kt`;
+  `ReferenceBatterySurface.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/ReferenceBatterySurface.kt`;
+  `media/ReferenceMediaCard.kt` → `lawnchair/src/app/nothingui/widgets/dotwel/media/ReferenceMediaCard.kt`.
+- **Headphones (`4fb397c`):** added `HALO = 0xFFE9E7EC` and the 0x55-alpha outer ring behind the
+  earbuds; the wide icon grew from `min(0.62h, 0.20w)` to `min(0.78h, 0.24w)`, the square icon from
+  `0.32 side` to `0.36 side`, and the square icon moved to `0.25h`. The device name is unchanged by
+  this delta: it stays the gray `#777379` sans-serif line (white in the transparent style), as the
+  upstream v1.2.1 notes confirm.
+- **Media and battery were already at v1.2.1 on this branch:** `media/ReferenceMediaCard.kt` already
+  had `pad = 0.03 side`, `artSize = min(0.40w, 0.72h)`, and the layout-derived `artistHeight` /
+  `titleHeight`; `ReferenceBatterySurface.kt` already painted the mini remainder with
+  `TRACK_SOFT` (since `f3b4d03`). `diff` against `b0330f8` shows only the `package`/import adaptation,
+  so no code change was needed for those two files.
+- **Pin (`9838b90`):** `docs/ATTRIBUTION.md` now pins the non-weather set to `b0330f8` (v1.2.1),
+  keeps the `7fc426e`/`7167bcdf` history, and adds a v1.2.1 delta note; `NOTICE.md` pins `b0330f8`.
+- **Tests (`844e2b1`):** `DotwelWidgetPortGuardTest` now requires the v1.2.1 SHA (still requires
+  `7167bcdf`, `7fc426e` and the weather `35176088`); the 62-provider inventory is unchanged. New
+  text-level `DotwelWidgetV121DeltaTest` locks the halo/icon sizes, the `TRACK_SOFT` track and the
+  `0.03`/`0.40` media art box.
+- **Scope:** no provider, permission, manifest, `applicationId`, SDK, weather, MET Norway copy,
+  Weather label or workflow change. The 62 manifest receivers are unchanged.
+- **Verification actually run (shell/source only; no Gradle, APK, emulator or actual CI):**
+  `git diff --check` clean; `grep` of `lawnchair/AndroidManifest.xml` still counts 62 Dotwel
+  receivers; `git diff --name-only` shows no weather/MET file; `diff` of the three launcher files
+  against `b0330f8` shows only package/import and the intended adaptations.
+- **Missing evidence / not claimed:** no `./gradlew testLawnWithQuickstepPlayDebugUnitTest`, no APK,
+  no render, no emulator and no actual CI. CI is the final proof that the guard, the new delta test
+  and the resources compile.
 
 ## done (this run — Dotwel v1.2.0 widget delta resync)
 
