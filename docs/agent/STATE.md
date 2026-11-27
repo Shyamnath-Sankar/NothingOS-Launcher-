@@ -3,23 +3,50 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **CI#331 emulator-smoke fix on `agent/small-focused-fix-commit-and-p`; the
-  Weather-expansion capture now recovers from uiautomator "could not get idle state" by disabling
-  the three animation scales, retrying up to 3 times, then narrowing the picker to Weather via the
-  measured search field. Harness-only; no app/widget/manifest/workflow change. Shell suite green
-  locally, PENDING ACTUAL CI.**
+- current_phase: **CI#334 weather-tile picker label fix on `agent/small-focused-fix-commit-and-p`.
+  The original weather receiver had no `android:label`, so its picker name fell back to the app label
+  `DotWel Launcher` and the Weather-filtered picker hid it. It now points at the new
+  `nothingui_weather_widget_label` = `Weather`, so it matches the Weather search. Guards extended.
+  Shell/XML verification green locally; PENDING ACTUAL CI.**
 - branch: `agent/small-focused-fix-commit-and-p`
-- head: `95f697f` (harness fix + tests); pushed after commit.
+- head: `b13db1c` (label fix + strict guard tests); pushed after commit.
 - pr: **not created in this run**; open a PR at
   https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/small-focused-fix-commit-and-p
-- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → 1392 ok, 0 not ok,
-  all passed; `sh -n` clean on both edited scripts; `git diff --check` clean. No Gradle build,
-  emulator or actual CI.
-- next: push and let CI re-run the API 37 lane to prove the Weather expansion no longer times out;
-  then continue the v1 plan.
+- ci: **not run here** by instruction. `nothingui-weather-guard.sh` ok;
+  `nothingui-weather-guard-test.sh` all passed (2 new negative checks); `emulator-smoke-test.sh`
+  all passed; manifest/brand/identity/widget/polish/home guard tests rc=0; both XML files parse;
+  `sh -n` clean; `git diff --check` clean. No Gradle build, emulator or actual CI.
+- next: let CI re-run the API 37 lane and confirm the Weather cell is present and selected by its
+  exact description; then continue the v1 plan.
 - blockers: no PR from this runner; no actual CI/emulator here.
 
-## done (this run — CI#331 Weather-expansion idle capture, shell-only)
+## done (this run — CI#334 weather-tile picker label fix, product + shell-only)
+
+- **Root cause:** `play/AndroidManifest.xml` declared `app.dotwel.widgets.DotWelWeatherWidgetProvider`
+  without `android:label`, so its picker name was the application label `DotWel Launcher`. The smoke
+  filters the picker by `Weather`; the nine Dotwel Weather widgets matched but the original tile did
+  not, so the gate reported `step=fail candidate=none`.
+- **Minimal product fix:** added `<string name="nothingui_weather_widget_label">Weather</string>` next
+  to `nothingui_weather_widget_description` in `lawnchair/res/values/strings.xml`, and set
+  `android:label="@string/nothingui_weather_widget_label"` on that one receiver only. No other
+  receiver, permission, `applicationId`, SDK or smoke selection logic changed; selection still uses
+  the exact description and the cell is never skipped.
+- **Strict guards:** `nothingui-weather-guard.sh` now requires the receiver to carry the label and
+  the string to be exactly `Weather`. `nothingui-weather-guard-test.sh` gained two negative fixtures:
+  a missing label and a non-`Weather` value both fail. The existing exported/info-XML/no-seed checks
+  are unchanged.
+- **Verification actually run (shell/XML only; no Gradle, emulator or actual CI):**
+  `sh scripts/nothingui-weather-guard.sh` → `ok`; `sh scripts/nothingui-weather-guard-test.sh` →
+  all passed; `sh scripts/emulator-smoke-test.sh` → all passed; `manifest-guard-test`,
+  `verify-play-build-test`, `nothingui-home-guard-test`, `play-brand-guard-test`,
+  `play-identity-guard-test`, `nothingui-widget-guard-test`, `nothingui-polish-guard-test` → rc=0;
+  Python XML parse of `strings.xml` and `play/AndroidManifest.xml` OK; `sh -n` clean on both edited
+  scripts; `git diff --check` clean.
+- **Missing evidence / not claimed:** no Gradle/APK build, no emulator, no uiautomator dump and no
+  actual CI. CI `build-debug-apk` and the API 37 smoke are the final proof that the tile is named
+  `Weather` and selected.
+
+## done (previous run — CI#331 Weather-expansion idle capture, shell-only)
 
 - **Exact CI#331 observation:** after tapping the DotWel provider header, all five
   `weather-widget-expand-<n>-<poll>` uiautomator dumps returned `ERROR: could not get idle state`
