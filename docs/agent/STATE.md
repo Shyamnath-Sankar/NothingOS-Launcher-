@@ -3,21 +3,51 @@
 Updated by the agent-dev workflow at the end of every run. The next dispatch reads this file
 when no task input is given, and continues from "next".
 
-- current_phase: **Combining CI#333 search-header expansion into the CI#334 weather-label branch on
-  `agent/combine-branches-task-no-new-f`. Both sides kept; the three smoke scripts merged without
-  dropping any change. Shell/XML verification green locally; PENDING ACTUAL CI.**
-- branch: `agent/combine-branches-task-no-new-f`
-- head: `9bd6844` (merge of `origin/agent/small-focused-harness-fix-comm` into this branch).
+- current_phase: **CI#337 decision-gate fix on `agent/decision-gate-fix-task-shell-o`. The Weather
+  picker now selects the exact unique Weather preview in a narrowed `search_widgets_list_view` even
+  when the provider header is empty/scrolled away. Shell tests green locally; PENDING ACTUAL CI.**
+- branch: `agent/decision-gate-fix-task-shell-o`
+- head: `b0f4ea0` (`fix: select weather cell in narrowed search list without a header`).
 - pr: open a PR at
-  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/combine-branches-task-no-new-f
-- ci: **not run here** by instruction. `sh -n` clean on the three smoke scripts;
-  `grep` confirms the weather receiver label and `widget_picker_search_header_bounds`; no Gradle
-  build, emulator or actual CI.
-- next: push and let CI re-run the API 37 lane to prove the label fix and the search-row expansion
-  together; then continue the v1 plan.
+  https://github.com/Shyamnath-Sankar/NothingOS-Launcher-/pull/new/agent/decision-gate-fix-task-shell-o
+- ci: **not run here** by instruction. `sh scripts/emulator-smoke-test.sh` → all passed;
+  `sh -n` clean on both edited scripts; no Gradle build, emulator or actual CI.
+- next: let CI re-run the API 37 lane to prove the Weather tile is selected and bound in the
+  narrowed search list; then continue the v1 plan.
 - blockers: no PR from this runner; no actual CI/emulator here.
 
-## done (this run — combine CI#334 label fix + CI#333 search-header expansion, no new features)
+## done (this run — CI#337 select Weather in narrowed search list with an empty header, shell-only)
+
+- **Exact CI#337 observation:** the Weather tile is found, but `weather-widget-log.txt` shows the
+  loop printing `step=search` with `candidate=551 1324 1011 1712` at scroll 1 and
+  `candidate=551 458 1011 846` at scroll 2, `header=none`, then failing after scroll 4. In the
+  Weather-filtered `search_widgets_list_view` the provider row's subtitle is widget names, so
+  `widget_picker_provider_bounds` returns no header and the header may scroll out of view.
+- **Minimal lib fix:** `widget_picker_weather_decision` keeps the existing header-present select
+  branch untouched and adds one narrow branch: when `header` is empty, the candidate is non-empty,
+  `widget_picker_preview_is_visible` passes, and the XML contains
+  `resource-id=".../search_widgets_list_view"`, print `select`. Every other branch (`expand`,
+  `reveal`, `search`, `fail`) is unchanged, so outside search-list mode behavior is exactly as
+  before. The candidate is still the exact unique description preview, so ambiguity and clipped
+  previews still fail closed.
+- **Post-select audit (no change needed):** after `select`, `_cww_provider_xml` is used only by
+  `widget_picker_selected_caption` (preview-bounds based, no header) and the evidence `cp`;
+  `_cww_header` is not read after the loop. The long-press and resize/drag steps use the placed HOME
+  widget bounds and measured resize handles, not the picker header. No non-empty-header or
+  "N widgets" requirement exists in that path, so no search-list fallback was needed there.
+- **Tests (TDD):** new synthetic fixtures in `scripts/emulator-smoke-test.sh`: (1) search list with
+  a visible unique candidate and empty header selects; (2) the same candidate in
+  `primary_widgets_list_view` (no search list) never selects (`search`); (3) a clipped candidate in
+  the search list never selects (`fail`). The new select assertion failed first with
+  `expected 'select', got 'search'`, then passed after the lib change.
+- **Verification actually run (shell only; no Gradle, Android build, emulator or actual CI):**
+  `sh scripts/emulator-smoke-test.sh` → **all emulator-smoke tests passed** (1440 lines, 0 failed);
+  `sh -n scripts/emulator-smoke-lib.sh` and `sh -n scripts/emulator-smoke-test.sh` clean;
+  `git diff --check` clean.
+- **Scope:** no Kotlin/app/widget/manifest/SDK/`applicationId`/workflow change; shell only. The
+  untracked runner scratch `w/` is left untracked.
+
+## done (previous run — combine CI#334 label fix + CI#333 search-header expansion, no new features)
 
 - **Task:** merge `origin/agent/small-focused-harness-fix-comm` (commits `6d39fac` and `fea53a6`)
   into the agent branch already containing `b13db1c`, keeping only those changes.
