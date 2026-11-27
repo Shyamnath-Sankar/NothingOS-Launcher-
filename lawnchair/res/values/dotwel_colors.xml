@@ -9,4 +9,14 @@
     <color name="widget_black">#12151D</color>
     <color name="widget_translucent">#A6FFFFFF</color>
     <color name="widget_transparent">#00000000</color>
+
+    <!-- Reference-matched palette sampled from the Something OS Widgets previews. -->
+    <color name="dotwel_black">#000000</color>
+    <color name="dotwel_white">#FFFFFF</color>
+    <color name="dotwel_card">#FEF7FF</color>
+    <color name="dotwel_text">#1D1B20</color>
+    <color name="dotwel_gray">#777379</color>
+    <color name="dotwel_track">#EEEEEE</color>
+    <color name="dotwel_track_alt">#F4F3F3</color>
+    <color name="dotwel_green">#6A9C89</color>
 </resources>

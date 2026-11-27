@@ -631,4 +631,10 @@
     <string name="dotwel_away_description">Samples local screen-on and screen-off transitions to show recent away, longest and today durations. No usage-access permission.</string>
     <string name="dotwel_widget_preview_description">Widget preview</string>
     <string name="dotwel_widget_unavailable">Widget unavailable</string>
+    <string name="chrome_live_label">LIVE_SYSTEM_DISPLAY</string>
+    <string name="chrome_id_label">ID: DW-MOD-01</string>
+    <string name="chrome_headline">DOTWEL WIDGETS</string>
+    <string name="chrome_subtitle">HOME SCREEN WIDGET SYSTEM</string>
+    <string name="chrome_footer">DOTWEL WIDGETS</string>
+    <string name="chrome_live_dot_description">Live system display indicator</string>
 </resources>
