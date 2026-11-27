@@ -28,8 +28,9 @@ import org.junit.Test
  * needing an Android runtime.
  *
  * The non-weather port is pinned to upstream commit
- * `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0), which includes the
- * earlier `7167bcdf001b604f1d61a2f07f70825a999eb767` set. The twelve weather
+ * `b0330f873c8f97682ddf6b735e6210a14b14fc8a` (v1.2.1), which includes the
+ * earlier `7fc426e93dda173b17df8d65717f5a6fac8479df` (v1.2.0) and
+ * `7167bcdf001b604f1d61a2f07f70825a999eb767` sets. The twelve weather
  * providers are pinned to the crash-fixed commit
  * `3517608833a184a3f97148ff113ea600a24e6e1b` and must read only the launcher's
  * existing shared weather render state. Together they are the complete
@@ -267,6 +268,10 @@ class DotwelWidgetPortGuardTest {
             attribution.contains("7fc426e93dda173b17df8d65717f5a6fac8479df"),
         )
         assertTrue(
+            "attribution does not pin the v1.2.1 upstream commit",
+            attribution.contains("b0330f873c8f97682ddf6b735e6210a14b14fc8a"),
+        )
+        assertTrue(
             "attribution does not pin the weather upstream commit",
             attribution.contains("3517608833a184a3f97148ff113ea600a24e6e1b"),
         )
@@ -305,6 +310,7 @@ class DotwelWidgetPortGuardTest {
     private companion object {
         /**
          * The complete non-weather provider inventory at upstream commit
+         * `b0330f873c8f97682ddf6b735e6210a14b14fc8a`, unchanged from
          * `7fc426e93dda173b17df8d65717f5a6fac8479df`, as provider class name to
          * `android.appwidget.provider` metadata resource.
          */
